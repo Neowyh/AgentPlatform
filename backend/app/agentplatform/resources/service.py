@@ -11,6 +11,7 @@ from enum import StrEnum
 from sqlalchemy import Select, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agentplatform.knowledge.models import KnowledgeBase
 from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
@@ -144,9 +145,10 @@ class ResourceService:
             raise ValueError("slug cannot be empty")
         if not display_name.strip():
             raise ValueError("display_name cannot be empty")
-        if canonical_type == ResourceType.WORKFLOW and canonical_storage != ResourceStorageKind.DATABASE:
-            raise ValueError("Workflow resources require database storage")
-        if canonical_type != ResourceType.WORKFLOW and canonical_storage != ResourceStorageKind.FILESYSTEM:
+        database_types = {ResourceType.WORKFLOW, ResourceType.KNOWLEDGE_BASE}
+        if canonical_type in database_types and canonical_storage != ResourceStorageKind.DATABASE:
+            raise ValueError(f"{canonical_type.value} resources require database storage")
+        if canonical_type not in database_types and canonical_storage != ResourceStorageKind.FILESYSTEM:
             raise ValueError("Skill and Agent resources require filesystem storage")
 
         resource_id = str(uuid.uuid4())
@@ -154,6 +156,7 @@ class ResourceService:
             ResourceType.SKILL: "skills",
             ResourceType.AGENT: "agents",
             ResourceType.WORKFLOW: "workflows",
+            ResourceType.KNOWLEDGE_BASE: "knowledge_bases",
         }[canonical_type]
         resource = Resource(
             id=resource_id,
@@ -174,7 +177,70 @@ class ResourceService:
         )
         self.session.add(resource)
         await self.session.flush()
+        if canonical_type == ResourceType.KNOWLEDGE_BASE:
+            self.session.add(KnowledgeBase(resource_id=resource.id))
+            await self.session.flush()
         return resource
+
+    async def get_knowledge_binding(self, resource_id: str) -> KnowledgeBase:
+        """Return a visible KB binding without creating a second identity boundary."""
+        self._require_action(ResourceAction.READ)
+        resource = await self._get_visible(resource_id)
+        if resource.type != ResourceType.KNOWLEDGE_BASE.value:
+            raise ResourceNotFound(f"KnowledgeBase {resource_id} not found")
+        binding = await self.session.get(KnowledgeBase, resource.id)
+        if binding is None:
+            raise ResourceNotFound(f"KnowledgeBase binding {resource_id} not found")
+        return binding
+
+    async def bind_knowledge_dataset(
+        self,
+        resource_id: str,
+        *,
+        provider_dataset_id: str,
+        provider_type: str = "ragflow",
+    ) -> KnowledgeBase:
+        """Bind an opaque provider dataset to an authorized canonical KB."""
+        resource = await self._get_visible(resource_id)
+        self.assert_modify(resource)
+        if resource.type != ResourceType.KNOWLEDGE_BASE.value:
+            raise ResourceNotFound(f"KnowledgeBase {resource_id} not found")
+        if not provider_type.strip():
+            raise ValueError("provider_type cannot be empty")
+        if not provider_dataset_id.strip():
+            raise ValueError("provider_dataset_id cannot be empty")
+        binding = await self.session.get(KnowledgeBase, resource.id)
+        if binding is None:
+            raise ResourceNotFound(f"KnowledgeBase binding {resource_id} not found")
+        existing = (
+            await self.session.execute(
+                select(KnowledgeBase.resource_id).where(
+                    KnowledgeBase.provider_type == provider_type,
+                    KnowledgeBase.provider_dataset_id == provider_dataset_id,
+                    KnowledgeBase.resource_id != resource.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ResourceConflict("Provider dataset is already bound to another KnowledgeBase")
+        binding.provider_type = provider_type
+        binding.provider_dataset_id = provider_dataset_id
+        binding.sync_status = "ok"
+        await self.session.flush()
+        return binding
+
+    async def unbind_knowledge_dataset(self, resource_id: str) -> KnowledgeBase:
+        resource = await self._get_visible(resource_id)
+        self.assert_modify(resource)
+        if resource.type != ResourceType.KNOWLEDGE_BASE.value:
+            raise ResourceNotFound(f"KnowledgeBase {resource_id} not found")
+        binding = await self.session.get(KnowledgeBase, resource.id)
+        if binding is None:
+            raise ResourceNotFound(f"KnowledgeBase binding {resource_id} not found")
+        binding.provider_dataset_id = None
+        binding.sync_status = "ok"
+        await self.session.flush()
+        return binding
 
     async def list_visible(
         self,
@@ -1070,6 +1136,7 @@ class ResourceService:
             "skill": set(),
             "agent": {"skill"},
             "workflow": {"agent", "skill"},
+            "knowledge_base": set(),
         }
         if target.type not in allowed_targets[source.type]:
             raise ResourceConflict(f"{source.type} resources cannot depend on {target.type} resources")

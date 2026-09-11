@@ -187,6 +187,20 @@ class ResourcePublisher:
         canonical = json.dumps(content, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
         return hashlib.sha256(canonical).hexdigest()
 
+    @staticmethod
+    def _assert_knowledge_content_safe(content: dict) -> None:
+        def walk(value: object) -> bool:
+            if isinstance(value, dict):
+                if any(key in value for key in {"provider_dataset_id", "api_key", "provider_api_key"}):
+                    return False
+                return all(walk(item) for item in value.values())
+            if isinstance(value, list):
+                return all(walk(item) for item in value)
+            return True
+
+        if not walk(content):
+            raise ValueError("KnowledgeBase content cannot contain provider credentials or dataset IDs")
+
     async def save_database_draft(
         self,
         resource_id: str,
@@ -196,15 +210,17 @@ class ResourcePublisher:
     ) -> ResourceDraft:
         resource = await self.service.get_visible(resource_id)
         self.service.assert_modify(resource)
-        if resource.type != "workflow" or resource.storage_kind != "database":
-            raise ResourceConflict("Only database-backed Workflow resources accept database drafts")
+        if resource.type not in {"workflow", "knowledge_base"} or resource.storage_kind != "database":
+            raise ResourceConflict("Only database-backed Workflow and KnowledgeBase resources accept database drafts")
+        if resource.type == "knowledge_base":
+            self._assert_knowledge_content_safe(content)
         revision = expected_revision + 1
         try:
             draft = await self.service.save_draft(
                 resource.id,
                 expected_revision=expected_revision,
                 content_hash=self._database_hash(content),
-                storage_key=f"workflows/{resource.id}/draft/{revision}",
+                storage_key=f"{resource.type}s/{resource.id}/draft/{revision}",
                 content=content,
             )
             await self.service.session.commit()
@@ -223,15 +239,18 @@ class ResourcePublisher:
         resource = await self.service.get_visible(resource_id)
         self.service.assert_modify(resource)
         self._assert_publishable(resource, scan_result)
-        if resource.type != "workflow" or resource.storage_kind != "database":
-            raise ResourceConflict("Only database-backed Workflow resources accept database publication")
+        if resource.type not in {"workflow", "knowledge_base"} or resource.storage_kind != "database":
+            raise ResourceConflict("Only database-backed Workflow and KnowledgeBase resources accept database publication")
         draft = await self.service.session.get(ResourceDraft, resource.id)
         if draft is None or draft.revision != expected_draft_revision or draft.content is None:
-            raise ResourceConflict("Workflow draft revision changed before publication")
+            raise ResourceConflict("Database resource draft revision changed before publication")
         if self._database_hash(draft.content) != draft.content_hash:
-            raise ResourceConflict("Workflow draft hash does not match its content")
-        parse_workflow_v2(yaml.safe_dump(draft.content, sort_keys=False, allow_unicode=True))
-        draft.storage_key = f"workflows/{resource.id}/versions/{resource.latest_version + 1}"
+            raise ResourceConflict("Database resource draft hash does not match its content")
+        if resource.type == "workflow":
+            parse_workflow_v2(yaml.safe_dump(draft.content, sort_keys=False, allow_unicode=True))
+        else:
+            self._assert_knowledge_content_safe(draft.content)
+        draft.storage_key = f"{resource.type}s/{resource.id}/versions/{resource.latest_version + 1}"
         try:
             version = await self.service.publish(
                 resource.id,

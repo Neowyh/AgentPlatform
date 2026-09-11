@@ -1571,6 +1571,7 @@ export interface Translations {
       agentLabel: string;
       toolLabel: string;
       workflowLabel: string;
+      knowledgeBaseLabel: string;
       allVisibilityLabel: string;
       privateLabel: string;
       departmentLabel: string;

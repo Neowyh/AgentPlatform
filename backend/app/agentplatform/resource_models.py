@@ -19,6 +19,7 @@ class ResourceType(StrEnum):
     SKILL = "skill"
     AGENT = "agent"
     WORKFLOW = "workflow"
+    KNOWLEDGE_BASE = "knowledge_base"
 
 
 class ResourceLifecycleStatus(StrEnum):
@@ -87,7 +88,7 @@ class Resource(Base):
 
     __table_args__ = (
         UniqueConstraint("type", "owner_id", "slug", name="uq_resources_type_owner_slug"),
-        CheckConstraint("type IN ('skill', 'agent', 'workflow')", name="ck_resources_type"),
+        CheckConstraint("type IN ('skill', 'agent', 'workflow', 'knowledge_base')", name="ck_resources_type"),
         CheckConstraint("visibility IN ('private', 'department', 'public')", name="ck_resources_visibility"),
         CheckConstraint("lifecycle_status IN ('active', 'archived', 'suspended')", name="ck_resources_lifecycle"),
         CheckConstraint("storage_kind IN ('filesystem', 'database')", name="ck_resources_storage_kind"),

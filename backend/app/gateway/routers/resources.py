@@ -1,4 +1,4 @@
-"""UUID-first facade for canonical Skill, Agent, and Workflow resources."""
+"""UUID-first facade for canonical Skill, Agent, Workflow, and KnowledgeBase resources."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
+from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
 from app.agentplatform.resource_runtime import (
@@ -157,7 +158,7 @@ def _skill_description_zh(
 
 
 class ResourceCreateRequest(BaseModel):
-    type: str = Field(pattern="^(skill|agent|workflow)$")
+    type: str = Field(pattern="^(skill|agent|workflow|knowledge_base)$")
     slug: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=255)
     storage_kind: str = Field(pattern="^(filesystem|database)$")
@@ -218,6 +219,16 @@ class TransferRequest(BaseModel):
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     model_name: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class KnowledgeBindingRequest(BaseModel):
+    provider_dataset_id: str = Field(min_length=1, max_length=128)
+    provider_type: str = Field(default="ragflow", min_length=1, max_length=32)
+
+
+class KnowledgeDraftRequest(BaseModel):
+    content: dict[str, Any]
+    expected_revision: int = Field(ge=0)
 
 
 def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
@@ -498,7 +509,7 @@ def _required_canonical_resume_roles(
 @router.get("")
 @_translate_resource_errors
 async def list_resources(
-    resource_type: str | None = Query(default=None, alias="type", pattern="^(skill|agent|workflow)$"),
+    resource_type: str | None = Query(default=None, alias="type", pattern="^(skill|agent|workflow|knowledge_base)$"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -805,6 +816,98 @@ async def create_resource(
         return _resource_payload(resource, current_user=current_user)
 
 
+@router.get("/{resource_id}/knowledge")
+@_translate_resource_errors
+async def get_knowledge_binding(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).get_knowledge_binding(resource_id)
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": binding.provider_dataset_id is not None,
+            "sync_status": binding.sync_status,
+        }
+
+
+@router.put("/{resource_id}/knowledge-draft")
+@_translate_resource_errors
+async def save_knowledge_draft(
+    resource_id: str,
+    body: KnowledgeDraftRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        draft = await ResourcePublisher(
+            ResourceService(session, _resource_actor(current_user)),
+            ResourceStorage(get_paths().base_dir),
+        ).save_database_draft(
+            resource_id,
+            content=body.content,
+            expected_revision=body.expected_revision,
+        )
+        return {
+            "resource_id": draft.resource_id,
+            "revision": draft.revision,
+            "content_hash": draft.content_hash,
+        }
+
+
+@router.post("/{resource_id}/knowledge", status_code=200)
+@_translate_resource_errors
+async def bind_knowledge_dataset(
+    resource_id: str,
+    body: KnowledgeBindingRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).bind_knowledge_dataset(
+            resource_id,
+            provider_dataset_id=body.provider_dataset_id,
+            provider_type=body.provider_type,
+        )
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_dataset_bound",
+            "knowledge_base",
+            resource_id,
+            {"provider_type": binding.provider_type, "bound": True},
+        )
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": True,
+            "sync_status": binding.sync_status,
+        }
+
+
+@router.delete("/{resource_id}/knowledge", status_code=200)
+@_translate_resource_errors
+async def unbind_knowledge_dataset(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).unbind_knowledge_dataset(resource_id)
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_dataset_unbound",
+            "knowledge_base",
+            resource_id,
+            {"provider_type": binding.provider_type, "bound": False},
+        )
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": False,
+            "sync_status": binding.sync_status,
+        }
+
+
 @router.get("/aliases/{resource_type}/{slug}")
 @_translate_resource_errors
 async def resolve_resource_alias(
@@ -859,7 +962,7 @@ async def get_published_resource(
             "version": _version_payload(published),
             "content": published.content,
         }
-        if resource.type == "workflow":
+        if resource.type in {"workflow", "knowledge_base"}:
             payload["yaml_content"] = yaml.safe_dump(published.content, sort_keys=False, allow_unicode=True)
             return payload
         expected_key = f"{'skills' if resource.type == 'skill' else 'agents'}/{resource.id}/versions/{published.version}"
@@ -921,7 +1024,7 @@ async def export_resource(
         service = ResourceService(session, _resource_actor(current_user))
         resource = await service.get_visible(resource_id)
         published = await service.get_published_content(resource_id, version=version)
-        if resource.type == "workflow":
+        if resource.type in {"workflow", "knowledge_base"}:
             body = yaml.safe_dump(published.content, sort_keys=False, allow_unicode=True)
             return Response(
                 body,

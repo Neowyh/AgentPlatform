@@ -1937,6 +1937,7 @@ export const enUS: Translations = {
       agentLabel: "Agent",
       toolLabel: "Tool",
       workflowLabel: "Workflow",
+      knowledgeBaseLabel: "Knowledge Base",
       allVisibilityLabel: "All Visibilities",
       privateLabel: "Private",
       departmentLabel: "Department",
