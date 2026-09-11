@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -68,7 +69,11 @@ class LocalPythonService:
         self.environment = dict(environment or {})
 
     async def execute(
-        self, payload: dict[str, object], *, consent: bool = False
+        self,
+        payload: dict[str, object],
+        *,
+        consent: bool = False,
+        on_output: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> PythonResult | PolicyDecision:
         self._validate_payload(payload)
         digest = request_hash(payload)
@@ -100,6 +105,7 @@ class LocalPythonService:
                 for name in payload.get("environment", [])
                 if name in self.environment
             },
+            on_output=on_output,
         )
         artifact_error: str | None = None
         if result.status is PythonTaskStatus.COMPLETED and payload.get(
@@ -173,8 +179,14 @@ class LocalPythonService:
 
 
 class PythonExecutor:
-    def __init__(self, *, max_output_bytes: int = 64 * 1024) -> None:
+    def __init__(
+        self,
+        *,
+        max_output_bytes: int = 64 * 1024,
+        max_output_rate_bytes: int = 64 * 1024,
+    ) -> None:
         self.max_output_bytes = max_output_bytes
+        self.max_output_rate_bytes = max_output_rate_bytes
 
     async def run(
         self,
@@ -184,6 +196,7 @@ class PythonExecutor:
         args: list[str] | None = None,
         timeout: float = 30,
         environment: Mapping[str, str] | None = None,
+        on_output: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> PythonResult:
         if not working_root.is_dir():
             raise ValueError("working_root must be a directory")
@@ -223,10 +236,38 @@ class PythonExecutor:
             )
             try:
                 deadline = asyncio.get_running_loop().time() + timeout
-                while process.poll() is None:
+                output_offsets = {"stdout": 0, "stderr": 0}
+                output_window_started = asyncio.get_running_loop().time()
+                output_window_bytes = 0
+                while True:
                     remaining = deadline - asyncio.get_running_loop().time()
                     if remaining <= 0:
                         raise TimeoutError
+                    if on_output is not None:
+                        for stream, output_file in (
+                            ("stdout", stdout_file),
+                            ("stderr", stderr_file),
+                        ):
+                            chunk, output_offsets[stream] = self._read_output_delta(
+                                output_file.name, output_offsets[stream]
+                            )
+                            if not chunk:
+                                continue
+                            now = asyncio.get_running_loop().time()
+                            if now - output_window_started >= 1:
+                                output_window_started = now
+                                output_window_bytes = 0
+                            available = max(
+                                0, self.max_output_rate_bytes - output_window_bytes
+                            )
+                            if available:
+                                visible = self._redact(
+                                    chunk[:available].decode("utf-8", errors="replace")
+                                )
+                                await on_output(stream, visible)
+                                output_window_bytes += len(chunk[:available])
+                    if process.poll() is not None:
+                        break
                     await asyncio.sleep(min(0.05, remaining))
                 status = (
                     PythonTaskStatus.COMPLETED
@@ -290,10 +331,27 @@ class PythonExecutor:
         while process.poll() is None:
             await asyncio.sleep(0.01)
 
+    @staticmethod
+    def _read_output_delta(path: str, offset: int) -> tuple[bytes, int]:
+        with open(path, "rb") as output_file:
+            output_file.seek(offset)
+            chunk = output_file.read()
+        return chunk, offset + len(chunk)
+
+    @staticmethod
+    def _redact(output: str) -> str:
+        return re.sub(
+            r"(?i)(api[_-]?key|secret|token|password)(\s*[=:]\s*)[^\s,;]+",
+            r"\1\2[REDACTED]",
+            output,
+        )
+
     def _bounded_output(self, output: bytes) -> tuple[str, str]:
         digest = hashlib.sha256()
         digest.update(output)
         return (
-            output[: self.max_output_bytes].decode("utf-8", errors="replace"),
+            self._redact(
+                output[: self.max_output_bytes].decode("utf-8", errors="replace")
+            ),
             digest.hexdigest(),
         )

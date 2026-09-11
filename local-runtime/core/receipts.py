@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -55,6 +56,12 @@ class LocalExecutionReceipt:
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
         }
+
+    def cleanup_local_logs(self) -> None:
+        """Remove local full-output files after the receipt is archived."""
+        for log_path in (self.stdout_log_path, self.stderr_log_path):
+            if log_path:
+                Path(log_path).unlink(missing_ok=True)
 
 
 def content_hash(value: Any) -> str:

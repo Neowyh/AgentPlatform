@@ -237,7 +237,10 @@ class LocalRuntimeClient:
                         "python_service is required for local Python tasks"
                     )
                 python_result = await self.python_service.execute(
-                    dict(envelope.payload)
+                    dict(envelope.payload),
+                    on_output=lambda stream, output: self._send_python_output(
+                        task_id, stream, output
+                    ),
                 )
                 if python_result is PolicyDecision.CONSENT_REQUIRED:
                     request = ConsentExchange(
@@ -405,7 +408,11 @@ class LocalRuntimeClient:
             return
         if request.capability == "local.python":
             python_result = await self.python_service.execute(
-                request.payload, consent=True
+                request.payload,
+                consent=True,
+                on_output=lambda stream, output: self._send_python_output(
+                    task_id, stream, output
+                ),
             )
             if not isinstance(python_result, PythonResult):
                 decision = python_result
@@ -496,6 +503,22 @@ class LocalRuntimeClient:
                         "message": message,
                         "receipt": receipt.as_dict(),
                     },
+                ),
+                separators=(",", ":"),
+            )
+        )
+
+    async def _send_python_output(self, task_id: str, stream: str, output: str) -> None:
+        assert self.connection is not None
+        await self.connection.send(
+            json.dumps(
+                sign_envelope(
+                    private_key=self.private_key,
+                    message_type=MessageType.TASK_PROGRESS,
+                    device_id=self.device_id,
+                    session_id=self.session_id or "",
+                    task_id=task_id,
+                    payload={"fraction": 0.0, "stream": stream, "output": output},
                 ),
                 separators=(",", ":"),
             )

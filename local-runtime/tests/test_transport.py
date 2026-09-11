@@ -101,7 +101,7 @@ def test_python_task_round_trip_returns_bounded_result_and_receipt(
     payload = {
         "operation": "local.python",
         "working_root": "/projects",
-        "script": "print('hello')",
+        "script": "print('API_KEY=super-secret')",
         "environment": [],
         "run_id": "run-1",
     }
@@ -149,5 +149,14 @@ def test_python_task_round_trip_returns_bounded_result_and_receipt(
 
     result = json.loads(client.connection.sent[-1])
     assert result["type"] == MessageType.TASK_RESULT
-    assert result["payload"]["result"]["stdout"] == "hello\n"
+    assert result["payload"]["result"]["stdout"] == "API_KEY=[REDACTED]\n"
     assert result["payload"]["receipt"]["capability"] == "local.python"
+    progress = [
+        json.loads(message)
+        for message in client.connection.sent
+        if json.loads(message)["type"] == MessageType.TASK_PROGRESS
+    ]
+    assert any(
+        message["payload"].get("output") == "API_KEY=[REDACTED]\n"
+        for message in progress
+    )

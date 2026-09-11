@@ -93,6 +93,11 @@ def test_local_python_requires_hash_bound_consent_and_returns_receipt(
     assert result.receipt.finished_at is not None
     assert result.receipt.stdout_log_path is not None
     assert Path(result.receipt.stdout_log_path).read_text() == "hello\n"
+    stderr_log_path = result.receipt.stderr_log_path
+    result.receipt.cleanup_local_logs()
+    assert not Path(result.receipt.stdout_log_path).exists()
+    assert stderr_log_path is not None
+    assert not Path(stderr_log_path).exists()
 
 
 def test_local_python_uploads_only_explicit_expected_outputs(tmp_path: Path) -> None:
@@ -184,3 +189,74 @@ def test_python_executor_cancellation_returns_cancelled(tmp_path: Path) -> None:
         assert result.status is PythonTaskStatus.CANCELLED
 
     asyncio.run(run_and_cancel())
+
+
+def test_python_executor_cancellation_cleans_up_child_processes(
+    tmp_path: Path,
+) -> None:
+    async def run_and_cancel() -> None:
+        task = asyncio.create_task(
+            PythonExecutor().run(
+                """
+import subprocess
+import sys
+import time
+
+subprocess.Popen([
+    sys.executable,
+    '-c',
+    "import pathlib, time; time.sleep(0.3); pathlib.Path('child-alive').write_text('leaked')",
+])
+time.sleep(30)
+""",
+                working_root=tmp_path,
+                timeout=30,
+            )
+        )
+        await asyncio.sleep(0.1)
+        task.cancel()
+        result = await task
+        assert result.status is PythonTaskStatus.CANCELLED
+
+    asyncio.run(run_and_cancel())
+    assert not (tmp_path / "child-alive").exists()
+
+
+def test_python_executor_streams_rate_limited_redacted_output(
+    tmp_path: Path,
+) -> None:
+    async def run_with_output() -> list[tuple[str, str]]:
+        events: list[tuple[str, str]] = []
+
+        async def on_output(stream: str, chunk: str) -> None:
+            events.append((stream, chunk))
+
+        result = await PythonExecutor(max_output_rate_bytes=1024).run(
+            "print('API_KEY=super-secret')",
+            working_root=tmp_path,
+            on_output=on_output,
+        )
+
+        assert result.stdout == "API_KEY=[REDACTED]\n"
+        assert events == [("stdout", "API_KEY=[REDACTED]\n")]
+        return events
+
+    asyncio.run(run_with_output())
+
+
+def test_python_executor_limits_streamed_output_rate(tmp_path: Path) -> None:
+    async def run_with_output() -> int:
+        emitted = 0
+
+        async def on_output(_stream: str, chunk: str) -> None:
+            nonlocal emitted
+            emitted += len(chunk.encode())
+
+        await PythonExecutor(max_output_rate_bytes=128).run(
+            "print('x' * 4096)",
+            working_root=tmp_path,
+            on_output=on_output,
+        )
+        return emitted
+
+    assert asyncio.run(run_with_output()) <= 128
