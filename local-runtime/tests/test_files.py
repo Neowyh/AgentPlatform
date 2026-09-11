@@ -63,6 +63,16 @@ def test_logical_root_matching_uses_windows_case_semantics_on_every_host(
     assert store.resolve("/PROJECTS") == root
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows path semantics")
+def test_case_variant_file_inside_root_is_read_on_windows(tmp_path: Path) -> None:
+    root = tmp_path / "Projects"
+    root.mkdir()
+    (root / "ReadMe.txt").write_text("safe", encoding="utf-8")
+    store = LocalFileStore([RootConfig("/projects", root)])
+
+    assert store.read("/PROJECTS/README.TXT") == "safe"
+
+
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows junctions")
 def test_junction_escape_is_rejected(tmp_path: Path) -> None:
     root = tmp_path / "Projects"
