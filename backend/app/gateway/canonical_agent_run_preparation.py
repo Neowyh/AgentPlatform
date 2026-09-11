@@ -40,8 +40,11 @@ async def prepare_canonical_agent_run(
 ) -> Any:
     """Prepare one canonical Agent Run from the authenticated user's view."""
 
+    from agentplatform_extension.knowledge.scope import KnowledgeScope
     from sqlalchemy import select
 
+    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
     from app.agentplatform.rbac_models import UserModel, UserRole
     from app.agentplatform.resource_runtime import CanonicalResourceLoader, ResourceRuntimeError, ResourceStorage
     from app.agentplatform.resource_service import (
@@ -134,6 +137,12 @@ async def prepare_canonical_agent_run(
             definition = await loader.load_agent(run_id, resource_id)
             skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
+            knowledge_resources = {item.resource.id: item.resource for item in closure if item.resource.type == "knowledge_base"}
+            bindings = {}
+            if knowledge_resources:
+                rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
+                bindings = {knowledge_resources[row.resource_id].slug: row.provider_dataset_id for row in rows.scalars()}
+            knowledge_scope = calculate_effective_knowledge_scope(bindings)
             await asyncio.to_thread(
                 storage.create_run_skill_view,
                 run_id,
@@ -144,6 +153,7 @@ async def prepare_canonical_agent_run(
             definition,
             skills,
             runner_tool_groups=actor.tool_groups,
+            knowledge_scope=KnowledgeScope.from_bindings(knowledge_scope),
         )
     except ResourceNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
