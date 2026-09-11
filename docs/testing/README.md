@@ -10,6 +10,7 @@
 
 - [覆盖矩阵](coverage-matrix.md)：能力与测试层级的责任映射。
 - [测试迁移账本](test-migration-ledger.md)：测试移动、删除和等价覆盖的验收依据。
+- [测试 Lane 运行手册](test-lane-runbook.md)：PR 与交付级 lane 的运行、判定和交接规则。
 
 执行入口：
 

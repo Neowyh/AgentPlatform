@@ -48,11 +48,11 @@ When an Agent implements or fixes code, use this sequence:
 
 1. **TDD slice**: identify the public seam, write one focused regression test, verify RED, implement the smallest change, then verify GREEN. Repeat one vertical slice at a time.
 2. **Local feedback**: after each slice, run the focused test file or test case and the narrowest applicable typecheck/lint. Do not run a repository-wide lane for every slice.
-3. **Implementation completion**: after all slices pass, run the applicable standard lane once. Use `UV_CACHE_DIR=/tmp/deer-flow-uv-cache` for backend commands in restricted environments.
+3. **Implementation completion**: after all slices pass, run the applicable standard lane once. Use `UV_CACHE_DIR=/tmp/deer-flow-uv-cache` for backend commands in restricted environments. If a socket test is denied by the sandbox, record that environment result and rerun the same lane where local sockets are permitted; do not change production code or tests to bypass the restriction.
 4. **PR completion**: run `pr-standard` when preparing a pull request or when the change crosses backend/frontend boundaries. Persistence, RBAC, memory, Agent, Skill, and Workflow changes require this lane in addition to their standard lane.
 5. **Delivery completion**: run `core-full` only for explicit release, delivery, or full-acceptance requests. It is not the default final step of an ordinary implementation task.
 
-For a focused test or lane that hangs or times out, report it as **incomplete**, including the exact command, elapsed time, and last observed test. Do not report it as passed and do not change production code solely to work around a restricted test environment. Distinguish focused results, standard-lane results, PR-lane results, and delivery-lane results in the handoff.
+For a focused test or lane that hangs or times out, report it as **incomplete**, including the exact command, elapsed time, and last observed test. Do not report it as passed and do not change production code solely to work around a restricted test environment. Distinguish focused results, standard-lane results, PR-lane results, and delivery-lane results in the handoff. For `pr-standard` and `core-full`, report every sub-lane's final summary and the parent lane's `TEST_LANE_DURATION` status; a historical `core-full` result never substitutes for a run on the current candidate.
 
 ## Commit & Pull Request Guidelines
 
