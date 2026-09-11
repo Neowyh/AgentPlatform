@@ -224,6 +224,41 @@ async def test_workflow_database_publication_is_immutable_and_hashes_canonical_j
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    [
+        {"dataset_id": "raw-dataset-id"},
+        {"ragflow_dataset": "raw-dataset-id"},
+        {"retrieval_profile": {"provider_dataset_uuid": "raw-dataset-id"}},
+        {"provider": {"access_token": "provider-secret"}},
+    ],
+)
+async def test_knowledge_database_draft_rejects_provider_identity_and_credentials(
+    session_factory: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    content: dict,
+) -> None:
+    async with session_factory() as session:
+        resource = await ResourceService(session, _actor()).create_resource(
+            resource_type="knowledge_base",
+            slug="protected-kb",
+            display_name="Protected Knowledge Base",
+            storage_kind="database",
+        )
+        await session.commit()
+        resource_id = resource.id
+
+    async with session_factory() as session:
+        publisher = ResourcePublisher(ResourceService(session, _actor()), ResourceStorage(tmp_path))
+        with pytest.raises(ValueError, match="cannot contain provider credentials or dataset IDs"):
+            await publisher.save_database_draft(
+                resource_id,
+                content=content,
+                expected_revision=0,
+            )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("resource_type", ["agent", "workflow"])
 async def test_rollback_copies_old_content_into_a_new_version(
     session_factory: async_sessionmaker[AsyncSession],

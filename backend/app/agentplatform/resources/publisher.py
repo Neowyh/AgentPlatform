@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from pathlib import Path
 
@@ -189,9 +190,13 @@ class ResourcePublisher:
 
     @staticmethod
     def _assert_knowledge_content_safe(content: dict) -> None:
+        def forbidden_key(key: object) -> bool:
+            normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+            return "dataset" in normalized or "apikey" in normalized or "credential" in normalized or "password" in normalized or "secret" in normalized or normalized.endswith("token")
+
         def walk(value: object) -> bool:
             if isinstance(value, dict):
-                if any(key in value for key in {"provider_dataset_id", "api_key", "provider_api_key"}):
+                if any(forbidden_key(key) for key in value):
                     return False
                 return all(walk(item) for item in value.values())
             if isinstance(value, list):
