@@ -38,8 +38,14 @@ unauthorized device capability.
   until its compatibility policy permits it.
 - Task cancellation is idempotent and propagates to the device. Offline tasks
   carry an expiry and become `DEVICE_OFFLINE` after the delivery deadline.
-- Only the harmless echo task is used by the M7 gate. No system command or
-  arbitrary shell execution is part of this ticket.
+- `local.files.list` and `local.files.read` are Level 0 operations. They run
+  automatically only below configured logical roots; every request is
+  canonicalized and resolved before the physical path is used. Traversal,
+  UNC, drive syntax, symlink, and junction escapes are rejected, and errors
+  expose stable codes without physical paths.
+- Only the harmless echo task and the bounded local file reads are part of the
+  current gate. No system command or arbitrary shell execution is part of this
+  ticket.
 
 ## Threat register
 

@@ -6,7 +6,17 @@ import pytest
 from core.files import FileAccessError, LocalFileStore, RootConfig
 
 
-@pytest.mark.parametrize("logical_root", ["/", "/../outside", r"\\server\share"])
+@pytest.mark.parametrize(
+    "logical_root",
+    [
+        "/",
+        "/../outside",
+        "/projects/./nested",
+        "/projects//nested",
+        "/projects/C:",
+        r"\\server\share",
+    ],
+)
 def test_root_names_must_be_logical_names(tmp_path: Path, logical_root: str) -> None:
     with pytest.raises(ValueError, match="logical root must be named"):
         RootConfig(logical_root, tmp_path)
@@ -30,6 +40,8 @@ def test_list_and_read_expose_only_logical_paths(tmp_path: Path) -> None:
         ("/PROJECTS-OTHER/secret.txt", "outside allowed roots"),
         ("//server/share/secret.txt", "outside allowed roots"),
         ("\\\\server\\share\\secret.txt", "invalid logical path"),
+        ("/projects/C:/Windows/System32/config", "invalid logical path"),
+        ("/projects/bad\x00name", "invalid logical path"),
     ],
 )
 def test_unsafe_paths_are_rejected(tmp_path: Path, path: str, error: str) -> None:
@@ -41,14 +53,14 @@ def test_unsafe_paths_are_rejected(tmp_path: Path, path: str, error: str) -> Non
         store.read(path)
 
 
-@pytest.mark.skipif(os.name != "nt", reason="requires Windows path semantics")
-def test_case_variant_inside_root_is_canonicalized(tmp_path: Path) -> None:
+def test_logical_root_matching_uses_windows_case_semantics_on_every_host(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "Projects"
     root.mkdir()
-    (root / "ReadMe.txt").write_text("safe", encoding="utf-8")
     store = LocalFileStore([RootConfig("/projects", root)])
 
-    assert store.read("/PROJECTS/README.TXT") == "safe"
+    assert store.resolve("/PROJECTS") == root
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows junctions")

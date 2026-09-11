@@ -21,7 +21,8 @@ Paths and symbols below are implemented on the M7 branch.
 | Device control plane | `backend/app/device_control/` | `models.py`, `pairing.py`, `protocol.py`, `broker.py`, `service.py` | Pairing, owner confirmation, sessions, signed broker, and lifecycle |
 | Device HTTP API | `backend/app/gateway/routers/devices.py` | pairing, register/complete, lifecycle, task, and WebSocket routes | Browser and runtime control plane boundary |
 | Device persistence | `backend/app/agentplatform/persistence/migrations/versions/20260909_device_control_plane.py` | device, pairing, and session tables | Durable ownership and one-time claims |
-| Local Runtime client | `local-runtime/core/transport.py` | `LocalRuntimeClient` | Outbound WebSocket HELLO and signed echo execution |
+| Local Runtime client | `local-runtime/core/transport.py` | `LocalRuntimeClient` | Outbound WebSocket HELLO, capability updates, and signed echo/file-read execution |
+| Allowed-root file store | `local-runtime/core/files.py` | `RootConfig`, `LocalFileStore` | Logical `/root` paths, canonical containment checks, and safe list/read errors |
 | Local Runtime protocol | `local-runtime/core/protocol.py` | envelope signing and verification | Wire-compatible signed messages |
 | Test helpers | `backend/tests/conftest.py`, `backend/tests/_gateway_e2e_env.py`, `backend/tests/_router_auth_helpers.py` | database, app, and authenticated-client fixtures | Device and protocol test setup |
 

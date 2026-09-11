@@ -743,6 +743,7 @@ iDeer has key high-privilege capabilities including **system command execution, 
 - **Initial RBAC setup**: Complete `/setup` on first boot to create the first `super_admin`; subsequent permissions are stored in RBAC user profiles rather than the legacy authentication compatibility field.
 - **Admin visibility**: Super admins and department admins can read management dashboards and audit logs. Resource totals are computed from the live inventory of agents, tools, skills, and workflows, with resource metadata used as visibility enrichment.
 - **Network isolation**: Where possible, place the agent and trusted devices in the **same dedicated VLAN**, isolated from other network devices.
+- **Local Runtime file roots**: Configure each device's physical directories with named logical roots such as `/projects`. The Level 0 `local.files.list` and `local.files.read` operations resolve only within those roots and reject traversal, link, UNC, and drive-path escapes.
 - **Stay updated**: Continue to follow iDeer's security feature updates.
 
 ## Contributing

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,12 @@ class RootConfig:
 
     def __post_init__(self) -> None:
         logical = "/" + self.logical_root.strip("/")
-        if logical == "/" or "\\" in logical or any(part == ".." for part in logical.split("/")):
+        parts = logical.split("/")
+        if (
+            logical == "/"
+            or "\\" in logical
+            or any(not part or part in {".", ".."} or ":" in part for part in parts[1:])
+        ):
             raise ValueError("logical root must be named")
         object.__setattr__(self, "logical_root", logical)
         object.__setattr__(self, "physical_root", Path(self.physical_root).resolve(strict=False))
@@ -43,19 +49,22 @@ class LocalFileStore:
         self.roots = tuple(roots)
 
     def _resolve(self, logical_path: str) -> tuple[RootConfig, Path]:
-        if not isinstance(logical_path, str) or not logical_path.startswith("/") or "\\" in logical_path:
+        if not isinstance(logical_path, str) or not logical_path.startswith("/") or "\\" in logical_path or "\x00" in logical_path:
             raise FileAccessError(INVALID_PATH, "invalid logical path")
         if logical_path.startswith("//"):
             raise FileAccessError(INVALID_PATH, "outside allowed roots")
-        if any(part == ".." for part in logical_path.split("/")):
+        parts = logical_path.split("/")
+        if any(part == ".." for part in parts):
             raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots")
-        normalized = os.path.normpath(logical_path.replace("\\", "/"))
-        normalized_key = os.path.normcase(normalized)
+        if any(":" in part for part in parts[1:]):
+            raise FileAccessError(INVALID_PATH, "invalid logical path")
+        normalized = posixpath.normpath(logical_path)
+        normalized_key = normalized.casefold()
         matches = [
             r
             for r in self.roots
-            if normalized_key == os.path.normcase(r.logical_root)
-            or normalized_key.startswith(os.path.normcase(r.logical_root + "/"))
+            if normalized_key == r.logical_root.casefold()
+            or normalized_key.startswith(r.logical_root.casefold() + "/")
         ]
         if not matches:
             raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots")

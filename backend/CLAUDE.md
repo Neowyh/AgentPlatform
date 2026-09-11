@@ -242,6 +242,15 @@ Configuration priority:
 Config values starting with `$` are resolved as environment variables (e.g., `$OPENAI_API_KEY`).
 `ModelConfig` also declares `use_responses_api` and `output_version` so OpenAI `/v1/responses` can be enabled explicitly while still using `langchain_openai:ChatOpenAI`.
 
+### Local Runtime file access
+
+The device side local runtime exposes `local.files.list` and
+`local.files.read` through explicitly configured logical roots. It resolves
+each logical path to a canonical physical path and rejects traversal, UNC,
+drive syntax, symlink, and junction escapes before reading. These operations
+are Level 0 and are announced through `CAPABILITY_UPDATE`; user-facing errors
+use stable codes without revealing physical paths.
+
 **Extensions Configuration** (`extensions_config.json`):
 
 MCP servers and skills are configured together in `extensions_config.json` in project root:
