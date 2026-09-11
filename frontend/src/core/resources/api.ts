@@ -2,6 +2,63 @@ import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
+export interface ResourceDependency {
+  resource_id: string;
+  type?: string;
+  slug?: string;
+  display_name?: string;
+  dependency_mode: "live" | "pinned";
+  revision_id: string | null;
+  required: boolean;
+  purpose: string | null;
+}
+
+export async function listKnowledgeBases(): Promise<
+  Array<{ id: string; slug: string; display_name: string }>
+> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources?type=knowledge_base&limit=200`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load KnowledgeBases");
+  const data = (await res.json()) as {
+    items: Array<{ id: string; slug: string; display_name: string }>;
+  };
+  return data.items;
+}
+
+export async function getResourceDependencies(
+  resourceId: string,
+): Promise<ResourceDependency[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/dependencies`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load resource dependencies");
+  return ((await res.json()) as { dependencies: ResourceDependency[] })
+    .dependencies;
+}
+
+export async function replaceResourceDependencies(
+  resourceId: string,
+  dependencies: Array<{
+    resource_id: string;
+    dependency_mode?: "live" | "pinned";
+    revision_id?: string | null;
+    required?: boolean;
+    purpose?: string | null;
+  }>,
+): Promise<void> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/dependencies`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dependencies }),
+    },
+  );
+  if (!res.ok)
+    await extractError(res, "Failed to update resource dependencies");
+}
+
 export interface VisibilityImpactItem {
   resource_id: string;
   slug: string;

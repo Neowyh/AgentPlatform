@@ -256,6 +256,12 @@ async def test_agent_draft_rewrites_skill_alias_to_uuid_content_and_dependency(
             display_name="Review Skill",
             storage_kind="filesystem",
         )
+        knowledge_base = await service.create_resource(
+            resource_type="knowledge_base",
+            slug="review-kb",
+            display_name="Review Knowledge Base",
+            storage_kind="database",
+        )
         agent = await service.create_resource(
             resource_type="agent",
             slug="review-agent",
@@ -264,6 +270,7 @@ async def test_agent_draft_rewrites_skill_alias_to_uuid_content_and_dependency(
         )
         await session.commit()
         skill_id = skill.id
+        knowledge_base_id = knowledge_base.id
         agent_id = agent.id
 
     monkeypatch.setattr(resources, "get_session_factory", lambda: factory)
@@ -275,6 +282,7 @@ async def test_agent_draft_rewrites_skill_alias_to_uuid_content_and_dependency(
             config={"description": "Reviewer", "skills": ["review-skill"]},
             soul="Review carefully.",
             expected_revision=0,
+            knowledge_dependencies=[resources.DependencyDeclarationRequest(resource_id=knowledge_base_id)],
         ),
         current_user,
     )
@@ -282,12 +290,12 @@ async def test_agent_draft_rewrites_skill_alias_to_uuid_content_and_dependency(
     assert result["revision"] == 1
     async with factory() as session:
         draft = await session.get(ResourceDraft, agent_id)
-        dependency = (await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == agent_id))).scalar_one()
+        dependencies = list((await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == agent_id).order_by(ResourceDependency.target_resource_id))).scalars())
         assert draft is not None
         config = yaml.safe_load((tmp_path / "resources" / draft.storage_key / "config.yaml").read_text())
         assert config["skills"] == [skill_id]
         assert config["name"] == "review-agent"
-        assert dependency.target_resource_id == skill_id
+        assert {dependency.target_resource_id for dependency in dependencies} == {skill_id, knowledge_base_id}
     await engine.dispose()
 
 

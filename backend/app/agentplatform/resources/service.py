@@ -1060,6 +1060,7 @@ class ResourceService:
         draft = await self.session.get(ResourceDraft, resource_id)
         if draft is None or draft.revision != expected_draft_revision or resource.draft_revision != expected_draft_revision:
             raise ResourceConflict("Draft revision changed before publication")
+        await self._assert_required_dependencies_ready(resource)
         version = ResourceVersion(
             id=str(uuid.uuid4()),
             resource_id=resource.id,
@@ -1134,8 +1135,8 @@ class ResourceService:
     def _assert_dependency_type(source: Resource, target: Resource) -> None:
         allowed_targets = {
             "skill": set(),
-            "agent": {"skill"},
-            "workflow": {"agent", "skill"},
+            "agent": {"skill", "knowledge_base"},
+            "workflow": {"agent", "skill", "knowledge_base"},
             "knowledge_base": set(),
         }
         if target.type not in allowed_targets[source.type]:
@@ -1248,21 +1249,88 @@ class ResourceService:
             if violation is not None
         ]
 
-    async def replace_dependencies(self, resource_id: str, target_resource_ids: list[str]) -> list[ResourceDependency]:
+    async def _assert_required_dependencies_ready(self, source: Resource) -> None:
+        dependencies = list((await self.session.execute(select(ResourceDependency, Resource).join(Resource, Resource.id == ResourceDependency.target_resource_id).where(ResourceDependency.source_resource_id == source.id))).all())
+        missing = [target.slug for dependency, target in dependencies if dependency.required is not False and (target.lifecycle_status != "active" or target.latest_version < 1)]
+        if missing:
+            raise ResourceConflict(f"Required resource dependencies are not published: {', '.join(missing)}")
+
+    @staticmethod
+    def _normalize_dependency_declaration(declaration: str | dict[str, object]) -> tuple[str, dict[str, object]]:
+        if isinstance(declaration, str):
+            return declaration, {}
+        if not isinstance(declaration, dict):
+            raise ResourceConflict("Resource dependency declaration must be a resource ID or mapping")
+        resource_id = declaration.get("resource_id", declaration.get("target_resource_id"))
+        if not isinstance(resource_id, str) or not resource_id:
+            raise ResourceConflict("Resource dependency declaration requires resource_id")
+        return resource_id, declaration
+
+    async def _validate_dependency_declaration(
+        self,
+        target: Resource,
+        options: dict[str, object],
+    ) -> dict[str, object]:
+        explicit = bool(options)
+        mode = options.get("dependency_mode", "live")
+        revision_id = options.get("revision_id")
+        required = options.get("required", True)
+        purpose = options.get("purpose")
+        if mode not in {"live", "pinned"}:
+            raise ResourceConflict("dependency_mode must be live or pinned")
+        if not isinstance(required, bool):
+            raise ResourceConflict("required must be a boolean")
+        if purpose is not None and (not isinstance(purpose, str) or len(purpose) > 256):
+            raise ResourceConflict("purpose must be at most 256 characters")
+        if target.type != "knowledge_base" and (mode != "live" or revision_id is not None):
+            raise ResourceConflict("Only KnowledgeBase dependencies support LIVE/PINNED revisions")
+        if mode == "pinned":
+            if not isinstance(revision_id, str) or not revision_id:
+                raise ResourceConflict("revision_id is required for pinned dependencies")
+            revision = (
+                await self.session.execute(
+                    select(ResourceVersion.id).where(
+                        ResourceVersion.id == revision_id,
+                        ResourceVersion.resource_id == target.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if revision is None:
+                raise ResourceConflict("revision_id does not belong to the KnowledgeBase")
+        elif revision_id is not None:
+            raise ResourceConflict("revision_id must be empty for live dependencies")
+        if not explicit:
+            return {
+                "dependency_mode": None,
+                "revision_id": None,
+                "required": None,
+                "purpose": None,
+            }
+        return {
+            "dependency_mode": mode,
+            "revision_id": revision_id,
+            "required": required,
+            "purpose": purpose,
+        }
+
+    async def replace_dependencies(self, resource_id: str, target_resource_ids: list[str | dict[str, object]]) -> list[ResourceDependency]:
         self._require_action(ResourceAction.USE)
         source = await self._get_visible(resource_id)
         self.assert_modify(source)
-        if len(target_resource_ids) != len(set(target_resource_ids)):
+        declarations = [self._normalize_dependency_declaration(item) for item in target_resource_ids]
+        target_ids = [target_id for target_id, _options in declarations]
+        if len(target_ids) != len(set(target_ids)):
             raise ResourceConflict("Duplicate resource dependency")
 
-        targets: list[Resource] = []
-        for target_id in target_resource_ids:
+        targets: list[tuple[Resource, dict[str, object]]] = []
+        for target_id, options in declarations:
             if target_id == source.id:
                 raise ResourceConflict("Resource dependency cycle: self dependency")
             target = await self._get_visible(target_id)
             self._assert_dependency_type(source, target)
             self._assert_visibility_closure(source, target, actor_user_id=self.actor.user_id)
-            targets.append(target)
+            validated = await self._validate_dependency_declaration(target, options)
+            targets.append((target, validated))
 
         await self.session.execute(delete(ResourceDependency).where(ResourceDependency.source_resource_id == source.id))
         dependencies = [
@@ -1270,12 +1338,27 @@ class ResourceService:
                 id=str(uuid.uuid4()),
                 source_resource_id=source.id,
                 target_resource_id=target.id,
+                **options,
             )
-            for target in targets
+            for target, options in targets
         ]
         self.session.add_all(dependencies)
         await self.session.flush()
         return dependencies
+
+    async def list_dependencies(self, resource_id: str) -> list[tuple[ResourceDependency, Resource]]:
+        self._require_action(ResourceAction.READ)
+        source = await self._get_visible(resource_id)
+        rows = list(
+            (
+                await self.session.execute(
+                    select(ResourceDependency, Resource).join(Resource, Resource.id == ResourceDependency.target_resource_id).where(ResourceDependency.source_resource_id == source.id).order_by(ResourceDependency.target_resource_id)
+                )
+            ).all()
+        )
+        for _dependency, target in rows:
+            await self._get_visible(target.id, include_inactive=True)
+        return rows
 
     async def resolve_dependency_closure(self, root_resource_id: str) -> list[ResolvedResource]:
         self._require_action(ResourceAction.USE)
@@ -1283,7 +1366,7 @@ class ResourceService:
         visited: set[str] = set()
         visiting: set[str] = set()
 
-        async def visit(resource_id: str) -> None:
+        async def visit(resource_id: str, forced_revision_id: str | None = None) -> None:
             if resource_id in visiting:
                 raise ResourceConflict(f"Resource dependency cycle includes {resource_id}")
             if resource_id in visited:
@@ -1292,22 +1375,32 @@ class ResourceService:
             resource = await self._get_visible(resource_id)
             if resource.latest_version < 1:
                 raise ResourceConflict(f"Resource {resource_id} has no published version")
-            version = (
-                await self.session.execute(
-                    select(ResourceVersion).where(
-                        ResourceVersion.resource_id == resource.id,
-                        ResourceVersion.version == resource.latest_version,
+            if forced_revision_id is not None:
+                version = (
+                    await self.session.execute(
+                        select(ResourceVersion).where(
+                            ResourceVersion.id == forced_revision_id,
+                            ResourceVersion.resource_id == resource.id,
+                        )
                     )
-                )
-            ).scalar_one_or_none()
+                ).scalar_one_or_none()
+            else:
+                version = (
+                    await self.session.execute(
+                        select(ResourceVersion).where(
+                            ResourceVersion.resource_id == resource.id,
+                            ResourceVersion.version == resource.latest_version,
+                        )
+                    )
+                ).scalar_one_or_none()
             if version is None:
                 raise ResourceConflict(f"Resource {resource_id} latest version is missing")
             resolved.append(ResolvedResource(resource=resource, version=version))
-            target_ids = list((await self.session.execute(select(ResourceDependency.target_resource_id).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
-            for target_id in target_ids:
-                target = await self._get_visible(target_id)
+            edges = list((await self.session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
+            for edge in edges:
+                target = await self._get_visible(edge.target_resource_id)
                 self._assert_visibility_closure(resource, target, actor_user_id=self.actor.user_id)
-                await visit(target_id)
+                await visit(edge.target_resource_id, edge.revision_id if edge.dependency_mode == "pinned" else None)
             visiting.remove(resource_id)
             visited.add(resource_id)
 

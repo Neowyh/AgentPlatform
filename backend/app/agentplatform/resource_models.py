@@ -131,6 +131,10 @@ class ResourceDependency(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"), nullable=False)
     target_resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="RESTRICT"), nullable=False)
+    dependency_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
     __table_args__ = (

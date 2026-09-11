@@ -77,7 +77,7 @@ def _resource(
         lifecycle_status="active",
         latest_version=latest_version,
         draft_revision=0,
-        storage_kind="database" if resource_type == "workflow" else "filesystem",
+        storage_kind="database" if resource_type in {"workflow", "knowledge_base"} else "filesystem",
         storage_key=f"{resource_type}s/{resource_id}",
         system_owned=False,
         authz_revision=1,
@@ -180,6 +180,176 @@ async def test_replace_dependencies_rejects_duplicate_explicit_ids(session: Asyn
 
     with pytest.raises(ResourceConflict, match="Duplicate resource dependency"):
         await ResourceService(session, _actor()).replace_dependencies(source.id, [target.id, target.id])
+
+
+@pytest.mark.asyncio
+async def test_agent_can_declare_live_and_pinned_knowledge_dependencies(session: AsyncSession) -> None:
+    agent = _resource("agent-kb", resource_type="agent")
+    live_knowledge_base = _resource("kb-live", resource_type="knowledge_base", latest_version=1)
+    pinned_knowledge_base = _resource("kb-pinned", resource_type="knowledge_base", latest_version=1)
+    knowledge_version = ResourceVersion(
+        id="kb-version-1",
+        resource_id=pinned_knowledge_base.id,
+        version=1,
+        content_hash="a" * 64,
+        storage_key="knowledge_bases/kb/versions/1",
+        scan_result={},
+        content={"description": "published"},
+        created_by="owner",
+    )
+    session.add_all([agent, live_knowledge_base, pinned_knowledge_base, knowledge_version])
+    await session.commit()
+
+    dependencies = await ResourceService(session, _actor()).replace_dependencies(
+        agent.id,
+        [
+            {"resource_id": live_knowledge_base.id, "dependency_mode": "live", "required": False, "purpose": "product docs"},
+            {"resource_id": pinned_knowledge_base.id, "dependency_mode": "pinned", "revision_id": knowledge_version.id},
+        ],
+    )
+
+    assert len(dependencies) == 2
+    live_dependency, pinned_dependency = dependencies
+    assert (live_dependency.dependency_mode, live_dependency.revision_id, live_dependency.required, live_dependency.purpose) == (
+        "live",
+        None,
+        False,
+        "product docs",
+    )
+    assert (pinned_dependency.dependency_mode, pinned_dependency.revision_id, pinned_dependency.required, pinned_dependency.purpose) == (
+        "pinned",
+        knowledge_version.id,
+        True,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("dependency", "message"),
+    [
+        ({"resource_id": "kb", "dependency_mode": "pinned"}, "revision_id is required"),
+        ({"resource_id": "kb", "dependency_mode": "live", "revision_id": "revision"}, "revision_id must be empty"),
+        ({"resource_id": "kb", "dependency_mode": "pinned", "revision_id": "missing"}, "revision_id does not belong"),
+    ],
+)
+async def test_knowledge_dependency_declaration_validates_mode_and_revision(
+    session: AsyncSession,
+    dependency: dict[str, str],
+    message: str,
+) -> None:
+    agent = _resource("agent-kb-validation", resource_type="agent")
+    knowledge_base = _resource("kb", resource_type="knowledge_base", latest_version=1)
+    session.add_all([agent, knowledge_base])
+    await session.commit()
+
+    with pytest.raises(ResourceConflict, match=message):
+        await ResourceService(session, _actor()).replace_dependencies(agent.id, [dependency])
+
+
+@pytest.mark.asyncio
+async def test_pinned_knowledge_dependency_resolves_declared_version(session: AsyncSession) -> None:
+    agent = _resource("agent-kb-pinned", resource_type="agent", latest_version=1)
+    knowledge_base = _resource("kb-pinned", resource_type="knowledge_base", latest_version=2)
+    version_one = ResourceVersion(
+        id="kb-revision-1",
+        resource_id=knowledge_base.id,
+        version=1,
+        content_hash="1" * 64,
+        storage_key="knowledge_bases/kb-pinned/versions/1",
+        scan_result={},
+        content={"revision": 1},
+        created_by="owner",
+    )
+    version_two = ResourceVersion(
+        id="kb-revision-2",
+        resource_id=knowledge_base.id,
+        version=2,
+        content_hash="2" * 64,
+        storage_key="knowledge_bases/kb-pinned/versions/2",
+        scan_result={},
+        content={"revision": 2},
+        created_by="owner",
+    )
+    agent_version = ResourceVersion(
+        id="agent-kb-pinned-version",
+        resource_id=agent.id,
+        version=1,
+        content_hash="a" * 64,
+        storage_key="agents/agent-kb-pinned/versions/1",
+        scan_result={},
+        content={},
+        created_by="owner",
+    )
+    session.add_all([agent, knowledge_base, agent_version, version_one, version_two])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await service.replace_dependencies(
+        agent.id,
+        [{"resource_id": knowledge_base.id, "dependency_mode": "pinned", "revision_id": version_one.id}],
+    )
+
+    closure = await service.resolve_dependency_closure(agent.id)
+
+    assert [(item.resource.id, item.version.version) for item in closure] == [(agent.id, 1), (knowledge_base.id, 1)]
+
+
+@pytest.mark.asyncio
+async def test_publish_rejects_unpublished_required_knowledge_dependency(session: AsyncSession) -> None:
+    agent = _resource("agent-kb-required")
+    knowledge_base = _resource("kb-unpublished", resource_type="knowledge_base")
+    session.add_all([agent, knowledge_base])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await service.replace_dependencies(agent.id, [{"resource_id": knowledge_base.id, "required": True}])
+    draft = await service.save_draft(
+        agent.id,
+        expected_revision=0,
+        content_hash="a" * 64,
+        storage_key="agents/agent-kb-required/staging/a",
+    )
+
+    with pytest.raises(ResourceConflict, match="Required resource dependencies are not published"):
+        await service.publish(agent.id, expected_draft_revision=draft.revision, scan_result={})
+
+
+@pytest.mark.asyncio
+async def test_replace_dependencies_rejects_transitive_cycle(session: AsyncSession) -> None:
+    first = _resource("cycle-agent", resource_type="agent", latest_version=1)
+    workflow = _resource("cycle-workflow", resource_type="workflow", latest_version=1)
+    first_version = ResourceVersion(
+        id="cycle-agent-version",
+        resource_id=first.id,
+        version=1,
+        content_hash="a" * 64,
+        storage_key="agents/cycle-agent/versions/1",
+        scan_result={},
+        content={},
+        created_by="owner",
+    )
+    workflow_version = ResourceVersion(
+        id="cycle-workflow-version",
+        resource_id=workflow.id,
+        version=1,
+        content_hash="b" * 64,
+        storage_key="workflows/cycle-workflow/versions/1",
+        scan_result={},
+        content={},
+        created_by="owner",
+    )
+    session.add_all([first, workflow, first_version, workflow_version])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    session.add_all(
+        [
+            ResourceDependency(id="cycle-edge-1", source_resource_id=first.id, target_resource_id=workflow.id),
+            ResourceDependency(id="cycle-edge-2", source_resource_id=workflow.id, target_resource_id=first.id),
+        ]
+    )
+    await session.commit()
+
+    with pytest.raises(ResourceConflict, match="dependency cycle"):
+        await service.resolve_dependency_closure(first.id)
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,10 @@ import { useAgent, useUpdateAgent } from "@/core/agents";
 import type { UpdateAgentRequest } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
+import {
+  getResourceDependencies,
+  listKnowledgeBases,
+} from "@/core/resources/api";
 import { useSkills } from "@/core/skills/hooks";
 
 const TOOL_GROUPS = [
@@ -58,6 +62,18 @@ export default function AgentEditPage() {
   const [originalVisibility, setOriginalVisibility] = useState("private");
   const [visibilityChangeDialogOpen, setVisibilityChangeDialogOpen] =
     useState(false);
+  const [knowledgeBases, setKnowledgeBases] = useState<
+    Array<{ id: string; slug: string; display_name: string }>
+  >([]);
+  const [knowledgeDependencies, setKnowledgeDependencies] = useState<
+    Array<{
+      resource_id: string;
+      dependency_mode: "live" | "pinned";
+      revision_id: string | null;
+      required: boolean;
+      purpose: string | null;
+    }>
+  >([]);
 
   useEffect(() => {
     if (agent) {
@@ -73,6 +89,29 @@ export default function AgentEditPage() {
     }
   }, [agent]);
 
+  useEffect(() => {
+    if (!agent?.resource_id) return;
+    void Promise.all([
+      listKnowledgeBases(),
+      getResourceDependencies(agent.resource_id),
+    ])
+      .then(([bases, dependencies]) => {
+        setKnowledgeBases(bases);
+        setKnowledgeDependencies(
+          dependencies
+            .filter((item) => item.type === "knowledge_base")
+            .map((item) => ({
+              resource_id: item.resource_id,
+              dependency_mode: item.dependency_mode,
+              revision_id: item.revision_id,
+              required: item.required,
+              purpose: item.purpose,
+            })),
+        );
+      })
+      .catch(() => undefined);
+  }, [agent?.resource_id]);
+
   const handleSave = useCallback(async () => {
     if (
       formData.visibility !== undefined &&
@@ -82,13 +121,24 @@ export default function AgentEditPage() {
       return;
     }
     try {
-      await updateAgent.mutateAsync({ name: agent_name, request: formData });
+      const request = agent?.resource_id
+        ? { ...formData, knowledge_dependencies: knowledgeDependencies }
+        : formData;
+      await updateAgent.mutateAsync({ name: agent_name, request });
       toast.success("Agent updated successfully");
       router.push(`/workspace/capabilities/experts/${agent_name}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [agent_name, formData, originalVisibility, router, updateAgent]);
+  }, [
+    agent,
+    agent_name,
+    formData,
+    knowledgeDependencies,
+    originalVisibility,
+    router,
+    updateAgent,
+  ]);
 
   const handleNavigateToDetail = () => {
     setVisibilityChangeDialogOpen(false);
@@ -111,6 +161,24 @@ export default function AgentEditPage() {
         ? prev.skills.filter((s) => s !== skillName)
         : [...(prev.skills ?? []), skillName],
     }));
+  };
+
+  const toggleKnowledgeBase = (resourceId: string) => {
+    setKnowledgeDependencies((previous) => {
+      const existing = previous.find((item) => item.resource_id === resourceId);
+      return existing
+        ? previous.filter((item) => item.resource_id !== resourceId)
+        : [
+            ...previous,
+            {
+              resource_id: resourceId,
+              dependency_mode: "live",
+              revision_id: null,
+              required: true,
+              purpose: null,
+            },
+          ];
+    });
   };
 
   if (isLoadingAgent) {
@@ -324,6 +392,88 @@ export default function AgentEditPage() {
               ))}
             </div>
           </div>
+
+          {/* SOUL.md */}
+          {knowledgeBases.length > 0 && (
+            <div className="space-y-2">
+              <Label>KnowledgeBases</Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {knowledgeBases.map((knowledgeBase) => {
+                  const dependency = knowledgeDependencies.find(
+                    (item) => item.resource_id === knowledgeBase.id,
+                  );
+                  return (
+                    <div
+                      key={knowledgeBase.id}
+                      className="space-y-2 rounded-md border p-3"
+                    >
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={dependency !== undefined}
+                          onChange={() => toggleKnowledgeBase(knowledgeBase.id)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <span className="type-body truncate font-medium">
+                          {knowledgeBase.display_name || knowledgeBase.slug}
+                        </span>
+                      </label>
+                      {dependency && (
+                        <div className="flex gap-2">
+                          <Select
+                            value={dependency.dependency_mode}
+                            onValueChange={(value: "live" | "pinned") =>
+                              setKnowledgeDependencies((previous) =>
+                                previous.map((item) =>
+                                  item.resource_id === knowledgeBase.id
+                                    ? {
+                                        ...item,
+                                        dependency_mode: value,
+                                        revision_id:
+                                          value === "live"
+                                            ? null
+                                            : item.revision_id,
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="live">LIVE</SelectItem>
+                              <SelectItem value="pinned">PINNED</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {dependency.dependency_mode === "pinned" && (
+                            <Input
+                              placeholder="Revision ID"
+                              value={dependency.revision_id ?? ""}
+                              onChange={(event) =>
+                                setKnowledgeDependencies((previous) =>
+                                  previous.map((item) =>
+                                    item.resource_id === knowledgeBase.id
+                                      ? {
+                                          ...item,
+                                          revision_id:
+                                            event.target.value || null,
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* SOUL.md */}
           <div className="space-y-2">
