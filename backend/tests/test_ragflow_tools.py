@@ -167,6 +167,34 @@ async def test_knowledge_search_resolves_configured_ids_to_current_names(monkeyp
 
 
 @pytest.mark.anyio
+async def test_knowledge_search_intersects_run_scope_with_deployment_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = FakeRAGFlowClient(
+        datasets_by_id={
+            DATASET_ID_1: [_dataset(DATASET_ID_1, "Allowed")],
+            DATASET_ID_2: [_dataset(DATASET_ID_2, "Deployment allowed")],
+        }
+    )
+    _install(monkeypatch, fake, config=_config(datasets=[DATASET_ID_1, DATASET_ID_2]))
+
+    await ragflow_tools.knowledge_search("leave", dataset_ids=[DATASET_ID_1])
+
+    assert fake.list_calls == [DATASET_ID_1]
+    assert fake.retrieve_calls[0][1]["dataset_ids"] == [DATASET_ID_1]
+
+
+@pytest.mark.anyio
+async def test_knowledge_search_denies_run_scope_outside_deployment_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = FakeRAGFlowClient()
+    _install(monkeypatch, fake, config=_config(datasets=[DATASET_ID_1]))
+
+    result = await ragflow_tools.knowledge_search("leave", dataset_ids=[DATASET_ID_2])
+
+    assert result == "Error: KNOWLEDGE_ACCESS_DENIED"
+    assert fake.list_calls == []
+    assert fake.retrieve_calls == []
+
+
+@pytest.mark.anyio
 async def test_knowledge_search_uses_id_filter_and_survives_dataset_rename(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeRAGFlowClient(
         datasets_by_id={DATASET_ID_1: [_dataset(DATASET_ID_1, "Renamed Policies")]},
