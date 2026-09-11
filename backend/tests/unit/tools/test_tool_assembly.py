@@ -30,3 +30,12 @@ def test_assemble_tools_filters_tools_not_in_the_effective_capability_set():
     )
 
     assert [tool.name for tool in result.active] == ["local.files.read", "builtin"]
+
+
+def test_assemble_tools_applies_local_visibility_without_filtering_server_tools():
+    result = assemble_tools(
+        [_tool("local.files.read"), _tool("local.python"), _tool("builtin")],
+        local_allowed_names={"local.files.read"},
+    )
+
+    assert [tool.name for tool in result.active] == ["local.files.read", "builtin"]

@@ -10,6 +10,7 @@ from agentplatform_extension.evidence import (
     bind_run_evidence,
     build_run_evidence_envelope,
     current_run_evidence,
+    record_local_execution_receipt,
     record_subagent_verification,
     record_tool_receipt,
 )
@@ -158,6 +159,23 @@ async def test_evidence_lifecycle_publishes_collected_receipts() -> None:
     envelope = store.get(RunEvidenceEnvelope)
     assert envelope is not None
     assert envelope.tool_receipts == ({"tool_name": "write_file", "status": "success"},)
+
+
+def test_local_execution_receipt_is_attached_to_the_tool_receipt_ledger() -> None:
+    binding = RunEvidenceBinding(
+        snapshots=[],
+        authorization=AuthorizationContext("caller", "agent", "policy"),
+    )
+    with bind_run_evidence(binding):
+        record_local_execution_receipt(
+            {"capability": "local.python", "request_hash": "a" * 64, "status": "completed"},
+            tool_call_id="call-1",
+        )
+        receipt = current_run_evidence().tool_receipts[0]
+
+    assert receipt["receipt_kind"] == "tool"
+    assert receipt["tool_call_id"] == "call-1"
+    assert receipt["local_execution_receipt"]["request_hash"] == "a" * 64
 
 
 def test_install_registers_boundary_only_with_explicit_authorization() -> None:
