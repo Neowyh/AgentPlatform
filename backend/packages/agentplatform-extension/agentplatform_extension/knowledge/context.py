@@ -10,6 +10,8 @@ from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 @dataclass(frozen=True, slots=True)
 class KnowledgeRuntimeContext:
+    """Run identity and immutable knowledge authorization projection."""
+
     run_id: str
     scope: KnowledgeScope
 

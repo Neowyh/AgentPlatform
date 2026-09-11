@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 from agentplatform_extension.knowledge.context import KnowledgeRuntimeContext
-from agentplatform_extension.knowledge.runtime_adapter import KNOWLEDGE_ACCESS_DENIED, KnowledgeAccessDenied, KnowledgeRuntimeAdapter
+from agentplatform_extension.knowledge.runtime_adapter import (
+    KNOWLEDGE_ACCESS_DENIED,
+    KnowledgeAccessDenied,
+    KnowledgeRuntimeAdapter,
+    adapt_knowledge_tools,
+)
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
@@ -44,3 +49,20 @@ def test_delegation_can_only_narrow_scope() -> None:
     parent = KnowledgeRuntimeContext("run-1", KnowledgeScope.from_bindings({"a": "da", "b": "db"}))
     child = parent.for_delegation(KnowledgeScope.from_bindings({"b": "db"}))
     assert child.scope.as_mapping()["bindings"] == {"b": "db"}
+
+
+@pytest.mark.asyncio
+async def test_adapted_tool_passes_only_resolved_dataset_to_provider() -> None:
+    calls: list[dict] = []
+
+    async def provider(query: str, *, dataset_ids: list[str]) -> str:
+        calls.append({"query": query, "dataset_ids": dataset_ids})
+        return "ok"
+
+    tool = type("Tool", (), {"name": "knowledge_search", "coroutine": staticmethod(provider), "description": "search"})()
+    adapted = adapt_knowledge_tools([tool], KnowledgeScope.from_bindings({"docs": "opaque"}))[0]
+
+    assert await adapted.ainvoke({"query": "find", "knowledge_base": "docs"}) == "ok"
+    assert calls == [{"query": "find", "dataset_ids": ["opaque"]}]
+    with pytest.raises(KnowledgeAccessDenied):
+        await adapted.ainvoke({"query": "find", "knowledge_base": "opaque"})

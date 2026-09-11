@@ -46,17 +46,17 @@ def build_canonical_agent_factory(
         # The upstream assembly resolves tools before compiling the graph. A
         # short-lived module-level seam lets the extension replace only the
         # knowledge tool at that point, without changing the DeerFlow fork.
-        import deerflow.agents.lead_agent.agent as lead_agent_module
+        import deerflow.tools as deerflow_tools
 
-        original = lead_agent_module.get_available_tools
+        original = deerflow_tools.get_available_tools
 
         def scoped_tools(*args: Any, **kwargs: Any) -> list[Any]:
             return adapt_knowledge_tools(original(*args, **kwargs), knowledge_scope)
 
-        lead_agent_module.get_available_tools = scoped_tools
+        deerflow_tools.get_available_tools = scoped_tools
         try:
             return assemble_lead_agent(config, app_config=app_config, frozen=frozen).graph
         finally:
-            lead_agent_module.get_available_tools = original
+            deerflow_tools.get_available_tools = original
 
     return factory

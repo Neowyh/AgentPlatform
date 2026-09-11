@@ -12,10 +12,14 @@ KNOWLEDGE_ACCESS_DENIED = "KNOWLEDGE_ACCESS_DENIED"
 
 
 class KnowledgeAccessDenied(PermissionError):
+    """Raised when a Run requests a knowledge source outside its scope."""
+
     code = KNOWLEDGE_ACCESS_DENIED
 
 
 class KnowledgeRuntimeAdapter:
+    """Resolve logical KB selectors and enforce the frozen dataset allowlist."""
+
     def __init__(self, scope: KnowledgeScope, search: Callable[..., Any]) -> None:
         self.scope = scope
         self.search = search
@@ -54,15 +58,22 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
 
             async def ainvoke(self, args: Mapping[str, Any]) -> Any:
                 query, logical_kb = self._arguments(args)
-                provider = original.ainvoke if hasattr(original, "ainvoke") else original.invoke
-                return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(query, logical_kb=logical_kb)
+                provider = getattr(original, "coroutine", None)
+                if provider is None:
+                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+                try:
+                    return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(query, logical_kb=logical_kb)
+                except TypeError as exc:
+                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 
             def invoke(self, args: Mapping[str, Any]) -> Any:
                 query, logical_kb = self._arguments(args)
-                provider = original.invoke
                 try:
+                    provider = getattr(original, "func", None)
+                    if provider is None:
+                        raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
                     return provider(query, dataset_ids=[scope.resolve(logical_kb)])
-                except KeyError as exc:
+                except (KeyError, TypeError) as exc:
                     raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 
         adapted.append(_ScopedTool())
