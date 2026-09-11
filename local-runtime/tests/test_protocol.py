@@ -1,7 +1,5 @@
+from core.protocol import MessageType, public_key_text, sign_envelope, verify_envelope
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-from core.protocol import MessageType, verify_envelope
-from core.protocol import public_key_text, sign_envelope
 
 
 def test_local_runtime_verifies_server_signature_and_session_binding() -> None:

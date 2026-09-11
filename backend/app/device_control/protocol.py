@@ -29,6 +29,7 @@ class MessageType(StrEnum):
     TASK_RESULT = "task_result"
     TASK_CANCEL = "task_cancel"
     CONSENT_REQUIRED = "consent_required"
+    CONSENT_DECISION = "consent_decision"
     ERROR = "error"
 
 

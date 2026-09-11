@@ -13,24 +13,49 @@ class PolicyDecision(StrEnum):
     CONSENT_REQUIRED = "consent_required"
 
 
+class RiskLevel(StrEnum):
+    LEVEL_0 = "level_0"
+    LEVEL_1 = "level_1"
+    LEVEL_2 = "level_2"
+
+
 @dataclass(frozen=True)
 class LocalPolicy:
     denied_capabilities: frozenset[str] = field(default_factory=frozenset)
     consent_required_capabilities: frozenset[str] = field(default_factory=frozenset)
     always_allow_capabilities: frozenset[str] = field(default_factory=frozenset)
     dangerous_capabilities: frozenset[str] = field(default_factory=frozenset)
+    level_one_capabilities: frozenset[str] = field(default_factory=frozenset)
+    level_two_capabilities: frozenset[str] = field(default_factory=frozenset)
+
+    def risk_level(self, capability: str, payload: dict[str, Any]) -> RiskLevel:
+        del payload
+        if capability in {"local.files.list", "local.files.read"}:
+            return RiskLevel.LEVEL_0
+        if (
+            capability in self.level_two_capabilities
+            or capability in self.dangerous_capabilities
+        ):
+            return RiskLevel.LEVEL_2
+        if (
+            capability in self.level_one_capabilities
+            or capability in self.consent_required_capabilities
+        ):
+            return RiskLevel.LEVEL_1
+        if capability in {"local.files.write", "local.python"}:
+            return RiskLevel.LEVEL_1
+        return RiskLevel.LEVEL_0
 
     def authorize(
         self, capability: str, payload: dict[str, Any], *, consent: bool = False
     ) -> PolicyDecision:
-        del payload
         if capability in self.denied_capabilities:
             return PolicyDecision.DENY
-        if capability in self.dangerous_capabilities:
+        risk_level = self.risk_level(capability, payload)
+        if risk_level is RiskLevel.LEVEL_2:
             return PolicyDecision.DENY
         if capability in self.always_allow_capabilities:
             return PolicyDecision.ALLOW
-        level_one = capability in {"local.files.write", "local.python"}
-        if level_one and not consent:
+        if risk_level is RiskLevel.LEVEL_1 and not consent:
             return PolicyDecision.CONSENT_REQUIRED
         return PolicyDecision.ALLOW

@@ -5,7 +5,7 @@ from .capabilities import CapabilityAnnouncement, CapabilityRegistry
 from .consent import ConsentExchange, ConsentRequest, ConsentStore, request_hash
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError, LocalFileStore, RootConfig
-from .policy import LocalPolicy, PolicyDecision
+from .policy import LocalPolicy, PolicyDecision, RiskLevel
 from .python import LocalPythonService, PythonExecutor, PythonResult, PythonTaskStatus
 from .receipts import LocalExecutionReceipt
 from .transport import LocalRuntimeClient
@@ -30,6 +30,7 @@ __all__ = [
     "PythonExecutor",
     "PythonResult",
     "PythonTaskStatus",
+    "RiskLevel",
     "RootConfig",
     "request_hash",
 ]

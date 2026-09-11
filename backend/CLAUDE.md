@@ -244,12 +244,15 @@ Config values starting with `$` are resolved as environment variables (e.g., `$O
 
 ### Local Runtime file access
 
-The device side local runtime exposes `local.files.list` and
-`local.files.read` through explicitly configured logical roots. It resolves
-each logical path to a canonical physical path and rejects traversal, UNC,
-drive syntax, symlink, and junction escapes before reading. These operations
-are Level 0 and are announced through `CAPABILITY_UPDATE`; user-facing errors
-use stable codes without revealing physical paths.
+The device side local runtime exposes `local.files.list`,
+`local.files.read`, and policy-gated `local.files.write` through explicitly
+configured logical roots. It resolves each logical path to a canonical
+physical path and rejects traversal, UNC, drive syntax, symlink, and junction
+escapes before reading or writing. Reads are Level 0; writes are Level 1 by
+default and require hash-bound local consent unless configured as always
+allowed. Dangerous capabilities remain Level 2 and cannot be silently
+allowed. These operations are announced through `CAPABILITY_UPDATE`, and
+user-facing errors use stable codes without revealing physical paths.
 
 **Extensions Configuration** (`extensions_config.json`):
 

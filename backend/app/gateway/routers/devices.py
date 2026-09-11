@@ -69,6 +69,11 @@ class EchoTaskRequest(BaseModel):
     value: object
 
 
+class ConsentDecisionRequest(BaseModel):
+    approved: bool
+    actor_id: str = Field(min_length=1, max_length=255)
+
+
 class TaskResponse(BaseModel):
     task_id: str
     device_id: str
@@ -81,6 +86,7 @@ class TaskResponse(BaseModel):
     result: object = None
     error: str | None = None
     error_code: str | None = None
+    consent_request: dict | None = None
 
     @classmethod
     def from_record(cls, record) -> TaskResponse:
@@ -96,6 +102,7 @@ class TaskResponse(BaseModel):
             result=record.result,
             error=record.error,
             error_code=record.error_code,
+            consent_request=record.consent_request,
         )
 
 
@@ -234,6 +241,22 @@ async def cancel_task(task_id: str, current_user: UserModel = Depends(get_curren
     is_admin = current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
     await _run(lambda service: service.get_device(record.device_id, actor_id=str(current_user.id), is_admin=is_admin))
     return TaskResponse.from_record(await broker.cancel_task(task_id))
+
+
+@router.post("/tasks/{task_id}/consent", response_model=TaskResponse)
+async def decide_task_consent(
+    task_id: str,
+    payload: ConsentDecisionRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> TaskResponse:
+    broker = get_device_broker()
+    try:
+        record = broker.get_task(task_id)
+    except ProtocolError:
+        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "task id is unknown"})
+    is_admin = current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
+    await _run(lambda service: service.get_device(record.device_id, actor_id=str(current_user.id), is_admin=is_admin))
+    return TaskResponse.from_record(await broker.send_consent_decision(task_id, approved=payload.approved, actor_id=str(current_user.id)))
 
 
 @router.websocket("/ws")

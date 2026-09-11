@@ -5,7 +5,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.device_control.broker import DeviceBroker, DeviceConnection, TaskStatus
-from app.device_control.protocol import MessageType, TaskEnvelope, sign_envelope
+from app.device_control.protocol import MessageType, TaskEnvelope, payload_digest, sign_envelope
 
 
 class FakeWebSocket:
@@ -95,3 +95,46 @@ async def test_capability_update_is_stored_without_a_task_id() -> None:
     )
     assert await broker.receive(connection, message) is None
     assert connection.capabilities == {"local.files.read"}
+
+
+@pytest.mark.asyncio
+async def test_consent_required_is_recorded_and_decision_is_forwarded() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    socket = FakeWebSocket()
+    connection = DeviceConnection("device-consent", "session-consent", "token", device_key.public_key(), socket)
+    await broker.attach(connection)
+    record = await broker.send_task(
+        device_id="device-consent",
+        operation="local.files.write",
+        path="/projects/a.txt",
+        run_id="run-consent",
+        tool_call_id="tool-consent",
+        payload_extra={"content": "approved"},
+    )
+    request = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.CONSENT_REQUIRED,
+        device_id=connection.device_id,
+        session_id=connection.session_id,
+        task_id=record.task_id,
+        payload={
+            "capability": "local.files.write",
+            "payload": record.payload,
+            "request_hash": payload_digest(record.payload),
+        },
+    )
+
+    updated = await broker.receive(connection, request)
+    assert updated is record
+    assert record.status is TaskStatus.CONSENT_REQUIRED
+    assert record.consent_request["request_hash"] == payload_digest(record.payload)
+
+    await broker.send_consent_decision(record.task_id, approved=True, actor_id="alice")
+    decision = json.loads(socket.sent[-1])
+    assert decision["type"] == MessageType.CONSENT_DECISION
+    assert decision["payload"] == {
+        "approved": True,
+        "actor_id": "alice",
+        "request_hash": payload_digest(record.payload),
+    }

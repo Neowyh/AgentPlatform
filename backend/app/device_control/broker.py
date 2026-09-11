@@ -11,7 +11,14 @@ from uuid import uuid4
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from .protocol import MessageType, ProtocolError, TaskEnvelope, public_key_text, sign_envelope
+from .protocol import (
+    MessageType,
+    ProtocolError,
+    TaskEnvelope,
+    payload_digest,
+    public_key_text,
+    sign_envelope,
+)
 
 
 class WebSocketLike(Protocol):
@@ -24,6 +31,7 @@ class TaskStatus(StrEnum):
     CREATED = "created"
     SENT = "sent"
     ACKED = "acked"
+    CONSENT_REQUIRED = "consent_required"
     PROGRESS = "progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -59,6 +67,7 @@ class TaskRecord:
     result: Any = None
     error: str | None = None
     error_code: str | None = None
+    consent_request: dict[str, Any] | None = None
 
 
 class DeviceBroker:
@@ -97,7 +106,7 @@ class DeviceBroker:
                 self.connections.pop(device_id, None)
             now = datetime.now(UTC)
             for task in self.tasks.values():
-                if task.device_id == device_id and task.session_id == session_id and task.status in {TaskStatus.CREATED, TaskStatus.SENT, TaskStatus.ACKED, TaskStatus.PROGRESS}:
+                if task.device_id == device_id and task.session_id == session_id and task.status in {TaskStatus.CREATED, TaskStatus.SENT, TaskStatus.ACKED, TaskStatus.CONSENT_REQUIRED, TaskStatus.PROGRESS}:
                     task.status = TaskStatus.DEVICE_OFFLINE
                     task.error = "device disconnected before task completion"
                     task.expires_at = max(task.expires_at, now + timedelta(seconds=1))
@@ -180,6 +189,32 @@ class DeviceBroker:
             await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
         return record
 
+    async def send_consent_decision(self, task_id: str, *, approved: bool, actor_id: str) -> TaskRecord:
+        record = self._task(task_id)
+        if record.status is not TaskStatus.CONSENT_REQUIRED:
+            raise ProtocolError("CONSENT_NOT_PENDING", "task is not waiting for consent")
+        connection = self.connections.get(record.device_id)
+        if connection is None or connection.session_id != record.session_id:
+            record.status = TaskStatus.DEVICE_OFFLINE
+            record.error = "no outbound device session is connected"
+            return record
+        request_hash = str((record.consent_request or {}).get("request_hash", ""))
+        envelope = sign_envelope(
+            private_key=self.server_private_key,
+            message_type=MessageType.CONSENT_DECISION,
+            device_id=record.device_id,
+            session_id=record.session_id,
+            task_id=record.task_id,
+            payload={
+                "approved": approved,
+                "actor_id": actor_id,
+                "request_hash": request_hash,
+            },
+            expires_at=record.expires_at,
+        )
+        await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
+        return record
+
     async def receive(self, connection: DeviceConnection, envelope: TaskEnvelope) -> TaskRecord | None:
         envelope.verify(
             public_key=connection.public_key,
@@ -206,6 +241,16 @@ class DeviceBroker:
             raise ProtocolError("SESSION_MISMATCH", "task belongs to another device session")
         if envelope.type == MessageType.TASK_ACK:
             record.status = TaskStatus.ACKED
+        elif envelope.type == MessageType.CONSENT_REQUIRED:
+            request_payload = envelope.payload.get("payload")
+            request_hash = envelope.payload.get("request_hash")
+            if not isinstance(request_payload, dict) or not isinstance(request_hash, str) or request_hash != payload_digest(request_payload) or request_payload != record.payload:
+                raise ProtocolError(
+                    "CONSENT_HASH_MISMATCH",
+                    "consent request does not match the task payload",
+                )
+            record.status = TaskStatus.CONSENT_REQUIRED
+            record.consent_request = dict(envelope.payload)
         elif envelope.type == MessageType.TASK_PROGRESS:
             record.status = TaskStatus.PROGRESS
         elif envelope.type == MessageType.TASK_RESULT:
