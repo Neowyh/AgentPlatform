@@ -22,6 +22,8 @@ class LocalExecutionReceipt:
     consent_decision: str | None = None
     stdout_hash: str | None = None
     stderr_hash: str | None = None
+    stdout_log_path: str | None = None
+    stderr_log_path: str | None = None
     artifact_refs: tuple[str, ...] = ()
     runtime_version: str | None = None
     exit_code: int | None = None

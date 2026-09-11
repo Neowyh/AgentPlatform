@@ -254,9 +254,20 @@ class DeviceBroker:
         elif envelope.type == MessageType.TASK_PROGRESS:
             record.status = TaskStatus.PROGRESS
         elif envelope.type == MessageType.TASK_RESULT:
-            record.status = TaskStatus.COMPLETED
             record.result = envelope.payload.get("result")
             record.receipt = envelope.payload.get("receipt") or envelope.payload
+            receipt_status = str((record.receipt or {}).get("status", "completed"))
+            if receipt_status in {
+                "failed",
+                "timed_out",
+                "cancelled",
+                "upload_denied",
+            }:
+                record.status = TaskStatus.FAILED
+                record.error_code = receipt_status.upper()
+                record.error = receipt_status.replace("_", " ")
+            else:
+                record.status = TaskStatus.COMPLETED
         elif envelope.type == MessageType.ERROR:
             record.status = TaskStatus.FAILED
             record.error_code = str(envelope.payload.get("error_code", "DEVICE_ERROR"))

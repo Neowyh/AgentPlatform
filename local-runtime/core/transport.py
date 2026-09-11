@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from dataclasses import replace
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -19,6 +21,7 @@ from .protocol import (
     sign_envelope,
     verify_envelope,
 )
+from .python import LocalPythonService, PythonResult
 from .receipts import LocalExecutionReceipt, content_hash
 
 
@@ -40,6 +43,7 @@ class LocalRuntimeClient:
         server_public_key: str | None = None,
         policy: LocalPolicy | None = None,
         file_service: LocalFileService | None = None,
+        python_service: LocalPythonService | None = None,
     ) -> None:
         self.server_url = server_url
         self.device_id = device_id
@@ -48,21 +52,24 @@ class LocalRuntimeClient:
         self.private_key = private_key
         self.protocol_version = protocol_version
         self.runtime_version = runtime_version
-        self.capabilities = (
-            capabilities
-            if capabilities is not None
-            else (
-                ("echo", "local.files.list", "local.files.read", "local.files.write")
-                if file_service is not None
-                else ("echo",)
-            )
-        )
+        if capabilities is None:
+            default_capabilities = ["echo"]
+            if file_service is not None:
+                default_capabilities.extend(
+                    ("local.files.list", "local.files.read", "local.files.write")
+                )
+            if python_service is not None:
+                default_capabilities.append("local.python")
+            capabilities = tuple(default_capabilities)
+        self.capabilities = capabilities
         self.policy_hash = policy_hash
         self.server_public_key = server_public_key
         self.policy = policy or LocalPolicy()
         self.file_service = file_service
+        self.python_service = python_service
         self.connection: ClientConnection | None = None
         self._pending_consents: dict[str, ConsentRequest] = {}
+        self._running_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def connect(self) -> ClientConnection:
         """Open the device-initiated connection; the server is never dialed back."""
@@ -136,11 +143,31 @@ class LocalRuntimeClient:
                 expected_session_id=self.session_id or "",
             )
             if envelope.type == MessageType.TASK:
-                await self._handle_task(envelope)
+                task_id = envelope.task_id or ""
+                task = asyncio.create_task(self._handle_task(envelope))
+                self._running_tasks[task_id] = task
+                task.add_done_callback(
+                    lambda finished, current_task_id=task_id: self._task_finished(
+                        current_task_id, finished
+                    )
+                )
             elif envelope.type == MessageType.CONSENT_DECISION:
                 await self._handle_consent_decision(envelope)
             elif envelope.type == MessageType.TASK_CANCEL:
-                return
+                task = self._running_tasks.get(envelope.task_id or "")
+                if task is not None:
+                    task.cancel()
+
+        tasks = tuple(self._running_tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _task_finished(self, task_id: str, task: asyncio.Task[None]) -> None:
+        self._running_tasks.pop(task_id, None)
+        if not task.cancelled():
+            task.exception()
 
     async def _handle_task(self, envelope) -> None:
         assert self.connection is not None
@@ -204,6 +231,42 @@ class LocalRuntimeClient:
                 receipt = self._file_receipt(
                     envelope, operation, result, consent_decision="always_allow"
                 )
+            elif operation == "local.python":
+                if self.python_service is None:
+                    raise RuntimeError(
+                        "python_service is required for local Python tasks"
+                    )
+                python_result = await self.python_service.execute(
+                    dict(envelope.payload)
+                )
+                if python_result is PolicyDecision.CONSENT_REQUIRED:
+                    request = ConsentExchange(
+                        self.python_service.consent
+                    ).create_request(operation, dict(envelope.payload))
+                    self._pending_consents[task_id] = request
+                    await self._send_consent_required(envelope, request)
+                    return
+                if python_result is not PolicyDecision.ALLOW and not isinstance(
+                    python_result, PythonResult
+                ):
+                    await self._send_error(
+                        task_id,
+                        python_result.value,
+                        "LOCAL_POLICY_DENIED",
+                        envelope.payload,
+                        operation,
+                        policy_decision=python_result.value,
+                        status="denied",
+                    )
+                    return
+                assert isinstance(python_result, PythonResult)
+                result = self._python_result_value(python_result)
+                receipt = python_result.receipt
+                if receipt is None:
+                    raise RuntimeError(
+                        "local Python execution did not produce a receipt"
+                    )
+                receipt = replace(receipt, task_id=task_id)
             else:
                 raise ValueError("unsupported operation")
         except FileAccessError as exc:
@@ -265,6 +328,17 @@ class LocalRuntimeClient:
             consent_decision=consent_decision,
         )
 
+    @staticmethod
+    def _python_result_value(result: PythonResult) -> dict[str, Any]:
+        return {
+            "status": result.status.value,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "artifact_refs": list(result.artifact_refs),
+            "artifact_error": result.artifact_error,
+        }
+
     async def _send_consent_required(
         self, envelope: Any, request: ConsentRequest
     ) -> None:
@@ -304,10 +378,14 @@ class LocalRuntimeClient:
                 status="denied",
             )
             return
-        if self.file_service is None:
-            raise RuntimeError("file_service is required for consent decisions")
+        if request.capability == "local.python":
+            service = self.python_service
+        else:
+            service = self.file_service
+        if service is None:
+            raise RuntimeError("required local service is unavailable")
         approved = bool(envelope.payload.get("approved", False))
-        exchange = ConsentExchange(self.file_service.consent)
+        exchange = ConsentExchange(service.consent)
         exchange.decide(
             request,
             approved=approved,
@@ -325,21 +403,47 @@ class LocalRuntimeClient:
                 consent_decision="denied",
             )
             return
-        file_task = self.file_service.execute(
-            request.capability, request.payload, consent=True
-        )
-        if file_task.decision is not PolicyDecision.ALLOW:
+        if request.capability == "local.python":
+            python_result = await self.python_service.execute(
+                request.payload, consent=True
+            )
+            if not isinstance(python_result, PythonResult):
+                decision = python_result
+                value = None
+            else:
+                decision = PolicyDecision.ALLOW
+                value = self._python_result_value(python_result)
+                receipt = python_result.receipt
+                if receipt is not None:
+                    receipt = replace(receipt, task_id=task_id)
+        else:
+            file_task = self.file_service.execute(
+                request.capability, request.payload, consent=True
+            )
+            decision = file_task.decision
+            value = file_task.value
+            receipt = self._file_receipt(
+                envelope,
+                request.capability,
+                value,
+                consent_decision="approved",
+                payload=request.payload,
+                task_id=task_id,
+            )
+        if decision is not PolicyDecision.ALLOW:
             await self._send_error(
                 task_id,
-                file_task.decision.value,
+                decision.value,
                 "LOCAL_POLICY_DENIED",
                 request.payload,
                 request.capability,
-                policy_decision=file_task.decision.value,
+                policy_decision=decision.value,
                 status="denied",
                 consent_decision="approved",
             )
             return
+        if receipt is None:
+            raise RuntimeError("local execution did not produce a receipt")
         await self.connection.send(
             json.dumps(
                 sign_envelope(
@@ -349,15 +453,8 @@ class LocalRuntimeClient:
                     session_id=self.session_id or "",
                     task_id=task_id,
                     payload={
-                        "result": file_task.value,
-                        "receipt": self._file_receipt(
-                            envelope,
-                            request.capability,
-                            file_task.value,
-                            consent_decision="approved",
-                            payload=request.payload,
-                            task_id=task_id,
-                        ).as_dict(),
+                        "result": value,
+                        "receipt": receipt.as_dict(),
                     },
                 ),
                 separators=(",", ":"),

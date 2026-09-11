@@ -138,3 +138,37 @@ async def test_consent_required_is_recorded_and_decision_is_forwarded() -> None:
         "actor_id": "alice",
         "request_hash": payload_digest(record.payload),
     }
+
+
+@pytest.mark.asyncio
+async def test_failed_local_execution_receipt_marks_task_failed() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-python", "session-python", "token", device_key.public_key(), FakeWebSocket())
+    await broker.attach(connection)
+    record = await broker.send_task(
+        device_id="device-python",
+        operation="local.python",
+        path="/projects",
+        run_id="run-python",
+        tool_call_id="tool-python",
+        payload_extra={
+            "working_root": "/projects",
+            "script": "raise SystemExit(3)",
+        },
+    )
+
+    message = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.TASK_RESULT,
+        device_id=connection.device_id,
+        session_id=connection.session_id,
+        task_id=record.task_id,
+        payload={"receipt": {"status": "failed", "exit_code": 3}},
+    )
+
+    updated = await broker.receive(connection, message)
+
+    assert updated is record
+    assert record.status is TaskStatus.FAILED
+    assert record.error_code == "FAILED"
