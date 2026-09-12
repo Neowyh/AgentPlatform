@@ -137,28 +137,33 @@ async def _notify_each(
                     timeout,
                 )
                 continue
-            await asyncio.wait_for(call, remaining)
-        except TimeoutError:
-            if deadline is not None and loop.time() >= deadline:
-                # Budget exhaustion mid-hook is the same expected operational
-                # condition as the skip above, so it stays a warning rather
-                # than a hook failure with an asyncio-internal traceback.
-                logger.warning(
-                    "Extension %s: %s timed out for task %s; the %.1fs notification budget was spent",
-                    source,
-                    hook,
-                    task_id,
-                    timeout,
+            operation = asyncio.ensure_future(call)
+            timer = asyncio.create_task(asyncio.sleep(remaining))
+            try:
+                done, _pending = await asyncio.wait(
+                    (operation, timer),
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            else:
-                # A TimeoutError the contributor raised on its own is a hook
-                # failure like any other.
-                logger.exception(
-                    "Extension %s: %s failed for task %s",
-                    source,
-                    hook,
-                    task_id,
-                )
+                if timer in done:
+                    operation.cancel()
+                    await asyncio.gather(operation, return_exceptions=True)
+                    logger.warning(
+                        "Extension %s: %s timed out for task %s; the %.1fs notification budget was spent",
+                        source,
+                        hook,
+                        task_id,
+                        timeout,
+                    )
+                    continue
+                timer.cancel()
+                await asyncio.gather(timer, return_exceptions=True)
+                await operation
+            finally:
+                if not operation.done():
+                    operation.cancel()
+                if not timer.done():
+                    timer.cancel()
+                await asyncio.gather(operation, timer, return_exceptions=True)
         except asyncio.CancelledError:
             if _host_is_cancelling():
                 raise
