@@ -267,7 +267,7 @@ export default function WorkflowEditPage() {
                               ),
                             )
                           }
-                          className="h-8 rounded border px-2 text-xs"
+                          className="type-compact h-8 rounded border px-2"
                           aria-label={`${knowledgeBase.slug} dependency mode`}
                         >
                           <option value="live">LIVE</option>
@@ -289,7 +289,7 @@ export default function WorkflowEditPage() {
                               )
                             }
                             placeholder="Revision ID"
-                            className="h-8 min-w-0 rounded border px-2 text-xs"
+                            className="type-compact h-8 min-w-0 rounded border px-2"
                             aria-label={`${knowledgeBase.slug} revision ID`}
                           />
                         )}
