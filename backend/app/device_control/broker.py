@@ -35,6 +35,8 @@ class TaskStatus(StrEnum):
     PROGRESS = "progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    DENIED = "denied"
+    TIMED_OUT = "timed_out"
     DEVICE_OFFLINE = "device_offline"
     EXPIRED = "expired"
     FAILED = "failed"
@@ -68,6 +70,7 @@ class TaskRecord:
     error: str | None = None
     error_code: str | None = None
     consent_request: dict[str, Any] | None = None
+    authorization_snapshot: dict[str, Any] | None = None
 
 
 class DeviceBroker:
@@ -78,6 +81,7 @@ class DeviceBroker:
         self.connections: dict[str, DeviceConnection] = {}
         self.tasks: dict[str, TaskRecord] = {}
         self._lock = asyncio.Lock()
+        self._recorded_receipts: set[str] = set()
 
     @property
     def server_public_key(self) -> str:
@@ -140,6 +144,7 @@ class DeviceBroker:
         tool_call_id: str,
         expires_in: timedelta = timedelta(minutes=5),
         payload_extra: dict[str, Any] | None = None,
+        authorization_snapshot: dict[str, Any] | None = None,
     ) -> TaskRecord:
         connection = self.connections.get(device_id)
         now = datetime.now(UTC)
@@ -148,7 +153,7 @@ class DeviceBroker:
         payload = {"operation": operation, "path": path, "run_id": run_id, "tool_call_id": tool_call_id}
         if payload_extra:
             payload.update(payload_extra)
-        record = TaskRecord(task_id, device_id, connection.session_id if connection else "", run_id, tool_call_id, payload, expires_at)
+        record = TaskRecord(task_id, device_id, connection.session_id if connection else "", run_id, tool_call_id, payload, expires_at, authorization_snapshot=authorization_snapshot)
         self.tasks[task_id] = record
         if connection is None:
             record.status = TaskStatus.DEVICE_OFFLINE
@@ -157,6 +162,18 @@ class DeviceBroker:
         if not connection.tasks_allowed:
             record.status = TaskStatus.FAILED
             record.error = "device protocol is outdated"
+            return record
+        if authorization_snapshot is not None:
+            allowed = frozenset(authorization_snapshot.get("effective_capabilities", ()))
+            if authorization_snapshot.get("device_id") != device_id or operation not in allowed:
+                record.status = TaskStatus.DENIED
+                record.error_code = "AUTHORIZATION_SNAPSHOT_INVALID"
+                record.error = "local task authorization is no longer valid"
+                return record
+        if connection.capabilities and operation not in connection.capabilities:
+            record.status = TaskStatus.FAILED
+            record.error_code = "CAPABILITY_UNAVAILABLE"
+            record.error = "device capability is unavailable"
             return record
         envelope = sign_envelope(
             private_key=self.server_private_key,
@@ -235,10 +252,18 @@ class DeviceBroker:
             raise ProtocolError("TASK_ID_REQUIRED", "task lifecycle messages require task_id")
         record = self._task(envelope.task_id)
         self._expire_if_needed(record)
-        if record.status == TaskStatus.EXPIRED:
-            raise ProtocolError("TASK_EXPIRED", "task envelope expired before completion")
         if record.device_id != connection.device_id or record.session_id != connection.session_id:
             raise ProtocolError("SESSION_MISMATCH", "task belongs to another device session")
+        if record.status in {
+            TaskStatus.COMPLETED,
+            TaskStatus.CANCELLED,
+            TaskStatus.DENIED,
+            TaskStatus.TIMED_OUT,
+            TaskStatus.DEVICE_OFFLINE,
+            TaskStatus.EXPIRED,
+            TaskStatus.FAILED,
+        }:
+            return record
         if envelope.type == MessageType.TASK_ACK:
             record.status = TaskStatus.ACKED
         elif envelope.type == MessageType.CONSENT_REQUIRED:
@@ -261,19 +286,43 @@ class DeviceBroker:
                 record.status = TaskStatus.CANCELLED
                 record.error_code = receipt_status.upper()
                 record.error = receipt_status.replace("_", " ")
-            elif receipt_status in {"failed", "timed_out", "upload_denied"}:
+            elif receipt_status == "timed_out":
+                record.status = TaskStatus.TIMED_OUT
+                record.error_code = receipt_status.upper()
+                record.error = receipt_status.replace("_", " ")
+            elif receipt_status in {"denied", "upload_denied", "policy_denied"}:
+                record.status = TaskStatus.DENIED
+                record.error_code = receipt_status.upper()
+                record.error = receipt_status.replace("_", " ")
+            elif receipt_status == "failed":
                 record.status = TaskStatus.FAILED
                 record.error_code = receipt_status.upper()
                 record.error = receipt_status.replace("_", " ")
             else:
                 record.status = TaskStatus.COMPLETED
         elif envelope.type == MessageType.ERROR:
-            record.status = TaskStatus.FAILED
             record.error_code = str(envelope.payload.get("error_code", "DEVICE_ERROR"))
             record.error = str(envelope.payload.get("message", "device reported an error"))
             record.receipt = envelope.payload.get("receipt")
+            receipt_status = str((record.receipt or {}).get("status", "failed"))
+            if receipt_status == "cancelled":
+                record.status = TaskStatus.CANCELLED
+            elif receipt_status == "timed_out":
+                record.status = TaskStatus.TIMED_OUT
+            elif receipt_status in {"denied", "upload_denied", "policy_denied"}:
+                record.status = TaskStatus.DENIED
+            else:
+                record.status = TaskStatus.FAILED
         else:
             raise ProtocolError("MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}")
+        if record.receipt is not None and record.task_id not in self._recorded_receipts:
+            self._recorded_receipts.add(record.task_id)
+            try:
+                from agentplatform_extension.evidence import record_local_execution_receipt
+
+                record_local_execution_receipt(record.receipt, tool_call_id=record.tool_call_id)
+            except (ImportError, KeyError, RuntimeError, TypeError, ValueError):
+                pass
         return record
 
     def _task(self, task_id: str) -> TaskRecord:

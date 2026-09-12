@@ -40,9 +40,13 @@ unauthorized device capability.
   carry an expiry and become `DEVICE_OFFLINE` after the delivery deadline.
 - `local.files.list` and `local.files.read` are Level 0 operations. They run
   automatically only below configured logical roots; every request is
-  canonicalized and resolved before the physical path is used. Traversal,
+  canonicalized and opened through a verified directory handle. Traversal,
   UNC, drive syntax, symlink, and junction escapes are rejected, and errors
   expose stable codes without physical paths.
+- Local Python output is redacted incrementally per stream. Long logs are kept
+  on disk with incremental hashes and only a bounded preview is returned; a
+  timeout, cancellation, or disconnect terminates the process group before a
+  terminal receipt is produced.
 - Only the harmless echo task and the bounded local file reads are part of the
   current gate. No system command or arbitrary shell execution is part of this
   ticket.

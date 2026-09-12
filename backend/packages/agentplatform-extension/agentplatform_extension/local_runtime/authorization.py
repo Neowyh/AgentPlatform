@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -61,3 +62,49 @@ def child_authorization(parent: LocalAuthorization, declared: set[str]) -> Local
         platform_capabilities=frozenset(allowed),
         device_online=parent.device_online,
     )
+
+
+@dataclass(frozen=True)
+class RunAuthorizationSnapshot:
+    """Immutable six-factor authorization and device route captured at Run creation."""
+
+    run_id: str
+    thread_id: str
+    device_id: str
+    policy_version: str
+    authorization: LocalAuthorization
+
+    def __post_init__(self) -> None:
+        if not self.run_id or not self.thread_id or not self.device_id or not self.policy_version:
+            raise ValueError("run authorization snapshot identity is required")
+
+    @property
+    def effective(self) -> frozenset[str]:
+        return self.authorization.effective
+
+    def validate(self, current: LocalAuthorization, *, device_id: str) -> None:
+        """Fail closed when device, policy, or any authorization factor changed."""
+        if device_id != self.device_id or not current.device_online:
+            raise PermissionError("run device is unavailable")
+        if not self.effective.issuperset(current.effective):
+            # A refresh may only narrow permissions; this check catches an
+            # unexpected replacement that would broaden the frozen snapshot.
+            raise PermissionError("run authorization changed")
+
+    def child(self, declared: set[str]) -> RunAuthorizationSnapshot:
+        return RunAuthorizationSnapshot(
+            run_id=self.run_id,
+            thread_id=self.thread_id,
+            device_id=self.device_id,
+            policy_version=self.policy_version,
+            authorization=child_authorization(self.authorization, declared),
+        )
+
+    def as_mapping(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "thread_id": self.thread_id,
+            "device_id": self.device_id,
+            "policy_version": self.policy_version,
+            "effective_capabilities": sorted(self.effective),
+        }

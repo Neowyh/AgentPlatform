@@ -30,7 +30,7 @@ class LocalPolicy:
 
     def risk_level(self, capability: str, payload: dict[str, Any]) -> RiskLevel:
         del payload
-        if capability in {"local.files.list", "local.files.read"}:
+        if capability in {"echo", "local.files.list", "local.files.read"}:
             return RiskLevel.LEVEL_0
         if (
             capability in self.level_two_capabilities
@@ -42,9 +42,9 @@ class LocalPolicy:
             or capability in self.consent_required_capabilities
         ):
             return RiskLevel.LEVEL_1
-        if capability in {"local.files.write", "local.python"}:
+        if capability in {"local.files.write", "local.python", "local.artifacts.upload", "custom.modify"}:
             return RiskLevel.LEVEL_1
-        return RiskLevel.LEVEL_0
+        return RiskLevel.LEVEL_2
 
     def authorize(
         self, capability: str, payload: dict[str, Any], *, consent: bool = False

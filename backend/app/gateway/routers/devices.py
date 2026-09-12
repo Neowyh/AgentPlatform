@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import tempfile
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from app.agentplatform.rbac_models import UserModel, UserRole
+from app.device_control.artifacts import ArtifactStoreError, DeviceArtifactStore
 from app.device_control.broker import DeviceBroker, DeviceConnection, get_device_broker
 from app.device_control.models import DeviceModel
 from app.device_control.protocol import MessageType, ProtocolCompatibility, ProtocolError, TaskEnvelope, load_public_key, negotiate_protocol
@@ -16,6 +19,7 @@ from app.gateway.authz import get_current_rbac_user
 from deerflow.persistence.engine import get_session_factory
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+_artifact_store = DeviceArtifactStore(Path(tempfile.gettempdir()) / "ideer-device-artifacts")
 
 
 class PairingCreateResponse(BaseModel):
@@ -67,6 +71,31 @@ class EchoTaskRequest(BaseModel):
     run_id: str = Field(min_length=1, max_length=128)
     tool_call_id: str = Field(min_length=1, max_length=128)
     value: object
+
+
+class LocalTaskRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    operation: str = Field(min_length=1, max_length=64)
+    payload: dict = Field(default_factory=dict)
+
+
+class ArtifactGrantRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+    task_id: str = Field(min_length=1, max_length=128)
+    thread_id: str = Field(min_length=1, max_length=128)
+    filename: str = Field(min_length=1, max_length=255)
+    expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+
+
+class ArtifactGrantResponse(BaseModel):
+    token: str
+    run_id: str
+    task_id: str
+    thread_id: str
+    filename: str
+    expires_at: datetime
 
 
 class ConsentDecisionRequest(BaseModel):
@@ -217,6 +246,68 @@ async def send_echo_task(device_id: str, payload: EchoTaskRequest, current_user:
     await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     record = await get_device_broker().send_echo_task(device_id=device_id, run_id=payload.run_id, tool_call_id=payload.tool_call_id, value=payload.value)
     return TaskResponse.from_record(record)
+
+
+@router.post("/{device_id}/tasks/local", response_model=TaskResponse)
+async def send_local_task(device_id: str, payload: LocalTaskRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> TaskResponse:
+    is_admin = current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
+    await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
+    task_payload = dict(payload.payload)
+    task_payload.update({"run_id": payload.run_id, "tool_call_id": payload.tool_call_id, "operation": payload.operation})
+    record = await get_device_broker().send_task(
+        device_id=device_id,
+        operation=payload.operation,
+        path=task_payload.get("path", ""),
+        run_id=payload.run_id,
+        tool_call_id=payload.tool_call_id,
+        payload_extra=task_payload,
+        authorization_snapshot=task_payload.get("authorization_snapshot"),
+    )
+    return TaskResponse.from_record(record)
+
+
+@router.post("/{device_id}/artifacts/grant", response_model=ArtifactGrantResponse)
+async def issue_artifact_grant(device_id: str, payload: ArtifactGrantRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> ArtifactGrantResponse:
+    is_admin = current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
+    await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
+    connection = get_device_broker().connections.get(device_id)
+    if connection is None:
+        raise HTTPException(status_code=409, detail={"code": "DEVICE_OFFLINE", "message": "device is offline"})
+    grant = _artifact_store.issue_grant(
+        device_id=device_id,
+        session_id=connection.session_id,
+        run_id=payload.run_id,
+        task_id=payload.task_id,
+        thread_id=payload.thread_id,
+        filename=payload.filename,
+        expected_sha256=payload.expected_sha256,
+        max_bytes=payload.max_bytes,
+        expires_at=datetime.now(UTC) + timedelta(minutes=2),
+    )
+    return ArtifactGrantResponse(token=grant.token, run_id=grant.run_id, task_id=grant.task_id, thread_id=grant.thread_id, filename=grant.filename, expires_at=grant.expires_at)
+
+
+@router.post("/{device_id}/artifacts/upload")
+async def upload_device_artifact(
+    device_id: str,
+    token: str = Header(min_length=16),
+    x_device_session: str | None = Header(default=None),
+    file: UploadFile = File(...),
+) -> dict:
+    grant = _artifact_store._grants.get(token)
+    if grant is None or grant.device_id != device_id or not x_device_session or grant.session_id != x_device_session:
+        raise HTTPException(status_code=401, detail={"code": "GRANT_INVALID", "message": "artifact upload grant is invalid"})
+
+    async def chunks():
+        while chunk := await file.read(64 * 1024):
+            yield chunk
+
+    try:
+        handle, size, digest = await _artifact_store.upload(token, chunks())
+    except ArtifactStoreError as exc:
+        status = 410 if exc.code == "GRANT_EXPIRED" else 409 if exc.code in {"GRANT_INVALID", "HASH_MISMATCH", "CONTENT_CONFLICT"} else 413 if exc.code == "SIZE_LIMIT" else 400
+        raise HTTPException(status_code=status, detail={"code": exc.code, "message": str(exc)}) from exc
+    return {"handle": handle, "size": size, "sha256": digest, "run_id": grant.run_id, "task_id": grant.task_id, "thread_id": grant.thread_id}
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)

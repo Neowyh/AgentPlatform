@@ -43,10 +43,15 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          "./node_modules/.bin/next build && ./node_modules/.bin/next start",
+          process.env.PLAYWRIGHT_DEV_SERVER === "1"
+            ? "./node_modules/.bin/next dev"
+            : "./node_modules/.bin/next build && ./node_modules/.bin/next start",
         url: baseURL,
         reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
+        // Cold Next.js builds can exceed two minutes in constrained CI
+        // worktrees; keep the smoke lane deterministic while retaining a
+        // bounded startup wait.
+        timeout: 300_000,
         env: {
           SKIP_ENV_VALIDATION: "1",
           ...(authDisabled ? { DEER_FLOW_AUTH_DISABLED: "1" } : {}),

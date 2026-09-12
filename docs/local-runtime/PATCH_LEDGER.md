@@ -10,3 +10,7 @@ The M7 control plane does not modify the shared harness package.
 Device control-plane code remains under `backend/app/device_control/`, its
 router and migration, and `local-runtime/`. Future edits to shared harness code
 must add a row here before implementation.
+
+M8 local file and Python hardening remains outside the shared harness. The
+runtime changes use only local-runtime seams and the existing broker protocol;
+no new harness patch is required.

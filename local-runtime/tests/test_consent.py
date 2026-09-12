@@ -60,3 +60,22 @@ def test_consent_exchange_rejects_execution_when_approved_payload_changes() -> N
         exchange.authorize(request, {"path": "/projects/a.txt", "content": "one"})
         is True
     )
+
+
+def test_consent_store_persists_audit_and_one_time_approval(tmp_path) -> None:
+    db = tmp_path / "runtime.db"
+    payload = {"run_id": "r1", "task": "t1"}
+    first = ConsentStore(db_path=db)
+    exchange = ConsentExchange(first)
+    request = exchange.create_request("local.python", payload)
+    exchange.decide(request, approved=True, actor_id="alice")
+
+    restarted = ConsentStore(db_path=db)
+    assert restarted.audit[0]["actor_id"] == "alice"
+    restarted_exchange = ConsentExchange(restarted)
+    assert restarted_exchange.authorize(request, payload)
+    assert not restarted_exchange.authorize(request, payload)
+    import sqlite3
+
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT count(*) FROM consent_audit").fetchone()[0] == 1

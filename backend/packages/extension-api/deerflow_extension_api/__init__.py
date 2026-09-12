@@ -38,6 +38,7 @@ from deerflow_extension_api.contracts import (
     TaskInfo,
     TaskLifecycleContributor,
     TaskOutcome,
+    ToolContributor,
     extension,
 )
 from deerflow_extension_api.placement import (
@@ -96,6 +97,7 @@ __all__ = [
     "HostPolicySnapshot",
     "MessageProvenance",
     "MiddlewareContributor",
+    "ToolContributor",
     "MiddlewareDescriptor",
     "MiddlewarePlacement",
     "Placement",

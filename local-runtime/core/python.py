@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import hashlib
 import os
 import re
@@ -20,6 +21,66 @@ from .consent import ConsentStore, request_hash
 from .files import LocalFileStore
 from .policy import LocalPolicy, PolicyDecision
 from .receipts import LocalExecutionReceipt, content_hash
+
+
+class _WindowsJob:
+    """Job Object that makes descendant cleanup a kernel-enforced property."""
+
+    def __init__(self, pid: int) -> None:
+        if os.name != "nt":
+            raise RuntimeError("Windows Job Objects are unavailable")
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._kernel32 = kernel32
+        self._handle = kernel32.CreateJobObjectW(None, None)
+        if not self._handle:
+            raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
+        try:
+            class _BasicLimit(ctypes.Structure):
+                _fields_ = [
+                    ("per_process_user_time", ctypes.c_ulonglong),
+                    ("per_job_user_time", ctypes.c_ulonglong),
+                    ("limit_flags", ctypes.c_uint32),
+                    ("min_working_set", ctypes.c_size_t),
+                    ("max_working_set", ctypes.c_size_t),
+                    ("active_process_limit", ctypes.c_uint32),
+                    ("affinity", ctypes.c_size_t),
+                    ("priority", ctypes.c_uint32),
+                    ("scheduling_class", ctypes.c_uint32),
+                ]
+
+            class _IoCounters(ctypes.Structure):
+                _fields_ = [("values", ctypes.c_ulonglong * 6)]
+
+            class _ExtendedLimit(ctypes.Structure):
+                _fields_ = [("basic", _BasicLimit), ("io", _IoCounters),
+                            ("process_memory", ctypes.c_size_t),
+                            ("job_memory", ctypes.c_size_t)]
+
+            limits = _ExtendedLimit()
+            # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (0x2000),
+            # JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9.
+            limits.basic.limit_flags = 0x2000
+            if not kernel32.SetInformationJobObject(
+                self._handle,
+                9,
+                ctypes.byref(limits),
+                ctypes.sizeof(limits),
+            ):
+                raise OSError(
+                    ctypes.get_last_error(), "SetInformationJobObject failed"
+                )
+            if not kernel32.AssignProcessToJobObject(self._handle, pid):
+                raise OSError(
+                    ctypes.get_last_error(), "AssignProcessToJobObject failed"
+                )
+        except Exception:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        if getattr(self, "_handle", None):
+            self._kernel32.CloseHandle(self._handle)
+            self._handle = None
 
 
 class PythonTaskStatus(StrEnum):
@@ -46,6 +107,27 @@ class PythonResult:
     runtime_version: str | None = None
     receipt: LocalExecutionReceipt | None = None
     artifact_error: str | None = None
+
+
+class _StreamingRedactor:
+    """Redact credentials without exposing values split across output chunks."""
+
+    _pattern = re.compile(
+        r"(?i)(api[_-]?key|secret|token|password)(\s*[=:]\s*)[^\s,;]+"
+    )
+
+    def __init__(self) -> None:
+        self._pending = ""
+
+    def feed(self, text: str, *, final: bool = False) -> str:
+        self._pending += text
+        redacted = self._pattern.sub(r"\1\2[REDACTED]", self._pending)
+        if final:
+            self._pending = ""
+            return redacted
+        keep = min(128, len(redacted))
+        emitted, self._pending = redacted[:-keep], redacted[-keep:]
+        return emitted
 
 
 class LocalPythonService:
@@ -128,7 +210,11 @@ class LocalPythonService:
             refs = []
             for logical_path in payload.get("expected_outputs", []):
                 path = self.files.resolve(str(logical_path))
-                refs.append(self.uploader.upload(path.name, path.read_bytes()))
+                refs.append(
+                    self.uploader.upload(
+                        path.name, self.files.read_bytes(str(logical_path))
+                    )
+                )
             result = replace(result, artifact_refs=tuple(refs))
         receipt = LocalExecutionReceipt(
             run_id=str(payload.get("run_id", "")),
@@ -234,11 +320,23 @@ class PythonExecutor:
                 [sys.executable, "-I", "-c", script, *(args or [])],
                 **process_options,
             )
+            job = None
+            if os.name == "nt":
+                try:
+                    job = _WindowsJob(process.pid)
+                except Exception:
+                    self._terminate(process)
+                    await self._wait_until_exited(process)
+                    raise RuntimeError("reliable Windows process cleanup unavailable")
             try:
                 deadline = asyncio.get_running_loop().time() + timeout
                 output_offsets = {"stdout": 0, "stderr": 0}
+                redactors = {
+                    "stdout": _StreamingRedactor(),
+                    "stderr": _StreamingRedactor(),
+                }
                 output_window_started = asyncio.get_running_loop().time()
-                output_window_bytes = 0
+                output_window_bytes = {"stdout": 0, "stderr": 0}
                 while True:
                     remaining = deadline - asyncio.get_running_loop().time()
                     if remaining <= 0:
@@ -256,16 +354,21 @@ class PythonExecutor:
                             now = asyncio.get_running_loop().time()
                             if now - output_window_started >= 1:
                                 output_window_started = now
-                                output_window_bytes = 0
+                                output_window_bytes = {"stdout": 0, "stderr": 0}
                             available = max(
-                                0, self.max_output_rate_bytes - output_window_bytes
+                                0,
+                                self.max_output_rate_bytes
+                                - output_window_bytes[stream],
                             )
-                            if available:
-                                visible = self._redact(
-                                    chunk[:available].decode("utf-8", errors="replace")
-                                )
+                            visible = redactors[stream].feed(
+                                chunk.decode("utf-8", errors="replace")
+                            )
+                            if available and visible:
+                                visible = visible[:available]
                                 await on_output(stream, visible)
-                                output_window_bytes += len(chunk[:available])
+                                output_window_bytes[stream] += len(
+                                    visible.encode("utf-8")
+                                )
                     if process.poll() is not None:
                         break
                     await asyncio.sleep(min(0.05, remaining))
@@ -282,12 +385,20 @@ class PythonExecutor:
                 self._terminate(process)
                 await self._wait_until_exited(process)
                 status = PythonTaskStatus.CANCELLED
-            stdout_file.seek(0)
-            stderr_file.seek(0)
-            stdout_bytes = stdout_file.read()
-            stderr_bytes = stderr_file.read()
-        stdout, stdout_hash = self._bounded_output(stdout_bytes)
-        stderr, stderr_hash = self._bounded_output(stderr_bytes)
+            if on_output is not None:
+                for stream, redactor in redactors.items():
+                    tail = redactor.feed("", final=True)
+                    available = max(
+                        0, self.max_output_rate_bytes - output_window_bytes[stream]
+                    )
+                    if tail and available:
+                        visible = tail[:available]
+                        await on_output(stream, visible)
+                        output_window_bytes[stream] += len(visible.encode("utf-8"))
+            stdout, stdout_hash = self._summarize_log(stdout_file.name)
+            stderr, stderr_hash = self._summarize_log(stderr_file.name)
+            if job is not None:
+                job.close()
         finished_at = datetime.now(UTC)
         if status is PythonTaskStatus.TIMED_OUT:
             stderr = "execution timed out"
@@ -346,12 +457,14 @@ class PythonExecutor:
             output,
         )
 
-    def _bounded_output(self, output: bytes) -> tuple[str, str]:
+    def _summarize_log(self, path: str) -> tuple[str, str]:
         digest = hashlib.sha256()
-        digest.update(output)
-        return (
-            self._redact(
-                output[: self.max_output_bytes].decode("utf-8", errors="replace")
-            ),
-            digest.hexdigest(),
-        )
+        preview = bytearray()
+        with open(path, "rb") as output_file:
+            while chunk := output_file.read(64 * 1024):
+                digest.update(chunk)
+                if len(preview) < self.max_output_bytes:
+                    preview.extend(chunk[: self.max_output_bytes - len(preview)])
+        return self._redact(
+            bytes(preview).decode("utf-8", errors="replace")
+        ), digest.hexdigest()

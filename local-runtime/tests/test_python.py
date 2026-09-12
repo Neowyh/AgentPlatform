@@ -3,7 +3,13 @@ import hashlib
 from pathlib import Path
 
 import pytest
-from core.artifacts import MemoryArtifactUploader
+
+from core.artifacts import (
+    ArtifactUploadError,
+    FileArtifactUploader,
+    MemoryArtifactUploader,
+    SingleUseUploadGrant,
+)
 from core.consent import ConsentStore, request_hash
 from core.files import LocalFileStore, RootConfig
 from core.policy import LocalPolicy, PolicyDecision
@@ -124,6 +130,31 @@ def test_local_python_uploads_only_explicit_expected_outputs(tmp_path: Path) -> 
         "local://" + hashlib.sha256(b"artifact").hexdigest() + "/result.txt",
     )
     assert list(uploader.items.values()) == [b"artifact"]
+
+
+def test_file_artifact_uploader_is_durable_idempotent_and_bounded(
+    tmp_path: Path,
+) -> None:
+    uploader = FileArtifactUploader(tmp_path / "artifacts", max_bytes=4)
+    assert uploader.upload("result.txt", b"data").startswith("local://")
+    assert uploader.upload("result.txt", b"data") == uploader.upload(
+        "result.txt", b"data"
+    )
+    with pytest.raises(ArtifactUploadError):
+        uploader.upload("result.txt", b"too large")
+    with pytest.raises(ArtifactUploadError):
+        uploader.upload("../escape.txt", b"x")
+
+
+def test_upload_grant_is_bound_to_run_task_thread_and_single_use() -> None:
+    grant = SingleUseUploadGrant("run", "task", "thread", "result.txt")
+    assert grant.consume(
+        run_id="run", task_id="task", thread_id="thread", name="result.txt"
+    )
+    with pytest.raises(ArtifactUploadError):
+        grant.consume(
+            run_id="run", task_id="task", thread_id="thread", name="result.txt"
+        )
 
 
 def test_local_python_accepts_environment_references_but_not_plaintext(
@@ -260,3 +291,24 @@ def test_python_executor_limits_streamed_output_rate(tmp_path: Path) -> None:
         return emitted
 
     assert asyncio.run(run_with_output()) <= 128
+
+
+def test_python_executor_redacts_sensitive_value_split_across_chunks(
+    tmp_path: Path,
+) -> None:
+    async def run_with_output() -> str:
+        chunks: list[str] = []
+
+        async def on_output(_stream: str, chunk: str) -> None:
+            chunks.append(chunk)
+
+        await PythonExecutor().run(
+            "import sys; sys.stdout.write('API_KEY=sec'); sys.stdout.flush(); sys.stdout.write('ret-value\\n'); sys.stdout.flush()",
+            working_root=tmp_path,
+            on_output=on_output,
+        )
+        return "".join(chunks)
+
+    output = asyncio.run(run_with_output())
+    assert "secret-value" not in output
+    assert "API_KEY=[REDACTED]" in output

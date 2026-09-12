@@ -36,3 +36,7 @@ def test_custom_level_one_capability_asks_before_execution() -> None:
 
     assert policy.authorize("custom.modify", {}) is PolicyDecision.CONSENT_REQUIRED
     assert policy.authorize("custom.modify", {}, consent=True) is PolicyDecision.ALLOW
+
+
+def test_unknown_capability_is_denied_by_default() -> None:
+    assert LocalPolicy().authorize("unregistered.capability", {}) is PolicyDecision.DENY

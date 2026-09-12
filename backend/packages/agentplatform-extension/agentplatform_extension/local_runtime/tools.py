@@ -15,6 +15,17 @@ class LocalTool:
     description: str
 
 
+class LocalToolContributor:
+    """Generic extension contribution consumed before host tool assembly."""
+
+    def __init__(self, authorization: LocalAuthorization) -> None:
+        self.authorization = authorization
+
+    def contribute_tools(self, context: Mapping[str, Any]) -> tuple[LocalTool, ...]:
+        del context
+        return assemble_local_tools(self.authorization)
+
+
 LOCAL_TOOLS = (
     LocalTool("local.files.list", "List files under an explicitly allowed local root."),
     LocalTool("local.files.read", "Read a file under an explicitly allowed local root."),
@@ -53,6 +64,8 @@ class LocalToolExecutor:
         self.route = route
         self.sender = sender
         self.receipt_sink = receipt_sink
+        if hasattr(route, "revalidate"):
+            route.revalidate(authorization)
 
     async def invoke(self, capability: str, payload: Mapping[str, Any]) -> Any:
         if capability not in {tool.name for tool in LOCAL_TOOLS}:
@@ -61,6 +74,11 @@ class LocalToolExecutor:
             raise PermissionError(f"local capability is unavailable: {capability}")
         result = await self.route.dispatch(capability, payload, self.sender)
         receipt = getattr(result, "receipt", None)
-        if receipt is not None and self.receipt_sink is not None:
-            self.receipt_sink(receipt)
+        if receipt is not None:
+            if self.receipt_sink is not None:
+                self.receipt_sink(receipt)
+            else:
+                from agentplatform_extension.evidence import record_local_execution_receipt
+
+                record_local_execution_receipt(receipt, tool_call_id=str(payload.get("tool_call_id", "")) or None)
         return result

@@ -203,3 +203,142 @@ async def test_cancelled_local_execution_receipt_preserves_cancelled_status() ->
     assert updated is record
     assert record.status is TaskStatus.CANCELLED
     assert record.error_code == "CANCELLED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("receipt_status", "expected_status", "expected_code"),
+    [
+        ("denied", TaskStatus.DENIED, "DENIED"),
+        ("timed_out", TaskStatus.TIMED_OUT, "TIMED_OUT"),
+    ],
+)
+async def test_device_terminal_receipts_preserve_distinct_denied_and_timeout_states(receipt_status: str, expected_status: TaskStatus, expected_code: str) -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-terminal", "session-terminal", "token", device_key.public_key(), FakeWebSocket())
+    await broker.attach(connection)
+    record = await broker.send_echo_task(device_id=connection.device_id, run_id="run-terminal", tool_call_id="tool-terminal", value="x")
+
+    message = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.TASK_RESULT,
+        device_id=connection.device_id,
+        session_id=connection.session_id,
+        task_id=record.task_id,
+        payload={"receipt": {"status": receipt_status}},
+    )
+
+    await broker.receive(connection, message)
+
+    assert record.status is expected_status
+    assert record.error_code == expected_code
+
+
+@pytest.mark.asyncio
+async def test_terminal_task_ignores_late_ack_progress_and_result() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-late", "session-late", "token", device_key.public_key(), FakeWebSocket())
+    await broker.attach(connection)
+    record = await broker.send_echo_task(device_id=connection.device_id, run_id="run-late", tool_call_id="tool-late", value="x")
+
+    completed = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.TASK_RESULT,
+        device_id=connection.device_id,
+        session_id=connection.session_id,
+        task_id=record.task_id,
+        payload={"result": "first", "receipt": {"status": "completed"}},
+    )
+    await broker.receive(connection, completed)
+
+    for message_type, payload in (
+        (MessageType.TASK_ACK, {"accepted": True}),
+        (MessageType.TASK_PROGRESS, {"fraction": 1.0}),
+        (MessageType.TASK_RESULT, {"result": "late", "receipt": {"status": "failed"}}),
+    ):
+        message = sign_envelope(
+            private_key=device_key,
+            message_type=message_type,
+            device_id=connection.device_id,
+            session_id=connection.session_id,
+            task_id=record.task_id,
+            payload=payload,
+        )
+        assert await broker.receive(connection, message) is record
+
+    assert record.status is TaskStatus.COMPLETED
+    assert record.result == "first"
+
+
+@pytest.mark.asyncio
+async def test_error_receipt_preserves_denied_status() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-error-denied", "session-error-denied", "token", device_key.public_key(), FakeWebSocket())
+    await broker.attach(connection)
+    record = await broker.send_echo_task(device_id=connection.device_id, run_id="run-error-denied", tool_call_id="tool-error-denied", value="x")
+    message = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.ERROR,
+        device_id=connection.device_id,
+        session_id=connection.session_id,
+        task_id=record.task_id,
+        payload={
+            "error_code": "LOCAL_POLICY_DENIED",
+            "message": "local policy denied",
+            "receipt": {"status": "denied"},
+        },
+    )
+
+    await broker.receive(connection, message)
+
+    assert record.status is TaskStatus.DENIED
+
+
+@pytest.mark.asyncio
+async def test_connected_device_without_requested_capability_rejects_local_task() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-capability", "session-capability", "token", device_key.public_key(), FakeWebSocket(), capabilities=frozenset({"local.files.read"}))
+    await broker.attach(connection)
+
+    record = await broker.send_task(
+        device_id=connection.device_id,
+        operation="local.python",
+        path="/projects",
+        run_id="run-capability",
+        tool_call_id="tool-capability",
+    )
+
+    assert record.status is TaskStatus.FAILED
+    assert record.error_code == "CAPABILITY_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_authorization_snapshot_is_checked_before_task_delivery() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection(
+        "device-snapshot",
+        "session-snapshot",
+        "token",
+        device_key.public_key(),
+        FakeWebSocket(),
+        capabilities=frozenset({"local.python"}),
+    )
+    await broker.attach(connection)
+    record = await broker.send_task(
+        device_id=connection.device_id,
+        operation="local.python",
+        path="/projects/a.py",
+        run_id="run",
+        tool_call_id="call",
+        authorization_snapshot={
+            "device_id": "other-device",
+            "effective_capabilities": ["local.python"],
+        },
+    )
+    assert record.status is TaskStatus.DENIED
+    assert record.error_code == "AUTHORIZATION_SNAPSHOT_INVALID"

@@ -20,6 +20,7 @@ from deerflow_extension_api import (
     MiddlewareContributor,
     SystemModelCallObserver,
     TaskLifecycleContributor,
+    ToolContributor,
 )
 from deerflow_extension_api import ExtensionRegistry as ExtensionRegistryContract
 
@@ -36,6 +37,7 @@ class LoadedExtensions:
 
     app_store: ExtensionData
     middleware_contributors: tuple[tuple[str, MiddlewareContributor], ...] = ()
+    tool_contributors: tuple[tuple[str, ToolContributor], ...] = ()
     task_lifecycle: tuple[tuple[str, TaskLifecycleContributor], ...] = ()
     system_model_observers: tuple[tuple[str, SystemModelCallObserver], ...] = ()
     agent_assembly_observers: tuple[tuple[str, AgentAssemblyObserver], ...] = ()
@@ -71,6 +73,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
 
     def __init__(self) -> None:
         self._middlewares: list[_Entry] = []
+        self._tools: list[_Entry] = []
         self._task_lifecycle: list[_Entry] = []
         self._system_model_observers: list[_Entry] = []
         self._agent_assembly_observers: list[_Entry] = []
@@ -96,6 +99,9 @@ class ExtensionRegistry(ExtensionRegistryContract):
 
     def middlewares(self, contributor: MiddlewareContributor) -> None:
         self._middlewares.append((self._source(), contributor))
+
+    def tools(self, contributor: ToolContributor) -> None:
+        self._tools.append((self._source(), contributor))
 
     def task_lifecycle(self, contributor: TaskLifecycleContributor) -> None:
         self._task_lifecycle.append((self._source(), contributor))
@@ -131,6 +137,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
         """
         for bucket in (
             self._middlewares,
+            self._tools,
             self._task_lifecycle,
             self._system_model_observers,
             self._agent_assembly_observers,
@@ -140,10 +147,11 @@ class ExtensionRegistry(ExtensionRegistryContract):
         ):
             bucket[:] = [entry for entry in bucket if entry[0] != source]
 
-    def mark(self) -> tuple[int, int, int, int, int, int, int]:
+    def mark(self) -> tuple[int, int, int, int, int, int, int, int]:
         """Snapshot bucket lengths so one install() can be undone positionally."""
         return (
             len(self._middlewares),
+            len(self._tools),
             len(self._task_lifecycle),
             len(self._system_model_observers),
             len(self._agent_assembly_observers),
@@ -152,7 +160,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
             len(self._routers),
         )
 
-    def rollback_to(self, mark: tuple[int, int, int, int, int, int, int]) -> None:
+    def rollback_to(self, mark: tuple[int, int, int, int, int, int, int, int]) -> None:
         """Undo every registration made since ``mark``.
 
         Positional rather than source-keyed: two specs may legitimately share
@@ -162,6 +170,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
         for bucket, size in zip(
             (
                 self._middlewares,
+                self._tools,
                 self._task_lifecycle,
                 self._system_model_observers,
                 self._agent_assembly_observers,
@@ -178,6 +187,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
         return LoadedExtensions(
             app_store=ExtensionData("app"),
             middleware_contributors=tuple(self._middlewares),
+            tool_contributors=tuple(self._tools),
             task_lifecycle=tuple(self._task_lifecycle),
             system_model_observers=tuple(self._system_model_observers),
             agent_assembly_observers=tuple(self._agent_assembly_observers),

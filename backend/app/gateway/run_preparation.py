@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding
+from agentplatform_extension.local_runtime import LocalAuthorization, RunAuthorizationSnapshot
 from fastapi import HTTPException, Request
 
 from app.agentplatform.code_evidence import read_manifest
@@ -231,6 +232,31 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         # the task lifecycle. This keeps Run metadata and runtime evidence on
         # one envelope boundary without persisting credentials or secrets.
         run_metadata["run_evidence"] = evidence_binding.as_mapping()
+        local_auth = body_context.get("local_authorization")
+        local_device_id = body_context.get("local_device_id")
+        if isinstance(local_auth, dict) and local_device_id:
+            factors = {
+                key: frozenset(str(item) for item in local_auth.get(key, ()))
+                for key in (
+                    "agent_capabilities",
+                    "caller_capabilities",
+                    "device_capabilities",
+                    "local_policy_capabilities",
+                    "workflow_capabilities",
+                    "platform_capabilities",
+                )
+            }
+            authorization_snapshot = RunAuthorizationSnapshot(
+                run_id=canonical_run_id or str(uuid.uuid4()),
+                thread_id=thread_id,
+                device_id=str(local_device_id),
+                policy_version=str(local_auth.get("policy_version", policy_revision)),
+                authorization=LocalAuthorization(
+                    **factors,
+                    device_online=bool(local_auth.get("device_online", True)),
+                ),
+            )
+            run_metadata["local_authorization_snapshot"] = authorization_snapshot.as_mapping()
 
     logger.info(
         "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",

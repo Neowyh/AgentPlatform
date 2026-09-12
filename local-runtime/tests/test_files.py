@@ -3,7 +3,13 @@ import os
 from pathlib import Path
 
 import pytest
-from core.files import FileAccessError, LocalFileStore, RootConfig
+
+from core.files import (
+    OUTSIDE_ALLOWED_ROOTS,
+    FileAccessError,
+    LocalFileStore,
+    RootConfig,
+)
 
 
 @pytest.mark.parametrize(
@@ -123,6 +129,24 @@ def test_symlink_escape_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(FileAccessError, match="outside allowed roots"):
         store.read("/projects/link.txt")
+
+
+def test_symlink_inside_allowed_root_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "Projects"
+    root.mkdir()
+    target = root / "real"
+    target.mkdir()
+    (target / "value.txt").write_text("safe", encoding="utf-8")
+    link = root / "alias"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+    store = LocalFileStore([RootConfig("/projects", root)])
+
+    with pytest.raises(FileAccessError) as error:
+        store.read("/projects/alias/value.txt")
+    assert error.value.code == OUTSIDE_ALLOWED_ROOTS
 
 
 def test_errors_do_not_reveal_physical_paths(tmp_path: Path) -> None:

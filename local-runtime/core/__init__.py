@@ -1,7 +1,14 @@
 """Small Local Runtime client surface for the M7 device protocol."""
 
-from .artifacts import ArtifactUploader, MemoryArtifactUploader
+from .artifacts import (
+    ArtifactUploader,
+    ArtifactUploadError,
+    FileArtifactUploader,
+    MemoryArtifactUploader,
+    SingleUseUploadGrant,
+)
 from .capabilities import CapabilityAnnouncement, CapabilityRegistry
+from .cli import main as runtime_cli
 from .consent import ConsentExchange, ConsentRequest, ConsentStore, request_hash
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError, LocalFileStore, RootConfig
@@ -11,6 +18,7 @@ from .receipts import LocalExecutionReceipt
 from .transport import LocalRuntimeClient
 
 __all__ = [
+    "ArtifactUploadError",
     "ArtifactUploader",
     "CapabilityAnnouncement",
     "CapabilityRegistry",
@@ -18,6 +26,7 @@ __all__ = [
     "ConsentRequest",
     "ConsentStore",
     "FileAccessError",
+    "FileArtifactUploader",
     "FileTaskResult",
     "LocalExecutionReceipt",
     "LocalFileService",
@@ -32,5 +41,7 @@ __all__ = [
     "PythonTaskStatus",
     "RiskLevel",
     "RootConfig",
+    "SingleUseUploadGrant",
     "request_hash",
+    "runtime_cli",
 ]

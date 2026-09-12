@@ -176,6 +176,13 @@ class MiddlewareContributor(Protocol):
         return ()
 
 
+class ToolContributor(Protocol):
+    """Contribute candidate tools before final authorization/model binding."""
+
+    def contribute_tools(self, context: Mapping[str, Any]) -> Sequence[Any]:
+        return ()
+
+
 # --- Extension services ----------------------------------------------------
 
 
@@ -210,6 +217,9 @@ class ExtensionRegistry(Protocol):
     """
 
     def middlewares(self, contributor: MiddlewareContributor) -> None:
+        return None
+
+    def tools(self, contributor: ToolContributor) -> None:
         return None
 
     def task_lifecycle(self, contributor: TaskLifecycleContributor) -> None:

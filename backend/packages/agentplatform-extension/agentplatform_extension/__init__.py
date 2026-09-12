@@ -24,6 +24,7 @@ from agentplatform_extension.evidence import (
     record_subagent_verification,
     record_tool_receipt,
 )
+from agentplatform_extension.local_runtime import LocalAuthorization, LocalToolContributor
 from agentplatform_extension.network_policy import NetworkPolicy
 
 
@@ -42,6 +43,8 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
         return
     if not isinstance(authorization, Mapping):
         return
+    effective = frozenset(str(item) for item in authorization.get("allowed_tools", ()))
+    registry.tools(LocalToolContributor(LocalAuthorization.from_capabilities(effective, device_online=bool(authorization.get("device_online", True)))))
     registry.task_lifecycle(
         EvidenceLifecycleContributor(
             snapshots=config.get("resource_snapshots", ()),

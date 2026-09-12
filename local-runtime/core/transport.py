@@ -70,6 +70,7 @@ class LocalRuntimeClient:
         self.connection: ClientConnection | None = None
         self._pending_consents: dict[str, ConsentRequest] = {}
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
+        self._cancelled_tasks: set[str] = set()
 
     async def connect(self) -> ClientConnection:
         """Open the device-initiated connection; the server is never dialed back."""
@@ -152,11 +153,9 @@ class LocalRuntimeClient:
                     )
                 )
             elif envelope.type == MessageType.CONSENT_DECISION:
-                await self._handle_consent_decision(envelope)
+                await self._handle_consent_decision(envelope, background=True)
             elif envelope.type == MessageType.TASK_CANCEL:
-                task = self._running_tasks.get(envelope.task_id or "")
-                if task is not None:
-                    task.cancel()
+                await self._handle_task_cancel(envelope.task_id or "")
 
         tasks = tuple(self._running_tasks.values())
         for task in tasks:
@@ -168,6 +167,23 @@ class LocalRuntimeClient:
         self._running_tasks.pop(task_id, None)
         if not task.cancelled():
             task.exception()
+
+    async def _handle_task_cancel(self, task_id: str) -> None:
+        request = self._pending_consents.pop(task_id, None)
+        if request is not None:
+            self._cancelled_tasks.add(task_id)
+            await self._send_error(
+                task_id,
+                "local task cancelled while waiting for consent",
+                "CANCELLED",
+                request.payload,
+                request.capability,
+                policy_decision=PolicyDecision.DENY.value,
+                status="cancelled",
+            )
+        task = self._running_tasks.get(task_id)
+        if task is not None:
+            task.cancel()
 
     async def _handle_task(self, envelope) -> None:
         assert self.connection is not None
@@ -272,6 +288,17 @@ class LocalRuntimeClient:
                 receipt = replace(receipt, task_id=task_id)
             else:
                 raise ValueError("unsupported operation")
+        except asyncio.CancelledError:
+            await self._send_error(
+                task_id,
+                "local task cancelled",
+                "CANCELLED",
+                envelope.payload,
+                operation,
+                policy_decision=PolicyDecision.ALLOW.value,
+                status="cancelled",
+            )
+            raise
         except FileAccessError as exc:
             await self._send_error(
                 task_id, str(exc), exc.code, envelope.payload, operation
@@ -364,8 +391,10 @@ class LocalRuntimeClient:
             )
         )
 
-    async def _handle_consent_decision(self, envelope: Any) -> None:
+    async def _handle_consent_decision(self, envelope: Any, *, background: bool = False) -> None:
         task_id = envelope.task_id or ""
+        if task_id in self._cancelled_tasks:
+            return
         request = self._pending_consents.pop(task_id, None)
         if (
             request is None
@@ -406,6 +435,35 @@ class LocalRuntimeClient:
                 consent_decision="denied",
             )
             return
+        if background:
+            task = asyncio.create_task(self._execute_consented(envelope, request))
+            self._running_tasks[task_id] = task
+            task.add_done_callback(
+                lambda finished, current_task_id=task_id: self._task_finished(
+                    current_task_id, finished
+                )
+            )
+            await asyncio.sleep(0)
+            return
+        await self._execute_consented(envelope, request)
+
+    async def _execute_consented(self, envelope: Any, request: ConsentRequest) -> None:
+        try:
+            await self._execute_consented_inner(envelope, request)
+        except asyncio.CancelledError:
+            await self._send_error(
+                envelope.task_id or "",
+                "local task cancelled",
+                "CANCELLED",
+                request.payload,
+                request.capability,
+                policy_decision=PolicyDecision.ALLOW.value,
+                status="cancelled",
+                consent_decision="approved",
+            )
+
+    async def _execute_consented_inner(self, envelope: Any, request: ConsentRequest) -> None:
+        task_id = envelope.task_id or ""
         if request.capability == "local.python":
             python_result = await self.python_service.execute(
                 request.payload,

@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
 
 import pytest
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence, current_run_evidence
 from agentplatform_extension.local_runtime import (
     DeviceRoute,
     LocalAuthorization,
     LocalExecutionReceipt,
     LocalToolExecutor,
     LocalToolProvenance,
+    RunAuthorizationSnapshot,
     RunDeviceRouter,
     assemble_local_tools,
     child_authorization,
@@ -36,6 +38,33 @@ def test_route_is_frozen_and_child_cannot_expand_capabilities() -> None:
     else:
         raise AssertionError("route must be frozen")
     assert child_authorization(_authorization(), {"local.python", "local.files.write"}).effective == {"local.python"}
+
+
+def test_route_selection_requires_one_online_capable_device() -> None:
+    router = RunDeviceRouter.select(
+        [{"device_id": "a", "online": True, "capabilities": ["local.python"]}],
+        "local.python",
+    )
+    assert router.route == DeviceRoute("a")
+    with pytest.raises(ValueError):
+        RunDeviceRouter.select(
+            [
+                {"device_id": "a", "online": True, "capabilities": ["local.python"]},
+                {"device_id": "b", "online": True, "capabilities": ["local.python"]},
+            ],
+            "local.python",
+        )
+
+
+def test_run_authorization_snapshot_freezes_identity_and_only_allows_narrowing() -> None:
+    auth = LocalAuthorization.from_capabilities({"local.python", "local.files.read"}, device_online=True)
+    snapshot = RunAuthorizationSnapshot("run", "thread", "device", "policy-1", auth)
+    snapshot.validate(LocalAuthorization.from_capabilities({"local.python"}, device_online=True), device_id="device")
+    with pytest.raises(PermissionError):
+        snapshot.validate(auth, device_id="other-device")
+    with pytest.raises(PermissionError):
+        snapshot.validate(LocalAuthorization.from_capabilities({"local.python", "local.files.read", "local.files.write"}, device_online=True), device_id="device")
+    assert snapshot.child({"local.python"}).effective == {"local.python"}
 
 
 def test_local_filter_preserves_server_tools_and_drops_unauthorized_local_tools() -> None:
@@ -112,3 +141,33 @@ async def test_local_tool_executor_rejects_unauthorized_capability_before_routin
     executor = LocalToolExecutor(LocalAuthorization(), route, sender)
     with pytest.raises(PermissionError):
         await executor.invoke("local.python", {})
+
+
+@pytest.mark.asyncio
+async def test_frozen_route_rechecks_revocation_before_dispatch() -> None:
+    auth = LocalAuthorization.from_capabilities({"local.python"}, device_online=True)
+    route = RunDeviceRouter(DeviceRoute("device-secret"), auth)
+
+    async def sender(*args):
+        raise AssertionError("revoked route must not dispatch")
+
+    route.revalidate(LocalAuthorization())
+    with pytest.raises(PermissionError):
+        await route.dispatch("local.python", {}, sender)
+
+
+@pytest.mark.asyncio
+async def test_local_tool_executor_default_sink_records_run_evidence() -> None:
+    auth = LocalAuthorization.from_capabilities({"local.python"}, device_online=True)
+    route = RunDeviceRouter(DeviceRoute("device-secret"))
+
+    async def sender(*args):
+        return type("Result", (), {"receipt": {"capability": "local.python", "status": "completed"}})()
+
+    binding = RunEvidenceBinding(
+        snapshots=(),
+        authorization=AuthorizationContext("caller", "agent", "policy-1"),
+    )
+    with bind_run_evidence(binding):
+        await LocalToolExecutor(auth, route, sender).invoke("local.python", {"tool_call_id": "call-1"})
+        assert current_run_evidence().tool_receipts[0]["tool_call_id"] == "call-1"
