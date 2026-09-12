@@ -709,16 +709,58 @@ test.describe("Thread history", () => {
     page,
   }) => {
     mockLangGraphAPI(page);
+    let deleteAttempted = false;
     await page.route(/\/api\/threads\/[^/]+$/, (route) => {
       if (route.request().method() === "DELETE") {
+        deleteAttempted = true;
         return route.fulfill({
           status: 500,
           contentType: "application/json",
           body: JSON.stringify({ detail: "Local cleanup failed" }),
         });
       }
+      // The mock backend models the thread disappearing after the failed
+      // cleanup attempt, so revisiting the stale URL exercises the same
+      // empty-chat fallback as a real deleted thread.
+      if (deleteAttempted && route.request().method() === "GET") {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Thread not found" }),
+        });
+      }
       return route.fallback();
     });
+    await page.route(
+      /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
+      (route) => {
+        if (deleteAttempted) {
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: "[]",
+          });
+        }
+        return route.fallback();
+      },
+    );
+    await page.route(
+      /\/api\/threads\/[^/]+\/messages\/page(?:\?.*)?$/,
+      (route) => {
+        if (deleteAttempted) {
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              data: [],
+              has_more: false,
+              next_before_seq: null,
+            }),
+          });
+        }
+        return route.fallback();
+      },
+    );
 
     await page.goto("/workspace/chats/new");
     const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -841,15 +883,15 @@ test.describe("Thread history", () => {
 
   test("chats list page shows all threads", async ({ page }) => {
     mockLangGraphAPI(page, { threads: THREADS });
-
     await page.goto("/workspace/chats");
 
-    // Both threads should be listed in the main content area
-    const main = page.locator("main");
-    await expect(main.getByText("First conversation")).toBeVisible({
+    // Scope the assertion to the chats page content; the sidebar intentionally
+    // renders only its recent-thread subset.
+    const chatsContent = page.locator("main");
+    await expect(chatsContent.getByText("First conversation")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(main.getByText("Second conversation")).toBeVisible({
+    await expect(chatsContent.getByText("Second conversation")).toBeVisible({
       timeout: 15_000,
     });
   });

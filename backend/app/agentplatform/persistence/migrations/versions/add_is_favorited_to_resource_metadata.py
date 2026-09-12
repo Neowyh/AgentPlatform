@@ -19,7 +19,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Add is_favorited column with default value False
-    op.add_column("resource_metadata", sa.Column("is_favorited", sa.Boolean(), nullable=False, server_default="false"))
+    bind = op.get_bind()
+    columns = {column["name"] for column in sa.inspect(bind).get_columns("resource_metadata")} if bind is not None else set()
+    if "is_favorited" not in columns:
+        op.add_column("resource_metadata", sa.Column("is_favorited", sa.Boolean(), nullable=False, server_default="false"))
 
 
 def downgrade() -> None:

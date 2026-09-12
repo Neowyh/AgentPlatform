@@ -52,7 +52,7 @@ _HOST_PUBLIC_EXACT_PATHS = frozenset(
         "/api/v1/auth/providers",
     }
 )
-_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me"})
+_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me", "/api/webhooks/github"})
 _CSRF_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 _STANDARD_CONVERTOR_REGEXES = {
     "str": "[^/]+",

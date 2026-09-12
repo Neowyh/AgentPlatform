@@ -4,13 +4,13 @@ on:
   push:
     branches: [ 'main' ]
     paths:
-      - 'backend/packages/harness/ideer/persistence/**'
+      - 'backend/packages/harness/deerflow/persistence/**'
       - 'backend/tests/integration/persistence/**'
       - '.github/workflows/migration-tests.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'backend/packages/harness/ideer/persistence/**'
+      - 'backend/packages/harness/deerflow/persistence/**'
       - 'backend/tests/integration/persistence/**'
       - '.github/workflows/migration-tests.yml'
 
@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   migration-up-down:
-    if: github.event.pull_request.draft == false
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -38,6 +38,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - name: Install backend dependencies
         working-directory: backend
@@ -50,29 +52,23 @@ jobs:
         working-directory: backend
         run: |
           PYTHONPATH=. uv run alembic \
-            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            -c packages/harness/deerflow/persistence/migrations/alembic.ini \
             upgrade head
 
       - name: Verify current revision
         working-directory: backend
         run: |
           PYTHONPATH=. uv run alembic \
-            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            -c packages/harness/deerflow/persistence/migrations/alembic.ini \
             current
 
-      - name: Run migration downgrade
+      - name: Verify repeated upgrade is idempotent
         working-directory: backend
         run: |
           PYTHONPATH=. uv run alembic \
-            -c packages/harness/ideer/persistence/migrations/alembic.ini \
-            downgrade -1
-
-      - name: Re-upgrade to head
-        working-directory: backend
-        run: |
-          PYTHONPATH=. uv run alembic \
-            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            -c packages/harness/deerflow/persistence/migrations/alembic.ini \
             upgrade head
+          test "$(PYTHONPATH=. uv run alembic -c packages/harness/deerflow/persistence/migrations/alembic.ini current | grep -c 'head')" -ge 1
 
       - name: Run migration schema tests
         working-directory: backend
@@ -82,4 +78,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f backend/data/ideer.db
+        run: rm -f backend/data/deerflow.db

@@ -128,9 +128,7 @@ def test_make_targets_keep_default_tests_offline_and_support_live_opt_in() -> No
     default_command = _dry_run_make_target("test")
     live_command = _dry_run_make_target("test-live")
 
-    assert 'pytest -m "not live"' in default_command
-    assert "--ignore=tests/blocking_io" in default_command
-    assert "tests/" in default_command
+    assert "run-test-lane.sh backend-standard" in default_command
     assert LIVE_OPT_IN not in default_command
 
     assert f"{LIVE_OPT_IN}=1" in live_command
@@ -169,8 +167,7 @@ def test_ci_unit_test_workflow_runs_duration_aware_shards() -> None:
     assert LIVE_OPT_IN not in workflow
 
     command = _dry_run_make_target("test")
-    assert 'pytest -m "not live"' in command
-    assert "--ignore=tests/blocking_io" in command
+    assert "run-test-lane.sh backend-standard" in command
     assert LIVE_OPT_IN not in command
 
 

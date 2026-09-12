@@ -107,6 +107,51 @@ else
     echo -e "${GREEN}✓ extensions_config.json: $IDEER_EXTENSIONS_CONFIG_PATH${NC}"
 fi
 
+# Compose interpolates UV_EXTRAS from the environment when building the
+# gateway image. Resolve it from the same config detector used by local and
+# development entrypoints so production builds include optional integrations.
+# A repo-root .env is Docker dotenv syntax; read only the UV_EXTRAS assignment
+# instead of sourcing arbitrary shell expressions.
+if [ -z "${UV_EXTRAS:-}" ] && [ -f "$REPO_ROOT/.env" ]; then
+    _dotenv_uv_extras="$(sed -n 's/^UV_EXTRAS[[:space:]]*=[[:space:]]*//p' "$REPO_ROOT/.env" | head -n 1)"
+    if [ -n "$_dotenv_uv_extras" ]; then
+        export UV_EXTRAS="$_dotenv_uv_extras"
+    fi
+fi
+if [ -z "${UV_EXTRAS:-}" ] && [ -f "$REPO_ROOT/scripts/detect_uv_extras.py" ]; then
+    _detect_python=""
+    if command -v python3 >/dev/null 2>&1 && python3 -c 'pass' >/dev/null 2>&1; then
+        _detect_python=python3
+    elif command -v python >/dev/null 2>&1 && python -c 'pass' >/dev/null 2>&1; then
+        _detect_python=python
+    fi
+    _detected_uv_flags=""
+    if [ -n "$_detect_python" ]; then
+        _detected_uv_flags="$(DEER_FLOW_CONFIG_PATH="$IDEER_CONFIG_PATH" "$_detect_python" "$REPO_ROOT/scripts/detect_uv_extras.py" 2>/dev/null || true)"
+    fi
+    _detected_uv_extras=""
+    while [ -n "$_detected_uv_flags" ]; do
+        case "$_detected_uv_flags" in
+            '--extra '*)
+                _detected_uv_flags="${_detected_uv_flags#--extra }"
+                _extra_name="${_detected_uv_flags%% *}"
+                if [ -z "$_detected_uv_extras" ]; then _detected_uv_extras="$_extra_name"; else _detected_uv_extras="$_detected_uv_extras,$_extra_name"; fi
+                if [ "$_detected_uv_flags" = "$_extra_name" ]; then _detected_uv_flags=""; else _detected_uv_flags="${_detected_uv_flags#$_extra_name }"; fi
+                ;;
+            *) break ;;
+        esac
+    done
+    if [ -n "$_detected_uv_extras" ]; then
+        export UV_EXTRAS="$_detected_uv_extras"
+    fi
+fi
+
+# Pass an existing dotenv file explicitly so Compose uses the same values as
+# the deploy script. The file is never sourced by the shell.
+if [ -f "$REPO_ROOT/.env" ]; then
+    COMPOSE_CMD+=(--env-file "$REPO_ROOT/.env")
+fi
+
 
 # ── BETTER_AUTH_SECRET ───────────────────────────────────────────────────────
 # Required by Next.js in production. Generated once and persisted so auth

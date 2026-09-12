@@ -18,7 +18,7 @@ jobs:
   backend-unit-tests:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +35,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - name: Install backend dependencies
         working-directory: backend
@@ -58,6 +60,18 @@ jobs:
           TEST_LANE_SHARDS: "4"
           TEST_LANE_SHARD_INDEX: ${{ matrix.shard }}
         run: bash scripts/run-test-lane.sh backend-standard
+
+      - name: Upload collection inventory
+        if: always()
+        run: python3 scripts/test_inventory.py --collect --json > test-inventory-${{ matrix.shard }}.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-inventory-${{ matrix.shard }}
+          path: |
+            test-inventory-${{ matrix.shard }}.json
+            logs/test-lanes/**
 
       - name: Upload backend coverage data
         uses: actions/upload-artifact@v4
@@ -90,6 +104,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - name: Install backend dependencies
         working-directory: backend
@@ -131,6 +147,8 @@ jobs:
           python-version: "3.12"
 
       - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - name: Install backend dependencies
         working-directory: backend

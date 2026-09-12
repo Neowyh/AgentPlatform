@@ -172,7 +172,8 @@ class TestCrawl4AiTools:
         mock_build.return_value = mock_client
 
         with patch("deerflow.community.crawl4ai.tools._get_tool_config", return_value=None):
-            result = await tools.web_fetch_tool.ainvoke("https://example.com/article")
+            with patch("deerflow.community.url_safety.resolve_host_addresses", return_value=[ipaddress.ip_address("93.184.216.34")]):
+                result = await tools.web_fetch_tool.ainvoke("https://example.com/article")
 
         assert result == "# Title\n\nContent"
         assert "Error:" not in result
@@ -186,7 +187,8 @@ class TestCrawl4AiTools:
         mock_build.return_value = mock_client
 
         with patch("deerflow.community.crawl4ai.tools._get_tool_config", return_value=None):
-            result = await tools.web_fetch_tool.ainvoke("https://example.com")
+            with patch("deerflow.community.url_safety.resolve_host_addresses", return_value=[ipaddress.ip_address("93.184.216.34")]):
+                result = await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert len(result) == 4096
 
@@ -277,7 +279,8 @@ class TestCrawl4AiTools:
         mock_build.return_value = mock_client
 
         with patch("deerflow.community.crawl4ai.tools._get_tool_config", return_value={"filter": "raw"}):
-            await tools.web_fetch_tool.ainvoke("https://example.com")
+            with patch("deerflow.community.url_safety.resolve_host_addresses", return_value=[ipaddress.ip_address("93.184.216.34")]):
+                await tools.web_fetch_tool.ainvoke("https://example.com")
 
         mock_client.fetch_markdown.assert_called_once()
         assert mock_client.fetch_markdown.call_args.kwargs.get("filter_mode") == "raw"
@@ -291,7 +294,8 @@ class TestCrawl4AiTools:
         mock_build.return_value = mock_client
 
         with patch("deerflow.community.crawl4ai.tools._get_tool_config", return_value={"filter": "BOGUS"}):
-            await tools.web_fetch_tool.ainvoke("https://example.com")
+            with patch("deerflow.community.url_safety.resolve_host_addresses", return_value=[ipaddress.ip_address("93.184.216.34")]):
+                await tools.web_fetch_tool.ainvoke("https://example.com")
 
         assert mock_client.fetch_markdown.call_args.kwargs.get("filter_mode") == "fit"
 

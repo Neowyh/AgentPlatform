@@ -17,6 +17,15 @@ class AsyncMock(MagicMock):
         return super().__call__(*args, **kwargs)
 
 
+@pytest.fixture(autouse=True)
+def _public_dns_for_offline_tests(monkeypatch):
+    """Keep normal tool tests independent of the host resolver/network."""
+    monkeypatch.setattr(
+        "deerflow.community.browserless.tools._resolve_host_addresses",
+        lambda _hostname: [ipaddress.ip_address("93.184.216.34")],
+    )
+
+
 @pytest.mark.asyncio
 class TestBrowserlessClient:
     """Tests for the BrowserlessClient class."""

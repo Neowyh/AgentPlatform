@@ -158,21 +158,21 @@ def test_initialize_accessible_without_cookie(client):
 
 
 def test_initialize_rejects_short_password(client):
-    """Password shorter than 8 chars → 400."""
+    """Password shorter than 8 chars is rejected during request validation."""
     resp = client.post(
         "/api/v1/auth/initialize",
         json={**_init_payload(), "password": "short"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_initialize_rejects_common_password(client):
-    """Common password → 400."""
+    """Common password is rejected during request validation."""
     resp = client.post(
         "/api/v1/auth/initialize",
         json={**_init_payload(), "password": "password123"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 # ── setup-status reflects initialization ─────────────────────────────────

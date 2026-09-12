@@ -711,7 +711,11 @@ def _request_with_role(system_role: str):
             user=SimpleNamespace(
                 id="user-1",
                 system_role=system_role,
-            )
+            ),
+            # These direct-router tests intentionally model trusted local
+            # callers; regular session requests are covered by integration
+            # tests with a real RBAC profile.
+            auth_source="auth_disabled" if system_role == "admin" else "pat",
         )
     )
 

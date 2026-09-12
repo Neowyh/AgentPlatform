@@ -67,7 +67,9 @@ async def test_bootstrap_offloads_alembic_stamp_and_upgrade(monkeypatch: pytest.
         await bootstrap_mod.bootstrap_schema(engine, backend="sqlite")
         assert "_stamp" in seen, f"_stamp not offloaded; saw: {seen}"
 
-        # Re-run -> versioned branch -> upgrade head (no-op at head). ``_upgrade`` must be offloaded.
+        # Force the versioned upgrade branch so the offload invariant is tested
+        # even though a normal rerun at the current head is a fast no-op.
+        monkeypatch.setattr(bootstrap_mod, "_database_has_head", lambda _conn, _head: False)
         seen.clear()
         await bootstrap_mod.bootstrap_schema(engine, backend="sqlite")
         assert "_upgrade" in seen, f"_upgrade not offloaded; saw: {seen}"

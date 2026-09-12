@@ -22,6 +22,7 @@ class AuthErrorCode(StrEnum):
     NOT_AUTHENTICATED = "not_authenticated"
     USER_DISABLED = "user_disabled"
     SYSTEM_ALREADY_INITIALIZED = "system_already_initialized"
+    REGISTRATION_DISABLED = "registration_disabled"
 
 
 class TokenError(StrEnum):

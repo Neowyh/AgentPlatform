@@ -72,16 +72,17 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
     authenticated context and skips its own re-authentication path.
     """
 
-    def __init__(self, app: ASGIApp, user_factory: Callable[[], User]) -> None:
+    def __init__(self, app: ASGIApp, user_factory: Callable[[], User], auth_source: str) -> None:
         super().__init__(app)
         self._user_factory = user_factory
+        self._auth_source = auth_source
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         user = self._user_factory()
         request.state.user = user
         # Bare router tests explicitly model the trusted auth-disabled path;
         # this prevents production RBAC lookup from requiring a database.
-        request.state.auth_source = AUTH_SOURCE_AUTH_DISABLED
+        request.state.auth_source = self._auth_source
         request.state.auth = AuthContext(user=user, permissions=list(_STUB_PERMISSIONS))
         return await call_next(request)
 
@@ -90,6 +91,7 @@ def make_authed_test_app(
     *,
     user_factory: Callable[[], User] | None = None,
     owner_check_passes: bool = True,
+    auth_source: str = AUTH_SOURCE_AUTH_DISABLED,
 ) -> FastAPI:
     """Build a FastAPI test app with stub auth + permissive thread_store.
 
@@ -109,7 +111,7 @@ def make_authed_test_app(
     """
     factory = user_factory or _make_stub_user
     app = FastAPI()
-    app.add_middleware(_StubAuthMiddleware, user_factory=factory)
+    app.add_middleware(_StubAuthMiddleware, user_factory=factory, auth_source=auth_source)
 
     repo = MagicMock()
     repo.check_access = AsyncMock(return_value=owner_check_passes)

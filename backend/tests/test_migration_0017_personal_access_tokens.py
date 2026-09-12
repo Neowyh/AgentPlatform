@@ -16,6 +16,7 @@ from alembic.config import Config as AlembicConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from deerflow.persistence.bootstrap import _MIGRATIONS_DIR
+from deerflow.persistence.migrations._chain_meta import version_locations
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,6 +40,7 @@ _EXPECTED_COLUMNS = {
 def _alembic_config(db_url: str) -> AlembicConfig:
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", _SCRIPT_LOCATION)
+    cfg.set_main_option("version_locations", version_locations(_MIGRATIONS_DIR))
     # Escape % for ConfigParser (SQLite URLs carry none, Postgres passwords might).
     cfg.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
     return cfg

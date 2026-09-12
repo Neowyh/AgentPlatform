@@ -13,7 +13,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, String, Text, select
+from sqlalchemy import Column, DateTime, String, Text, func, select
 
 from app.agentplatform.resource_models import ResourceMetadata
 from app.agentplatform.visibility_models import VisibilityApplication
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Inline model for the old skill_applications table (kept for migration purposes)
 class SkillApplication(Base):
     __tablename__ = "skill_applications"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     skill_id = Column(String, nullable=False)
@@ -34,8 +35,8 @@ class SkillApplication(Base):
     request_level = Column(String, nullable=False)
     department_id = Column(String, nullable=True)
     reason = Column(Text, default="")
-    status = Column(String, nullable=False, default="pending")
-    submitted_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=True, default="pending")
+    submitted_at = Column(DateTime, server_default=func.now(), nullable=True)
     reviewed_by = Column(String, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     review_comment = Column(Text, nullable=True)

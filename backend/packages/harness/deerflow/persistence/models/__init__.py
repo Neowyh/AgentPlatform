@@ -24,6 +24,7 @@ from deerflow.persistence.channel_connections.model import (
 from deerflow.persistence.feedback.model import FeedbackRow
 from deerflow.persistence.managed_subagents.model import ManagedSubagentRow
 from deerflow.persistence.mcp_tasks.model import McpTaskRow
+from deerflow.persistence.models.legacy_tables import skill_applications, workflow_runs
 from deerflow.persistence.models.run_event import RunEventRow
 from deerflow.persistence.personal_access_tokens.model import PersonalAccessTokenRow
 from deerflow.persistence.run.model import RunRow
@@ -45,6 +46,8 @@ __all__ = [
     "ManagedSubagentRow",
     "PersonalAccessTokenRow",
     "RunEventRow",
+    "skill_applications",
+    "workflow_runs",
     "RunRow",
     "ScheduledTaskRow",
     "ScheduledTaskRunRow",

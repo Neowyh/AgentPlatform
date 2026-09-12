@@ -4,6 +4,17 @@ import ipaddress
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _public_dns_for_offline_tests(monkeypatch):
+    """Keep normal tool tests independent of the host resolver/network."""
+    monkeypatch.setattr(
+        "deerflow.community.url_safety.resolve_host_addresses",
+        lambda _hostname: [ipaddress.ip_address("93.184.216.34")],
+    )
+
 
 class TestWebSearchTool:
     @patch.dict("os.environ", {}, clear=True)

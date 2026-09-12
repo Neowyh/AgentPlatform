@@ -8,7 +8,7 @@ async function selectAgent(page: Page, scenario: RegExp, agent: RegExp) {
   await page.getByRole("tab", { name: agent }).click();
 }
 
-test.describe("WorkBuddy cascade bar", () => {
+test.describe("@smoke WorkBuddy cascade bar", () => {
   test("shows three scenario tabs in welcome mode", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");

@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import logging
 from types import SimpleNamespace
@@ -17,6 +18,15 @@ from app.gateway.routers.browser import (
     _should_apply_browser_seed,
     _ws_origin_allowed,
 )
+
+
+@pytest.fixture(autouse=True)
+def _public_dns_for_offline_tests(monkeypatch):
+    """Keep normal browser URL tests independent of the host resolver/network."""
+    monkeypatch.setattr(
+        "deerflow.community.browser_automation.tools._resolve_host_addresses",
+        lambda _hostname: [ipaddress.ip_address("93.184.216.34")],
+    )
 
 
 class _FakeWebSocket:

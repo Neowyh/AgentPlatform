@@ -1,3 +1,19 @@
+## Test entry contracts
+
+`test_preflight.py <lane>` is a read-only, fail-fast check for the selected
+lane. It checks locked tooling, framework plugins, browser availability,
+writable runtime directories, and (for browser/service lanes) local socket
+binding. It never installs packages or contacts application services. Socket,
+browser, lockfile, and package-manager failures are always fatal; rerun the
+same lane in an environment that permits local sockets when necessary.
+`pnpm_command.py` is the single resolver for both preflight and lane execution:
+it uses `TEST_PNPM_BIN`, then PATH pnpm, then `corepack pnpm`. `test_inventory.py --json` is the
+static ownership report; `collection_status: static-only` keeps tests with
+unavailable credentials visible rather than silently dropping them.
+`check_test_contracts.py` is the cheap CI gate for missing ownership, base-lane
+overlap, and stale runner/package entry names; it must pass before an expensive
+lane starts.
+
 ## Service Startup Contracts
 
 The root `PORT` value configures Docker's published nginx ingress only; local

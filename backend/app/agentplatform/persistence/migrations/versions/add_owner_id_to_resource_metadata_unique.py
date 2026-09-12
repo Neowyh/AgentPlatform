@@ -13,6 +13,7 @@ Create Date: 2026-07-10
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -25,12 +26,16 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Replace (resource_type, resource_id) unique constraint with
     (resource_type, resource_id, owner_id)."""
+    bind = op.get_bind()
+    constraints = sa.inspect(bind).get_unique_constraints("resource_metadata") if bind is not None else []
+    names = {item.get("name") for item in constraints}
+    columns = {tuple(item.get("column_names") or []) for item in constraints}
+    if "uq_resource_type_id_owner" in names or ("resource_type", "resource_id", "owner_id") in columns:
+        return
     with op.batch_alter_table("resource_metadata", schema=None) as batch_op:
-        batch_op.drop_constraint("uq_resource_type_id", type_="unique")
-        batch_op.create_unique_constraint(
-            "uq_resource_type_id_owner",
-            ["resource_type", "resource_id", "owner_id"],
-        )
+        if "uq_resource_type_id" in names or ("resource_type", "resource_id") in columns:
+            batch_op.drop_constraint("uq_resource_type_id", type_="unique")
+        batch_op.create_unique_constraint("uq_resource_type_id_owner", ["resource_type", "resource_id", "owner_id"])
 
 
 def downgrade() -> None:

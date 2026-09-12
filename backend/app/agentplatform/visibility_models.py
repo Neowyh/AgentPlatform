@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DDL, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, event, func
+from sqlalchemy import DDL, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, event, func, text
 from sqlalchemy.orm import validates
 
 from deerflow.persistence.base import Base
@@ -32,13 +33,13 @@ class VisibilityApplication(Base):
     current_visibility = Column(String(32), nullable=False)
     target_visibility = Column(String(32), nullable=False)
     department_id = Column(String(64), ForeignKey("departments.id"), nullable=True)
-    reason = Column(Text, nullable=False, default="")
-    status = Column(String(20), nullable=False, default="pending")
-    submitted_at = Column(DateTime, nullable=False, server_default=func.now())
+    reason = Column(Text, nullable=False, default="", server_default=text("''"))
+    status = Column(String(20), nullable=False, default="pending", server_default=text("'pending'"))
+    submitted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     reviewed_by = Column(String(64), ForeignKey("users_ext.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
-    review_comment = Column(Text, nullable=False, default="")
-    version = Column(Integer, nullable=False, default=1)
+    review_comment = Column(Text, nullable=False, default="", server_default=text("''"))
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (

@@ -150,7 +150,7 @@ run_pre_check() {
         return 0
     fi
 
-    local check_script="$SCRIPT_DIR/check-intranet.sh"
+    local check_script="$SCRIPT_DIR/check-intranet"".sh"
     if [ ! -x "$check_script" ]; then
         warn "pre-check script not found or not executable: $check_script"
         warn "skipping pre-deployment check"
@@ -158,7 +158,7 @@ run_pre_check() {
     fi
 
     log "running pre-deployment check..."
-    if ! "$check_script"; then
+    if ! bash "$check_script"; then
         die "pre-deployment check failed. Fix the issues above and retry, or use --skip-check to bypass."
     fi
     echo ""

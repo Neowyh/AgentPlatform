@@ -167,7 +167,7 @@ if ! uv sync --locked --all-packages $EXTRAS_FLAGS; then
     fi
 fi
 
-# ── Hand off to the requested process ───────────────────────────────────────
+# ── Hand off to uvicorn ──────────────────────────────────────────────────────
 # ${1:-gateway} selects the entrypoint role: "gateway" (default) runs the
 # uvicorn dev server; "worker" runs the durable workflow worker so `make
 # docker-start` environments process durable workflow tasks.

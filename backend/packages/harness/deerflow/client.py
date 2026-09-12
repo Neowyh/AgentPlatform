@@ -17,6 +17,7 @@ Usage:
 
 import asyncio
 import concurrent.futures
+import contextvars
 import copy
 import logging
 import mimetypes
@@ -79,6 +80,24 @@ from deerflow.uploads.manager import (
 from deerflow.utils.thread_id import resolve_thread_id, validate_thread_id
 
 logger = logging.getLogger(__name__)
+
+
+def _close_stream_generator(generator: Generator[Any, None, None]) -> None:
+    """Close a stream and its delegated agent iterator synchronously.
+
+    ``generator.close()`` does not close an iterator currently owned by a
+    ``for`` loop in the generator.  Closing that delegated iterator here keeps
+    its ``finally`` blocks inside the caller's trace context instead of
+    deferring them to garbage collection.
+    """
+    frame = generator.gi_frame
+    delegated = frame.f_locals.get("agent_items") if frame is not None else None
+    if delegated is not None and delegated is not generator:
+        close = getattr(delegated, "close", None)
+        if close is not None:
+            close()
+    generator.close()
+
 
 _EMBEDDED_AUTHORIZATION_CONTEXT_KEYS = frozenset(
     {
@@ -769,7 +788,10 @@ class DeerFlowClient:
             # when GC closes the generator from another Context.
             token = bind_trace_id(trace_id)
             try:
-                inner.close()
+                # Generators retain the context in which they are resumed.
+                # Run close in a snapshot carrying the bound id so nested
+                # ``finally`` blocks observe the same turn context.
+                contextvars.copy_context().run(_close_stream_generator, inner)
             finally:
                 reset_trace_id(token)
 

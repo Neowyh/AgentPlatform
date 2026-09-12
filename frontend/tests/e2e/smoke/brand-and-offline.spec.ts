@@ -9,7 +9,7 @@ async function openWorkspaceMenu(page: Page) {
   await expect(page.getByRole("menu")).toBeVisible();
 }
 
-test.describe("Brand and offline adaptations", () => {
+test.describe("@smoke Brand and offline adaptations", () => {
   test.describe("Landing Page", () => {
     test("landing page shows iDeer brand", async ({ page }) => {
       mockLangGraphAPI(page);

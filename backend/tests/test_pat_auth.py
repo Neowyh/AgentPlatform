@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from starlette.testclient import TestClient
 
+import app.agentplatform.rbac_models  # noqa: F401  (register users_ext)
 import deerflow.persistence.models  # noqa: F401  (register every table)
 from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
 from app.gateway.auth_middleware import AuthMiddleware
@@ -149,7 +150,10 @@ def pat_env(tmp_path, monkeypatch):
     """Engine + PAT repo + patched user provider; returns (client, repo)."""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/pats.db", poolclass=NullPool)
     asyncio.run(_create_tables(engine))
-    repo = PersonalAccessTokenRepository(async_sessionmaker(engine, expire_on_commit=False))
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    asyncio.run(_seed_rbac(session_factory))
+    monkeypatch.setattr("deerflow.persistence.engine._session_factory", session_factory)
+    repo = PersonalAccessTokenRepository(session_factory)
 
     fake_provider = _FakeProvider(_fake_user("user-1"), _fake_user("user-2"), _fake_user("admin-1", system_role="admin"))
     monkeypatch.setattr("app.gateway.deps.get_local_provider", lambda: fake_provider)
@@ -163,6 +167,20 @@ def pat_env(tmp_path, monkeypatch):
 async def _create_tables(engine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def _seed_rbac(session_factory) -> None:
+    from app.agentplatform.rbac_models import UserModel
+
+    async with session_factory() as session:
+        session.add_all(
+            [
+                UserModel(id="user-1", username="user-1", role="user"),
+                UserModel(id="user-2", username="user-2", role="user"),
+                UserModel(id="admin-1", username="admin-1", role="super_admin"),
+            ]
+        )
+        await session.commit()
 
 
 @pytest.fixture

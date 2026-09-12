@@ -17,6 +17,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("run_resource_snapshots")}
+    if "selection_role" in columns:
+        return
     with op.batch_alter_table("run_resource_snapshots") as batch_op:
         batch_op.add_column(sa.Column("selection_role", sa.String(length=16), nullable=False, server_default="resolved"))
         batch_op.create_check_constraint(

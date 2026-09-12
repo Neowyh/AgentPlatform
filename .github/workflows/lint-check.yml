@@ -10,6 +10,21 @@ permissions:
   contents: read
 
 jobs:
+  agent-guidance:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Validate agent guidance
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/check_agent_guidance.py --base-ref "${{ github.event.pull_request.base.sha }}" --head-ref "${{ github.sha }}"
+          else
+            python3 scripts/check_agent_guidance.py --before "${{ github.event.before }}" --after "${{ github.sha }}"
+          fi
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -22,6 +37,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - name: Install dependencies
         working-directory: backend

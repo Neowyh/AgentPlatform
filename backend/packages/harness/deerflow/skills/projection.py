@@ -33,7 +33,10 @@ except ImportError:  # pragma: no cover - Windows
 _locks_guard = threading.Lock()
 _process_locks: dict[Path, threading.RLock] = {}
 _MANIFEST_VERSION = 1
-_MAX_REBUILD_ATTEMPTS = 2
+# Concurrent skill writes can legitimately change the source signature between
+# the snapshot and rebuild. A few bounded retries absorb that short window;
+# persistent churn still fails explicitly below.
+_MAX_REBUILD_ATTEMPTS = 5
 _THREAD_PROJECTION_POLICY_VERSION = 1
 
 

@@ -44,6 +44,13 @@ For auth, RBAC, persistence, memory, admin, Agent, Skill, or Workflow changes, r
 
 ### Agent Implementation Test Protocol
 
+The canonical lane contract and handoff definitions live in
+[docs/testing/test-lane-runbook.md](docs/testing/test-lane-runbook.md). After
+adding or moving tests, run `python3 scripts/test_inventory.py`; before a lane,
+run `python3 scripts/test_preflight.py <lane>` (the lane runner does this
+automatically). Inventory ownership is exclusive; smoke is an aggregate subset
+of mock E2E. Missing optional credentials are reported as unexecuted.
+
 When an Agent implements or fixes code, use this sequence:
 
 1. **TDD slice**: identify the public seam, write one focused regression test, verify RED, implement the smallest change, then verify GREEN. Repeat one vertical slice at a time.

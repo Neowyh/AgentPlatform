@@ -33,6 +33,8 @@ PAT_ALLOWED_SCOPES: frozenset[str] = frozenset(
         "runs:create",
         "runs:read",
         "runs:cancel",
+        "assistants:read",
+        "models:read",
     }
 )
 

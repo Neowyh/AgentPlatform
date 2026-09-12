@@ -27,6 +27,7 @@ import pytest
 from fastapi import FastAPI, Request
 
 from app.channels.runtime_config_store import ChannelRuntimeConfigStore
+from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
 from app.gateway.routers.channel_connections import (
     ChannelRuntimeConfigRequest,
     configure_channel_provider_runtime,
@@ -65,7 +66,7 @@ def _make_request(tmp_path) -> Request:
     store = ChannelRuntimeConfigStore(tmp_path / "channels" / "runtime-config.json")
     app.state.channel_runtime_config_store = store
     user = SimpleNamespace(id=UUID("11111111-2222-3333-4444-555555555555"), system_role="admin")
-    return Request({"type": "http", "app": app, "headers": [], "state": {"user": user}})
+    return Request({"type": "http", "app": app, "headers": [], "state": {"user": user, "auth_source": AUTH_SOURCE_AUTH_DISABLED}})
 
 
 async def test_configure_runtime_channel_does_not_block_event_loop(tmp_path) -> None:

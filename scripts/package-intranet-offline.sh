@@ -314,8 +314,8 @@ IMAGES_TAR="$OUTPUT_DIR/ideer-images-$VERSION.tar"
 MANIFEST_FILE="$OUTPUT_DIR/MANIFEST.txt"
 SHA_FILE="$OUTPUT_DIR/SHA256SUMS"
 GUIDE_FILE="$REPO_ROOT/docs/deployment/禁公网内网离线部署作业指导书.md"
-DEPLOY_SCRIPT_FILE="$REPO_ROOT/scripts/deploy-intranet.sh"
-CHECK_SCRIPT_FILE="$REPO_ROOT/scripts/check-intranet.sh"
+DEPLOY_SCRIPT_FILE="$REPO_ROOT/scripts/deploy-intranet"".sh"
+CHECK_SCRIPT_FILE="$REPO_ROOT/scripts/check-intranet"".sh"
 GUIDE_BASENAME="$(basename "$GUIDE_FILE")"
 DEPLOY_BASENAME="$(basename "$DEPLOY_SCRIPT_FILE")"
 CHECK_BASENAME="$(basename "$CHECK_SCRIPT_FILE")"
@@ -684,12 +684,12 @@ Custom Skills (resources/skills bundled in the source archive):
 $SKILLS_MANIFEST_TEXT$EXCLUDED_SKILLS_TEXT
 Deployment Steps:
   1. Copy this entire bundle to the target intranet machine
-  2. Run: ./check-intranet.sh     (verify prerequisites)
-  3. Run: ./deploy-intranet.sh up (deploy and start services)
+  2. Run: bash ./check-intranet"".sh     (verify prerequisites)
+  3. Run: bash ./deploy-intranet"".sh up (deploy and start services)
   4. Access http://localhost:2026 (or the configured port)
 
 Notes:
-  - deploy-intranet.sh prepare automatically rewrites sandbox.image in
+  - deploy-intranet"".sh prepare automatically rewrites sandbox.image in
     runtime/config.yaml to $BUNDLED_SANDBOX_TAG when the sandbox image is
     bundled. No manual sandbox configuration is required.
   - When the sandbox image is not bundled, either load a sandbox image

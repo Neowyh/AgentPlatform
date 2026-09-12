@@ -17,8 +17,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("workflow_v2_runs") as batch_op:
-        batch_op.add_column(sa.Column("model_name", sa.String(length=128), nullable=True))
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("workflow_v2_runs")}
+    if "model_name" not in columns:
+        with op.batch_alter_table("workflow_v2_runs") as batch_op:
+            batch_op.add_column(sa.Column("model_name", sa.String(length=128), nullable=True))
 
 
 def downgrade() -> None:
