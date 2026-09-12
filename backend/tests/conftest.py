@@ -347,7 +347,12 @@ def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch)
 
 @pytest.fixture(autouse=True)
 def _test_runtime_config(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
-    if request.path.name.startswith("test_app_config"):
+    if request.path.name.startswith("test_app_config") or request.path.name == "test_extension_manager.py":
+        return
+    # Extension-manager tests create an isolated DeerFlow checkout and select
+    # its config through DEER_FLOW_PROJECT_ROOT. Do not overwrite that explicit
+    # target with the repository-wide runtime fixture.
+    if os.getenv("DEER_FLOW_PROJECT_ROOT"):
         return
     if os.getenv("DEER_FLOW_CONFIG_PATH"):
         return

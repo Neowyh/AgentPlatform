@@ -36,6 +36,7 @@ from uuid import UUID
 
 import pytest
 
+from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
 from app.gateway.routers import mcp as mcp_router
 from app.gateway.routers import skills as skills_router
 from app.gateway.routers.mcp import McpConfigUpdateRequest
@@ -50,7 +51,7 @@ def _admin_request() -> SimpleNamespace:
     # ``require_admin_user`` reads ``request.state.user``; AuthMiddleware normally
     # stamps it. A SimpleNamespace is enough for the direct-call tests.
     user = SimpleNamespace(id=UUID("11111111-2222-3333-4444-555555555555"), system_role="admin")
-    return SimpleNamespace(state=SimpleNamespace(user=user))
+    return SimpleNamespace(state=SimpleNamespace(user=user, auth_source=AUTH_SOURCE_AUTH_DISABLED))
 
 
 def _make_skill(name: str, *, enabled: bool) -> Skill:

@@ -17,15 +17,19 @@ const shared = {
   output: {
     // Streamdown imports KaTeX CSS as a side effect. Bundle these packages so
     // Rsbuild processes that CSS import instead of Node trying to load it.
-    bundleDependencies: ["streamdown", "katex"],
+    bundleDependencies: ["streamdown", "katex", "@xyflow/react"],
   },
 };
 
 // Framework split (see tests/framework-split.ts): rstest only claims the
 // files that import `@rstest/core`; vitest collects the rest, so no file
 // runs twice.
-const rstestNodeFiles = rstestUnitFiles.filter((file) => !file.includes(".dom.test."));
-const rstestDomFiles = rstestUnitFiles.filter((file) => file.includes(".dom.test."));
+const rstestNodeFiles = rstestUnitFiles.filter(
+  (file) => !file.includes(".dom.test."),
+);
+const rstestDomFiles = rstestUnitFiles.filter((file) =>
+  file.includes(".dom.test."),
+);
 
 export default defineConfig({
   projects: [

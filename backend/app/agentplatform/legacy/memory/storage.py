@@ -74,6 +74,13 @@ class FileMemoryStorage(MemoryStorage):
         self._memory_cache: dict[tuple[str | None, str | None], tuple[dict[str, Any], float | None]] = {}
         # Guards all reads and writes to _memory_cache across concurrent callers.
         self._cache_lock = threading.Lock()
+        # Serializes read-modify-write operations performed by the legacy
+        # updater so concurrent fact mutations cannot overwrite one another.
+        self._operation_lock = threading.RLock()
+
+    def operation_lock(self):
+        """Return the lock guarding a complete memory mutation."""
+        return self._operation_lock
 
     def _validate_agent_name(self, agent_name: str) -> None:
         """Validate that the agent name is safe to use in filesystem paths.

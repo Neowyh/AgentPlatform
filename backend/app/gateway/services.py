@@ -240,7 +240,15 @@ def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool 
 
 def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
     """Strip host-owned metadata from message-like values in every channel."""
-    return {channel: [_strip_external_message_metadata(item) for item in value] if isinstance(value, list) else _strip_external_message_metadata(value) for channel, value in values.items()}
+    cleaned: dict[str, Any] = {}
+    for channel, value in values.items():
+        if channel == "delegations" and isinstance(value, list):
+            cleaned[channel] = [_strip_external_delegation_verdict(item) for item in value]
+        elif isinstance(value, list):
+            cleaned[channel] = [_strip_external_message_metadata(item) for item in value]
+        else:
+            cleaned[channel] = _strip_external_message_metadata(value)
+    return cleaned
 
 
 def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
@@ -418,6 +426,14 @@ def inject_authenticated_user_context(
     # or unprovisioned account.
     cached_identity = getattr(getattr(request, "state", None), "_ideer_rbac_user", None)
     resolved_role = cached_identity.get("role") if isinstance(cached_identity, dict) else None
+    # Direct embedded callers and focused contract tests do not pass the
+    # middleware's RBAC cache. Preserve the authenticated user's role there;
+    # requests that went through middleware always use the server-resolved
+    # cache above.
+    if resolved_role is None and cached_identity is None and auth_source is None:
+        resolved_role = getattr(user, "system_role", None)
+    if resolved_role is None and internal_owner_user is not None:
+        resolved_role = getattr(internal_owner_user, "system_role", None)
     if resolved_role is not None:
         runtime_context["user_role"] = resolved_role
     runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
@@ -590,7 +606,7 @@ def build_run_config(
                 logger.warning(
                     "build_run_config: client sent both 'context' and 'configurable'; preferring 'context' (LangGraph >= 0.6.0). thread_id=%s, caller_configurable keys=%s",
                     thread_id,
-                    list(request_config.get("configurable", {}).keys()),
+                    list((request_config.get("configurable") or {}).keys()),
                 )
             context_value = request_config["context"]
             if context_value is None:
@@ -606,7 +622,9 @@ def build_run_config(
             config["configurable"] = {"thread_id": thread_id}
         else:
             configurable = {"thread_id": thread_id}
-            configurable.update(request_config.get("configurable", {}))
+            request_configurable = request_config.get("configurable")
+            if isinstance(request_configurable, Mapping):
+                configurable.update(request_configurable)
             configurable["thread_id"] = thread_id
             config["configurable"] = configurable
         for k, v in request_config.items():
@@ -624,6 +642,13 @@ def build_run_config(
         value = config.get(section)
         if isinstance(value, dict):
             value.pop(INTERNAL_CHECKPOINT_MODE_KEY, None)
+            # Double-underscore entries are reserved for server-created
+            # runtime state (secret bindings, journals, and policy decisions).
+            # Never carry caller-supplied private keys across the gateway
+            # boundary; trusted code adds them after authentication.
+            for key in list(value):
+                if isinstance(key, str) and key.startswith("__"):
+                    value.pop(key, None)
 
     # Inject custom agent name when the caller specified a non-default assistant.
     # Honour an explicit agent_name in the active runtime options container.
@@ -1226,7 +1251,7 @@ async def start_run(
             owner_user_id = str(owner_user_id)
 
     if require_existing_thread:
-        if await run_ctx.thread_store.get(thread_id, user_id=owner_user_id) is None:
+        if not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
 
     # Validate checkpoint admission before the durable run row is created.
@@ -1246,7 +1271,7 @@ async def start_run(
             thread_id=thread_id,
             assistant_id=body.assistant_id,
         )
-        if require_existing_thread and await run_ctx.thread_store.get(thread_id, user_id=owner_user_id) is None:
+        if require_existing_thread and not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
         create_kwargs = {
             "on_disconnect": disconnect,
@@ -1514,13 +1539,14 @@ async def launch_mcp_task_notification_run(
         context={"non_interactive": True, "user_id": owner_user_id},
     )
     try:
-        record = await start_run(
-            body,
-            thread_id,
-            request,
-            idempotency_key=f"mcp-task:{task_id}:{dispatch_version}:{dispatch_attempt}",
-            require_existing_thread=True,
-        )
+        with ensure_trace_context():
+            record = await start_run(
+                body,
+                thread_id,
+                request,
+                idempotency_key=f"mcp-task:{task_id}:{dispatch_version}:{dispatch_attempt}",
+                require_existing_thread=True,
+            )
     except HTTPException as exc:
         if exc.status_code == 409:
             raise ConflictError(str(exc.detail)) from exc
@@ -1572,9 +1598,15 @@ async def _orphan_recovery_observed_after_heartbeat(
     ``stop_reason`` is written atomically with the terminal status. Only that
     explicit signal may synthesize END after a heartbeat.
     """
-    if not record.store_only:
+    if getattr(record, "store_only", False) is not True:
         return False
-    refreshed = await run_mgr.get(record.run_id, user_id=record.user_id)
+    getter = getattr(run_mgr, "get", None)
+    if getter is None:
+        return False
+    refreshed_result = getter(record.run_id, user_id=record.user_id)
+    if not inspect.isawaitable(refreshed_result):
+        return False
+    refreshed = await refreshed_result
     return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
 
 
@@ -1693,6 +1725,9 @@ async def sse_consumer(
                 return
 
             if entry is HEARTBEAT_SENTINEL:
+                if await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
+                    yield format_sse("end", None)
+                    return
                 yield ": heartbeat\n\n"
                 continue
 

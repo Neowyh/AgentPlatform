@@ -1,11 +1,60 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.gateway import authz
 from app.gateway.authz import require_permission
-from app.gateway.deps import get_config
+from app.gateway.deps import get_config, get_optional_user_from_request
+from deerflow.authz.principal import build_principal_from_context
+from deerflow.authz.provider import AuthzRequest
 from deerflow.config.app_config import AppConfig
 
 router = APIRouter(prefix="/api", tags=["models"])
+
+
+async def _authorized_model_names(request: Request, config: AppConfig) -> set[str] | None:
+    """Return the model names visible to the request, or ``None`` for all."""
+    auth_config = authz._get_route_authorization_config()
+    if not auth_config.enabled:
+        return None
+    user = await get_optional_user_from_request(request)
+    if user is None:
+        return None
+    try:
+        provider = authz._get_cached_route_provider(auth_config)
+        if provider is None:
+            raise RuntimeError("authorization provider unavailable")
+        principal = build_principal_from_context(
+            {"user_id": str(user.id), "user_role": getattr(user, "system_role", None)},
+            default_role=auth_config.default_role,
+        )
+        names = [model.name for model in config.models]
+        allowed = provider.filter_resources(principal, "model", names)
+        if not isinstance(allowed, list):
+            raise TypeError("AuthorizationProvider.filter_resources must return list[str]")
+        return set(allowed)
+    except Exception:
+        if auth_config.fail_closed:
+            return set()
+        return None
+
+
+async def _authorize_model_use(request: Request, model_name: str, user: object, auth_config: object) -> bool | None:
+    """Evaluate per-model use while preserving the configured failure mode."""
+    try:
+        provider = authz._get_cached_route_provider(auth_config)
+        if provider is None:
+            raise RuntimeError("authorization provider unavailable")
+        principal = build_principal_from_context(
+            {"user_id": str(user.id), "user_role": getattr(user, "system_role", None)},
+            default_role=auth_config.default_role,
+        )
+        result = provider.aauthorize(AuthzRequest(principal=principal, resource="model", action="use", target=model_name))
+        decision = await result if hasattr(result, "__await__") else result
+        return bool(decision.allow)
+    except Exception:
+        if auth_config.fail_closed:
+            return False
+        return None
 
 
 class ModelResponse(BaseModel):
@@ -75,6 +124,7 @@ async def list_models(request: Request, config: AppConfig = Depends(get_config))
         }
         ```
     """
+    allowed_names = await _authorized_model_names(request, config)
     models = [
         ModelResponse(
             name=model.name,
@@ -85,6 +135,7 @@ async def list_models(request: Request, config: AppConfig = Depends(get_config))
             supports_reasoning_effort=model.supports_reasoning_effort,
         )
         for model in config.models
+        if allowed_names is None or model.name in allowed_names
     ]
     return ModelsListResponse(
         models=models,
@@ -124,6 +175,17 @@ async def get_model(request: Request, model_name: str, config: AppConfig = Depen
     model = config.get_model_config(model_name)
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+
+    auth_config = authz._get_route_authorization_config()
+    user = await get_optional_user_from_request(request) if auth_config.enabled else None
+    if user is not None:
+        allowed = await _authorize_model_use(request, model_name, user, auth_config)
+        if allowed is False:
+            raise HTTPException(status_code=403, detail="Model access denied")
+
+    allowed_names = await _authorized_model_names(request, config)
+    if allowed_names is not None and model_name not in allowed_names:
+        raise HTTPException(status_code=403, detail="Model access denied")
 
     return ModelResponse(
         name=model.name,

@@ -36,12 +36,12 @@ class UserResponse(BaseModel):
     """Response model for user info endpoint.
 
     ``system_role`` returns the RBAC role from ``users_ext`` (viewer,
-    user, department_admin, super_admin). The legacy ``users.system_role``
-    field is not exposed as an authorization role.
+    user, department_admin, super_admin) or the development-only legacy
+    ``admin`` role used by the auth-disabled local user.
     """
 
     id: str
     email: str
-    system_role: Literal["viewer", "user", "department_admin", "super_admin"]
+    system_role: Literal["viewer", "user", "department_admin", "super_admin", "admin"]
     needs_setup: bool = False
     oauth_provider: str | None = Field(None, description="OAuth/SSO provider ID if the user logged in via SSO (e.g. 'keycloak')")

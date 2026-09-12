@@ -2366,6 +2366,7 @@ class TestThreadSafety:
         asyncio.run(schedule_from_caller())
 
         assert completed.wait(timeout=10), "work pinned to the persistent subagent loop must run after caller-loop teardown"
+        handles[0].result(timeout=10)
         assert handles[0].done()
         assert handles[0].result(timeout=10) is None
 

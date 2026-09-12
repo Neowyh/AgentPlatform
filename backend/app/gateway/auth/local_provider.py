@@ -83,6 +83,24 @@ class LocalAuthProvider(AuthProvider):
         )
         return await self._repo.create_user(user)
 
+    async def create_oauth_user(
+        self,
+        *,
+        email: str,
+        oauth_provider: str,
+        oauth_id: str,
+        system_role: str = "user",
+    ) -> User:
+        """Create a passwordless user linked to an OAuth identity."""
+        user = User(
+            email=email,
+            password_hash=None,
+            system_role=system_role,
+            oauth_provider=oauth_provider,
+            oauth_id=oauth_id,
+        )
+        return await self._repo.create_user(user)
+
     async def get_user_by_oauth(self, provider: str, oauth_id: str) -> User | None:
         """Get user by OAuth provider and ID."""
         return await self._repo.get_user_by_oauth(provider, oauth_id)

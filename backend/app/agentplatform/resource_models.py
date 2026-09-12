@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -48,12 +48,12 @@ class ResourceMetadata(Base):
     resource_id = Column(String(255), nullable=False)
     owner_id = Column(String(64), ForeignKey("users_ext.id"), nullable=False)
     department_id = Column(String(64), ForeignKey("departments.id"), nullable=True)
-    visibility = Column(String(32), nullable=False, default="private")
+    visibility = Column(String(32), nullable=False, default="private", server_default="private")
     imported_from = Column(Text, nullable=True)
-    version = Column(Integer, nullable=False, default=1)
-    is_favorited = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    is_favorited = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("resource_type", "resource_id", "owner_id", name="uq_resource_type_id_owner"),
@@ -73,18 +73,18 @@ class Resource(Base):
     slug: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
-    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="private")
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="private", server_default="private")
     scope_department_id: Mapped[str | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
-    lifecycle_status: Mapped[str] = mapped_column(String(16), nullable=False, default=ResourceLifecycleStatus.ACTIVE)
-    latest_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    draft_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lifecycle_status: Mapped[str] = mapped_column(String(16), nullable=False, default=ResourceLifecycleStatus.ACTIVE, server_default="active")
+    latest_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    draft_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     storage_kind: Mapped[str] = mapped_column(String(16), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    provenance: Mapped[str] = mapped_column(String(16), nullable=False, default=ResourceProvenance.USER)
-    system_owned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    authz_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    provenance: Mapped[str] = mapped_column(String(16), nullable=False, default=ResourceProvenance.USER, server_default="user")
+    system_owned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    authz_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("type", "owner_id", "slug", name="uq_resources_type_owner_slug"),
@@ -110,10 +110,10 @@ class ResourceVersion(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    scan_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    scan_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
     content: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
     source_resource_id: Mapped[str | None] = mapped_column(ForeignKey("resources.id", ondelete="SET NULL"), nullable=True)
     source_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -135,7 +135,7 @@ class ResourceDependency(Base):
     revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     purpose: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("source_resource_id", "target_resource_id", name="uq_resource_dependencies_edge"),
@@ -154,8 +154,8 @@ class RunResourceSnapshot(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     authz_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    selection_role: Mapped[str] = mapped_column(String(16), nullable=False, default="resolved")
-    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    selection_role: Mapped[str] = mapped_column(String(16), nullable=False, default="resolved", server_default="resolved")
+    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("run_id", "resource_id", name="uq_run_resource_snapshots_run_resource"),
@@ -171,7 +171,7 @@ class ResourceFavorite(Base):
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="CASCADE"), primary_key=True)
     resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
 
 class ResourceNotification(Base):
@@ -181,9 +181,9 @@ class ResourceNotification(Base):
     recipient_id: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="CASCADE"), nullable=False)
     resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="RESTRICT"), nullable=False)
     event: Mapped[str] = mapped_column(String(64), nullable=False)
-    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (Index("ix_resource_notifications_recipient_created", "recipient_id", "created_at"),)
 
@@ -197,6 +197,6 @@ class ResourceDraft(Base):
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     modified_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now, server_default=func.now())
 
     __table_args__ = (CheckConstraint("revision >= 1", name="ck_resource_drafts_revision"),)

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import FormData, Headers, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
+from app.agentplatform.skills.storage import get_or_new_enterprise_user_skill_storage
 from app.gateway.deps import get_config, require_admin_user
 from app.gateway.path_utils import resolve_thread_virtual_path
 from deerflow.agents.lead_agent.prompt import clear_skills_system_prompt_cache, refresh_skills_system_prompt_cache_async, refresh_user_skills_system_prompt_cache_async
@@ -38,6 +39,11 @@ from deerflow.skills.types import SKILL_MD_FILE, SkillCategory
 from deerflow.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
+
+# Compatibility seam for integrations and tests that patch the upstream
+# factory name.  The default remains the enterprise factory so offline-mode
+# filtering and user-scoped isolation are unchanged.
+get_or_new_user_skill_storage = get_or_new_enterprise_user_skill_storage
 
 router = APIRouter(prefix="/api", tags=["skills"])
 
@@ -176,9 +182,7 @@ def _get_user_skill_storage(config: AppConfig) -> SkillStorage:
     For public skill reads, the global singleton storage is still used.
     The enterprise storage applies the offline (intranet) skill policy.
     """
-    from app.agentplatform.skills.storage import get_or_new_enterprise_user_skill_storage
-
-    return get_or_new_enterprise_user_skill_storage(get_effective_user_id(), app_config=config)
+    return get_or_new_user_skill_storage(get_effective_user_id(), app_config=config)
 
 
 def _copy_uploaded_skill_archive(source: BinaryIO) -> Path:

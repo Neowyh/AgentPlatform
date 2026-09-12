@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { mockLangGraphAPI } from "../utils/mock-api";
 
-test.describe("Sidebar navigation", () => {
+test.describe("@smoke Sidebar navigation", () => {
   test("sidebar contains Chats and Agents nav links", async ({ page }) => {
     mockLangGraphAPI(page);
 

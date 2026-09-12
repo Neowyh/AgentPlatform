@@ -12,7 +12,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("workflow_v2_runs", sa.Column("department_id", sa.String(64), nullable=True))
+    inspector = sa.inspect(op.get_bind())
+    columns = {column["name"] for column in inspector.get_columns("workflow_v2_runs")}
+    if "department_id" not in columns:
+        op.add_column("workflow_v2_runs", sa.Column("department_id", sa.String(64), nullable=True))
 
 
 def downgrade() -> None:

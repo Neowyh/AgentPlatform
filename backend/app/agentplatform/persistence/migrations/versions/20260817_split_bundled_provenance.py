@@ -24,6 +24,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind is not None and "provenance" in {column["name"] for column in sa.inspect(bind).get_columns("resources")}:
+        return
     op.add_column("resources", sa.Column("provenance", sa.String(length=16), nullable=True))
     op.execute("UPDATE resources SET provenance = 'bundled' WHERE storage_kind = 'bundled'")
     op.execute("UPDATE resources SET provenance = 'user' WHERE provenance IS NULL")

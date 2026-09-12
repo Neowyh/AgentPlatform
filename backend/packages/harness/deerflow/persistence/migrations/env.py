@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from alembic import context
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from deerflow.persistence.base import Base
@@ -256,6 +256,17 @@ def _run_sqlite_migrations_online(url: str) -> None:
     """
     sync_url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
     connectable = create_engine(sync_url)
+
+    # The async migration path uses the equivalent
+    # ``listens_for(connectable.sync_engine, "connect")`` hook below.
+    @event.listens_for(connectable, "connect")
+    def _set_sqlite_busy_timeout(dbapi_connection, _connection_record):  # noqa: ARG001
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cursor.close()
+
     try:
         with connectable.connect() as connection:
             do_run_migrations(connection)

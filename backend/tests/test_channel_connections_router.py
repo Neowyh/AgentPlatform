@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.channels.runtime_config_store import ChannelRuntimeConfigStore
 from app.gateway.auth.models import User
+from app.gateway.auth_disabled import AUTH_SOURCE_PAT
 from app.gateway.routers import channel_connections
 from deerflow.config.app_config import AppConfig, reset_app_config, set_app_config
 from deerflow.config.channel_connections_config import ChannelConnectionsConfig
@@ -667,7 +668,7 @@ def test_runtime_config_endpoints_require_admin(tmp_path):
             "slack": {"enabled": True},
         }
     )
-    app = make_authed_test_app(user_factory=_non_admin_user)
+    app = make_authed_test_app(user_factory=_non_admin_user, auth_source=AUTH_SOURCE_PAT)
     app.state.channel_connections_config = config
     app.state.channel_connection_repo = repo
     app.state.channels_config = {}

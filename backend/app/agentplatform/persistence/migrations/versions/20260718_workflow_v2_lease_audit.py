@@ -12,17 +12,20 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "workflow_lease_audit",
-        sa.Column("id", sa.String(length=64), primary_key=True),
-        sa.Column("run_id", sa.String(length=64), sa.ForeignKey("workflow_v2_runs.run_id"), nullable=False),
-        sa.Column("task_id", sa.String(length=64), sa.ForeignKey("workflow_tasks.task_id"), nullable=False),
-        sa.Column("event_type", sa.String(length=24), nullable=False),
-        sa.Column("worker_id", sa.String(length=128), nullable=False),
-        sa.Column("attempt", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index("ix_workflow_lease_audit_run", "workflow_lease_audit", ["run_id", "created_at"])
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("workflow_lease_audit"):
+        op.create_table(
+            "workflow_lease_audit",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("run_id", sa.String(length=64), sa.ForeignKey("workflow_v2_runs.run_id"), nullable=False),
+            sa.Column("task_id", sa.String(length=64), sa.ForeignKey("workflow_tasks.task_id"), nullable=False),
+            sa.Column("event_type", sa.String(length=24), nullable=False),
+            sa.Column("worker_id", sa.String(length=128), nullable=False),
+            sa.Column("attempt", sa.Integer(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        )
+    if not any(index.get("name") == "ix_workflow_lease_audit_run" for index in inspector.get_indexes("workflow_lease_audit")):
+        op.create_index("ix_workflow_lease_audit_run", "workflow_lease_audit", ["run_id", "created_at"])
 
 
 def downgrade() -> None:

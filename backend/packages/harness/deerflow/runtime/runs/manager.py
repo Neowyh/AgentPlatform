@@ -2079,7 +2079,7 @@ class RunManager:
             remaining = (confirmed_deadline - datetime.now(UTC)).total_seconds()
             new_expiry = (datetime.now(UTC) + timedelta(seconds=lease_seconds)).isoformat()
             try:
-                async with asyncio.timeout(remaining):
+                async with asyncio.timeout(remaining) as renewal_timeout:
                     renewal = await self._call_store_with_retry(
                         "renew_lease",
                         run_id,
@@ -2090,7 +2090,11 @@ class RunManager:
                         ),
                     )
                 if renewal.renewed:
-                    if confirmed_deadline <= datetime.now(UTC):
+                    # A store adapter may swallow cancellation and commit a
+                    # renewal after the caller's deadline.  The timeout
+                    # context remains the authority: a late success cannot
+                    # revive local execution or advance its in-memory lease.
+                    if renewal_timeout.expired() or confirmed_deadline <= datetime.now(UTC):
                         await self._mark_ownership_lost(
                             record,
                             reason="Lease renewal completed after the last confirmed lease had already expired.",

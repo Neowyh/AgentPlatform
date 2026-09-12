@@ -15,10 +15,14 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from app.gateway.auth.session_cookie_state import SESSION_COOKIE_MAX_AGE_STATE_ATTR
+from app.gateway.auth_disabled import is_auth_disabled
+from app.gateway.request_path import get_request_route_path
 
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_TOKEN_LENGTH = 64  # bytes
+_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me", "/api/webhooks/github"})
+_CSRF_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 
 
 def is_secure_request(request: Request) -> bool:
@@ -34,7 +38,18 @@ def generate_csrf_token() -> str:
 def auth_csrf_cookie_settings(request: Request) -> tuple[bool, int | None]:
     """Return secure and max-age settings shared by auth handlers."""
     secure = is_secure_request(request)
-    return secure, (60 * 60 * 24 if secure else None)
+    if not secure:
+        return secure, None
+    try:
+        from app.gateway.auth.config import get_auth_config
+
+        max_age = get_auth_config().token_expiry_days * 24 * 60 * 60
+    except (OSError, RuntimeError, ValueError):
+        # Failed login responses have no session policy to copy. Keep the
+        # documented seven-day default without making an auth error depend on
+        # configuration initialization.
+        max_age = 7 * 24 * 60 * 60
+    return secure, max_age
 
 
 def should_check_csrf(request: Request) -> bool:
@@ -43,14 +58,29 @@ def should_check_csrf(request: Request) -> bool:
     CSRF is checked for state-changing methods (POST, PUT, DELETE, PATCH).
     GET, HEAD, OPTIONS, and TRACE are exempt per RFC 7231.
     """
-    if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
+    if request.method not in _CSRF_STATE_CHANGING_METHODS:
         return False
 
-    path = request.url.path.rstrip("/")
-    # Exempt /api/v1/auth/me endpoint
-    if path == "/api/v1/auth/me":
+    path = _request_path(request)
+    if path in _CSRF_EXEMPT_EXACT_PATHS:
         return False
     return True
+
+
+def _request_path(request: Request) -> str:
+    """Return the mounted application's raw path without proxy prefixes.
+
+    ``request.url.path`` may normalize percent-encoded delimiters before this
+    check runs.  Exemption matching must use the raw path so an encoded newline
+    or query delimiter cannot become an auth endpoint.  Starlette exposes the
+    mount prefix separately as ``root_path``; remove it before comparing child
+    routes.
+    """
+    scope = getattr(request, "scope", None)
+    if not isinstance(scope, dict):
+        # Lightweight unit-test doubles may only provide ``url.path``.
+        return str(request.url.path).rstrip("/")
+    return get_request_route_path(request).rstrip("/")
 
 
 _AUTH_EXEMPT_PATHS: frozenset[str] = frozenset(
@@ -68,7 +98,7 @@ def is_auth_endpoint(request: Request) -> bool:
 
     Auth endpoints don't need CSRF validation on first call (no token).
     """
-    return request.url.path.rstrip("/") in _AUTH_EXEMPT_PATHS
+    return _request_path(request) in _AUTH_EXEMPT_PATHS
 
 
 def _host_with_optional_port(hostname: str, port: int | None, scheme: str) -> str:
@@ -121,7 +151,7 @@ def get_configured_cors_origins() -> set[str]:
 
 # Run-creating routes return the run id in this non-safelisted response header;
 # split-origin browser clients need it exposed for the LangGraph SDK.
-CORS_EXPOSED_HEADERS: tuple[str, ...] = ("Content-Location",)
+CORS_EXPOSED_HEADERS: tuple[str, ...] = ("Content-Location", "X-Trace-Id")
 
 
 def _first_header_value(value: str | None) -> str | None:
@@ -192,14 +222,24 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         _is_auth = is_auth_endpoint(request)
+        csrf_disabled = is_auth_disabled()
+        # Bearer/PAT credentials are authenticated by AuthMiddleware. Let even
+        # malformed bearer headers reach that layer so callers receive 401
+        # instead of a misleading CSRF 403; valid bearer requests are not
+        # browser-cookie state changes and do not need double-submit tokens.
+        bearer_present = request.headers.get("authorization") is not None
 
-        if should_check_csrf(request) and _is_auth and not is_allowed_auth_origin(request):
+        # Auth endpoints still enforce the origin policy even when a bearer
+        # header is present; otherwise a stolen or malformed token could be
+        # used to bypass the browser-origin boundary. Non-auth API requests
+        # keep the bearer fast path below so invalid tokens reach AuthMiddleware.
+        if not csrf_disabled and should_check_csrf(request) and _is_auth and not is_allowed_auth_origin(request):
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Cross-site auth request denied."},
             )
 
-        if should_check_csrf(request) and not _is_auth:
+        if not csrf_disabled and not bearer_present and should_check_csrf(request) and not _is_auth:
             cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
             header_token = request.headers.get(CSRF_HEADER_NAME)
 

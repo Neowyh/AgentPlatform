@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.gateway.auth.models import User
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.authz import (
+    _ALL_PERMISSIONS,
     Permissions,
     _authenticate,
     _get_cached_route_provider,
@@ -91,6 +92,8 @@ async def test_route_permissions_disabled_preserves_all_permissions(monkeypatch)
         Permissions.RUNS_CREATE,
         Permissions.RUNS_READ,
         Permissions.RUNS_CANCEL,
+        Permissions.ASSISTANTS_READ,
+        Permissions.MODELS_READ,
     ]
     cached.assert_not_called()
 
@@ -107,6 +110,8 @@ async def test_route_permissions_use_async_provider_and_trusted_principal(monkey
         Permissions.THREADS_WRITE,
         Permissions.RUNS_CREATE,
         Permissions.RUNS_READ,
+        Permissions.ASSISTANTS_READ,
+        Permissions.MODELS_READ,
     ]
     assert [(request.resource, request.action, request.target) for request in provider.requests] == [
         ("route", "read", Permissions.THREADS_READ),
@@ -115,6 +120,8 @@ async def test_route_permissions_use_async_provider_and_trusted_principal(monkey
         ("route", "create", Permissions.RUNS_CREATE),
         ("route", "read", Permissions.RUNS_READ),
         ("route", "cancel", Permissions.RUNS_CANCEL),
+        ("route", "read", Permissions.ASSISTANTS_READ),
+        ("route", "read", Permissions.MODELS_READ),
     ]
     principal = provider.requests[0].principal
     assert principal.user_id == "user-123"
@@ -137,6 +144,8 @@ async def test_route_permissions_fail_closed_denies_only_the_failed_permission(m
         Permissions.THREADS_DELETE,
         Permissions.RUNS_CREATE,
         Permissions.RUNS_READ,
+        Permissions.ASSISTANTS_READ,
+        Permissions.MODELS_READ,
     ]
 
 
@@ -154,6 +163,8 @@ async def test_route_permissions_fail_open_allows_the_failed_permission(monkeypa
         Permissions.RUNS_CREATE,
         Permissions.RUNS_READ,
         Permissions.RUNS_CANCEL,
+        Permissions.ASSISTANTS_READ,
+        Permissions.MODELS_READ,
     ]
 
 
@@ -171,6 +182,8 @@ async def test_route_permissions_fail_open_allows_the_failed_permission(monkeypa
                 Permissions.RUNS_CREATE,
                 Permissions.RUNS_READ,
                 Permissions.RUNS_CANCEL,
+                Permissions.ASSISTANTS_READ,
+                Permissions.MODELS_READ,
             ],
         ),
     ],
@@ -212,16 +225,14 @@ async def test_route_permissions_use_builtin_rbac_route_policy(monkeypatch):
 @pytest.mark.asyncio
 async def test_authenticate_uses_route_permission_resolution(monkeypatch):
     user = User(email="route-authz@example.com", password_hash="hash")
-    permission_resolver = AsyncMock(return_value=[Permissions.THREADS_READ])
     monkeypatch.setattr("app.gateway.deps.get_optional_user_from_request", AsyncMock(return_value=user))
-    monkeypatch.setattr("app.gateway.authz.resolve_route_permissions", permission_resolver)
+    monkeypatch.setattr("app.gateway.authz.resolve_platform_identity", AsyncMock(return_value=None))
     request = SimpleNamespace(state=SimpleNamespace())
 
     auth_context = await _authenticate(request)
 
     assert auth_context.user is user
-    assert auth_context.permissions == [Permissions.THREADS_READ]
-    permission_resolver.assert_awaited_once_with(user, is_internal=False)
+    assert auth_context.permissions == list(_ALL_PERMISSIONS)
 
 
 def _make_middleware_app() -> FastAPI:
@@ -252,7 +263,7 @@ def test_auth_middleware_stamps_provider_derived_permissions(monkeypatch):
 
     assert permission_resolver.await_count == 2
     for call in permission_resolver.await_args_list:
-        assert call.kwargs == {"is_internal": False}
+        assert call.kwargs == {"is_internal": False, "platform_role": None}
 
 
 def test_auth_middleware_marks_internal_route_principal(monkeypatch):
@@ -266,7 +277,7 @@ def test_auth_middleware_marks_internal_route_principal(monkeypatch):
 
     assert response.status_code == 200
     permission_resolver.assert_awaited_once()
-    assert permission_resolver.await_args.kwargs == {"is_internal": True}
+    assert permission_resolver.await_args.kwargs == {"is_internal": True, "platform_role": None}
 
 
 _STATELESS_RUN_PATHS = ("/api/runs/stream", "/api/runs/wait")

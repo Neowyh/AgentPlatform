@@ -378,7 +378,12 @@ async def try_acquire_sandbox_for_request(
 
         user = await get_optional_user_from_request(request) if request is not None else None
         if user is not None:
-            identity = await resolve_platform_identity(request, user) if request is not None else None
+            # Real Starlette requests always expose ``state``.  Direct
+            # embedded callers may provide only a lightweight request stub;
+            # keep those calls on the configured default role instead of
+            # attempting a database lookup that cannot succeed.
+            request_state = getattr(request, "state", None)
+            identity = await resolve_platform_identity(request, user) if request_state is not None else None
             authorize_sandbox_for_request(
                 user,
                 is_internal=_is_internal_caller(request, user),
@@ -472,7 +477,18 @@ async def resolve_platform_identity(request: Request, user: Any) -> dict[str, An
     if auth_source in (AUTH_SOURCE_INTERNAL, AUTH_SOURCE_AUTH_DISABLED):
         return None
 
-    cached = _cached_rbac_identity(request, str(user.id))
+    # Direct embedded callers used by library integrations may provide only a
+    # role-bearing lightweight user object.  They do not pass through the
+    # request middleware and therefore cannot perform an RBAC lookup; preserve
+    # that explicit role while keeping real session/PAT requests fail-closed.
+    user_id = getattr(user, "id", None)
+    if user_id is None and auth_source is None:
+        role = getattr(user, "system_role", None)
+        if role is not None:
+            return {"user_id": None, "department_id": None, "role": str(role)}
+        return None
+
+    cached = _cached_rbac_identity(request, str(user_id))
     if cached is not None:
         return cached
 
@@ -595,7 +611,7 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
             logger.error("SECURITY: _ideer_test_bypass_auth set on real Request object -- ignoring")
             # Don't bypass -- fall through to normal auth
 
-        if getattr(request, "_ideer_test_bypass_auth", False):
+        if (getattr(request, "_ideer_test_bypass_auth", False) or getattr(request, "_deerflow_test_bypass_auth", False)) and not isinstance(request, Request):
             return await func(*args, **kwargs)
 
         # Authenticate and set context
@@ -677,7 +693,7 @@ def require_permission(
                 logger.error("SECURITY: _ideer_test_bypass_auth set on real Request object -- ignoring")
                 # Don't bypass -- fall through to normal auth
 
-            if getattr(request, "_ideer_test_bypass_auth", False):
+            if (getattr(request, "_ideer_test_bypass_auth", False) or getattr(request, "_deerflow_test_bypass_auth", False)) and not isinstance(request, Request):
                 return await func(*args, **kwargs)
 
             auth: AuthContext = getattr(request.state, "auth", None)
@@ -709,12 +725,30 @@ def require_permission(
                 if thread_id is None:
                     raise ValueError("require_permission with owner_check=True requires 'thread_id' parameter")
 
+                # Let the route handler produce its documented 422 for malformed
+                # route-safe IDs before resolving the thread store. This keeps
+                # validation independent from optional/degraded runtime services.
+                from deerflow.utils.thread_id import validate_thread_id
+
+                try:
+                    validate_thread_id(thread_id)
+                except ValueError:
+                    return await func(*args, **kwargs)
+
                 from app.gateway.deps import get_thread_store
+
+                owner_user_id = str(auth.user.id)
+                if getattr(auth.user, "system_role", None) == "internal":
+                    from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME
+
+                    requested_owner = getattr(request, "headers", {}).get(INTERNAL_OWNER_USER_ID_HEADER_NAME)
+                    if requested_owner and requested_owner.strip():
+                        owner_user_id = requested_owner.strip()
 
                 thread_store = get_thread_store(request)
                 allowed = await thread_store.check_access(
                     thread_id,
-                    str(auth.user.id),
+                    owner_user_id,
                     require_existing=require_existing,
                 )
                 if not allowed:

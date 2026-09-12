@@ -25,6 +25,9 @@ class _SandboxRecorder:
     def update_file(self, path: str, content: bytes) -> None:
         self.updates.append((path, content))
 
+    def release_command_scope(self, owner_id: str) -> None:
+        """Satisfy the lease cleanup seam used by the real provider."""
+
 
 class _MountedProvider:
     uses_thread_data_mounts = True

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -41,7 +41,7 @@ class WorkflowV2RunRow(Base):
     model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     runner_tool_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("'0'"))
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     department_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

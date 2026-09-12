@@ -22,7 +22,9 @@ test.describe("UI polish mobile regressions", () => {
       }
       await expect(newChatLink).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
-    await expect(page.getByRole("link", { name: /experts/i })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Experts", exact: true }),
+    ).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
       .toBeLessThanOrEqual(375);

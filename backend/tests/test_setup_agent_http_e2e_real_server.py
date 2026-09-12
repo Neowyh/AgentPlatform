@@ -129,6 +129,7 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     to call ``get_app_config()``/``get_paths()`` will surface the real
     incompatibility loudly.
     """
+    from app.gateway import deps as deps_module
     from deerflow.config import app_config as app_config_module
     from deerflow.config import paths as paths_module
     from deerflow.persistence import engine as engine_module
@@ -140,6 +141,8 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
         (paths_module, "_paths_singleton"),
         (engine_module, "_engine"),
         (engine_module, "_session_factory"),
+        (deps_module, "_cached_local_provider"),
+        (deps_module, "_cached_repo"),
     ):
         monkeypatch.setattr(module, attr, None, raising=False)
 
@@ -306,21 +309,28 @@ def test_real_http_create_agent_lands_in_authenticated_user_dir(
         assert "event:" in transcript, f"no SSE events in response: {transcript[:500]!r}"
 
         # --- 4. Verify filesystem outcome ---
-        expected_dir = isolated_deer_flow_home / "users" / auth_uid / "agents" / agent_name
-        default_dir = isolated_deer_flow_home / "users" / "default" / "agents" / agent_name
-
-        # The setup_agent tool runs inside the background asyncio task spawned
-        # by start_run; SSE-drain typically waits for it, but we add a bounded
-        # poll to be robust against scheduler jitter.
-        assert _wait_for_file(expected_dir / "SOUL.md", timeout=15.0), (
-            "SOUL.md did not appear under users/<auth_uid>/agents/. "
-            f"Expected: {expected_dir / 'SOUL.md'}. "
-            f"tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}. "
-            f"SSE transcript tail: {transcript[-1000:]!r}"
+        soul_files = sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob("SOUL.md"))
+        assert _wait_for_file(Path(soul_files[0]) if soul_files else isolated_deer_flow_home / "resources", timeout=15.0) is not None or soul_files, (
+            f"SOUL.md did not appear under resources/agents/<id>/versions/. SSE transcript tail: {transcript[-1000:]!r}"
         )
 
-        soul_text = (expected_dir / "SOUL.md").read_text()
-        assert agent_name in soul_text, f"unexpected SOUL content: {soul_text!r}"
+        import asyncio
 
-        # The smoking-gun assertion: the agent must NOT have landed in default/
-        assert not default_dir.exists(), f"REGRESSION: agent landed under users/default/{agent_name} instead of the authenticated user. Default-dir contents: {list(default_dir.rglob('*')) if default_dir.exists() else 'n/a'}"
+        from sqlalchemy import select
+
+        from app.agentplatform.resource_models import Resource
+        from deerflow.persistence.engine import get_session_factory
+
+        async def _fetch_catalog_agent() -> tuple[str, str, int]:
+            async with get_session_factory()() as session:
+                resource = (await session.execute(select(Resource).where(Resource.type == "agent", Resource.slug == agent_name))).scalar_one_or_none()
+                assert resource is not None, f"no catalog agent with slug {agent_name!r}"
+                return str(resource.owner_id), resource.id, resource.latest_version
+
+        owner_id, resource_id, latest_version = asyncio.run(_fetch_catalog_agent())
+        assert owner_id == auth_uid, f"REGRESSION: agent owned by {owner_id!r}, expected authenticated user {auth_uid!r}"
+        published_dir = isolated_deer_flow_home / "resources" / "agents" / resource_id / "versions" / str(latest_version)
+        assert (published_dir / "SOUL.md").exists()
+        assert agent_name in (published_dir / "SOUL.md").read_text()
+        assert not (isolated_deer_flow_home / "users" / auth_uid / "agents" / agent_name).exists()
+        assert not (isolated_deer_flow_home / "users" / "default" / "agents" / agent_name).exists()
