@@ -58,6 +58,12 @@ def _install_scope_aware_tool_loading() -> None:
     def scoped_tools(*args: Any, **kwargs: Any) -> list[Any]:
         tools = original(*args, **kwargs)
         scope = _PENDING_KNOWLEDGE_SCOPE.get()
+        # Native task-tool delegation has no canonical child dependency
+        # declaration.  Keep the child fail-closed instead of inheriting the
+        # parent's KB allowlist; canonical Workflow Agent nodes are assembled
+        # through the adapters and receive their own narrowed scope.
+        if scope is not None and kwargs.get("subagent_enabled") is False:
+            scope = KnowledgeScope()
         return adapt_knowledge_tools(tools, scope) if scope is not None else tools
 
     scoped_tools._workflow_knowledge_scope_aware = True  # type: ignore[attr-defined]

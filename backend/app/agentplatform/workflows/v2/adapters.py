@@ -22,6 +22,19 @@ class ActionResolutionError(RuntimeError):
     pass
 
 
+def _agent_knowledge_scope(
+    scope: KnowledgeScope | None,
+    declared_resource_ids: frozenset[str],
+) -> KnowledgeScope | None:
+    """Restrict a workflow scope to the KBs declared by one Agent node."""
+
+    if scope is None:
+        return None
+    if not declared_resource_ids:
+        return KnowledgeScope()
+    return KnowledgeScope.from_bindings((logical, dataset) for logical, dataset in scope.bindings if logical in declared_resource_ids)
+
+
 @dataclass
 class ActionContext:
     workflow_name: str
@@ -336,6 +349,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         from deerflow.tools.tools import get_available_tools
 
         config = self.definition.config
+        agent_scope = _agent_knowledge_scope(context.knowledge_scope, self.definition.knowledge_resource_ids)
         override = params.get("system_prompt", "")
         system_prompt = _compose_system_prompt(self.definition.soul, override, context)
         subagent = SubagentConfig(
@@ -346,7 +360,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
             model=model_name or config.model or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
-            knowledge_scope=context.knowledge_scope,
+            knowledge_scope=agent_scope,
         )
         frozen_skills = list(self.skills)
 
@@ -358,7 +372,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         groups = intersect_tool_groups(config.tool_groups, self.allowed_tool_groups)
         executor = CanonicalSubagentExecutor(
             subagent,
-            adapt_knowledge_tools(get_available_tools(groups=groups, app_config=app_config), context.knowledge_scope) if context.knowledge_scope is not None else get_available_tools(groups=groups, app_config=app_config),
+            adapt_knowledge_tools(get_available_tools(groups=groups, app_config=app_config), agent_scope) if agent_scope is not None else get_available_tools(groups=groups, app_config=app_config),
             app_config=app_config,
             thread_id=context.run_id,
         )
