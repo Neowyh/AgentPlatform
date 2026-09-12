@@ -12,11 +12,31 @@ permissions:
   contents: read
 
 jobs:
-  pr-standard-shadow:
+  test-contracts:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Verify test ownership inventory
+        run: python3 scripts/test_inventory.py --collect --json > test-inventory.json
+      - name: Verify test lane contracts
+        run: PYTHONPATH=scripts python3 scripts/check_test_contracts.py --json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-contract-inventory-${{ github.run_id }}
+          path: test-inventory.json
+
+  pr-standard-shadow:
+    if: github.event.pull_request.draft == false
+    needs: test-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v6
@@ -26,6 +46,8 @@ jobs:
           python-version: "3.12"
 
       - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
 
       - uses: actions/setup-node@v4
         with:
@@ -46,7 +68,23 @@ jobs:
         working-directory: frontend
         run: pnpm exec playwright install chromium --with-deps
 
-      - name: Run non-blocking PR standard lane
+      - name: Verify test ownership inventory
+        run: python3 scripts/test_inventory.py --collect --json > test-inventory.json
+
+      - name: Verify test lane contracts
+        run: PYTHONPATH=scripts python3 scripts/check_test_contracts.py --json
+
+      - name: Run PR standard lane
         env:
           SKIP_ENV_VALIDATION: "1"
+          TEST_PREFLIGHT_STRICT: "1"
         run: bash scripts/run-test-lane.sh pr-standard
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-inventory-${{ github.run_id }}
+          path: |
+            test-inventory.json
+            logs/test-lanes/**

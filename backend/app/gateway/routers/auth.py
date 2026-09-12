@@ -33,7 +33,10 @@ from app.gateway.auth.oidc_state import (
 )
 from app.gateway.auth.pat import PAT_MAX_NAME_LENGTH
 from app.gateway.auth.session_cookie import ACCESS_TOKEN_COOKIE_NAME, SESSION_PERSISTENCE_COOKIE_NAME, set_session_cookie
-from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_ATTR
+from app.gateway.auth.session_cookie_state import (
+    SESSION_COOKIE_MAX_AGE_STATE_ATTR,
+    SKIP_AUTH_CSRF_COOKIE_STATE_ATTR,
+)
 from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
 from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, _request_origin, auth_csrf_cookie_settings, generate_csrf_token, is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
@@ -727,6 +730,17 @@ _SETUP_STATUS_INFLIGHT_GUARD = asyncio.Lock()
 
 async def _count_active_super_admin_users() -> int:
     """Count valid platform administrators; authentication roles are not authorization."""
+    provider = get_local_provider()
+    count_admin_users = getattr(provider, "count_admin_users", None)
+    if count_admin_users is not None:
+        result = count_admin_users()
+        if asyncio.iscoroutine(result):
+            result = await result
+        # Some local providers cache the count; a zero result must be
+        # confirmed against the authoritative RBAC table after initialization.
+        if int(result) > 0:
+            return int(result)
+
     from sqlalchemy import func, select
 
     from app.agentplatform.rbac_models import UserModel, UserRole
@@ -916,6 +930,8 @@ def _set_csrf_cookie(response: Response, request: Request) -> None:
     """Set the CSRF double-submit cookie (needed for GET-based OIDC callback)."""
     csrf_token = generate_csrf_token()
     secure, max_age = auth_csrf_cookie_settings(request)
+    if hasattr(request.state, SESSION_COOKIE_MAX_AGE_STATE_ATTR):
+        max_age = getattr(request.state, SESSION_COOKIE_MAX_AGE_STATE_ATTR)
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=csrf_token,

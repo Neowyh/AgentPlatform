@@ -49,7 +49,7 @@ from deerflow.persistence.migrations._helpers import _normalize_default
 asyncio_test = pytest.mark.asyncio
 
 
-HEAD = "0018_oauth_identity_pg_partial"
+HEAD = "20260909_device_control_plane"
 BASELINE = "0001_baseline"
 
 
@@ -868,6 +868,9 @@ def test_baseline_revision_id_is_known() -> None:
     migrations_dir = Path(__file__).resolve().parents[1] / "packages/harness/deerflow/persistence/migrations"
     cfg = Config()
     cfg.set_main_option("script_location", str(migrations_dir))
+    from deerflow.persistence.migrations._chain_meta import version_locations
+
+    cfg.set_main_option("version_locations", version_locations(migrations_dir))
     script = ScriptDirectory.from_config(cfg)
     all_ids = {rev.revision for rev in script.walk_revisions()}
     assert BASELINE in all_ids, f"baseline revision id {BASELINE!r} not found in {all_ids}"

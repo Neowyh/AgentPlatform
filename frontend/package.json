@@ -16,9 +16,13 @@
     "preview": "next build && next start",
     "start": "next start",
     "test": "rstest run && vitest run",
+    "test:coverage": "rstest run && vitest run --coverage",
+    "test:full": "rstest run && vitest run --coverage && pnpm check",
     "test:e2e": "playwright test",
     "test:e2e:visual": "PLAYWRIGHT_VISUAL=1 playwright test tests/e2e/visual",
-    "test:e2e:smoke": "playwright test tests/e2e/landing.spec.ts tests/e2e/sidebar.spec.ts tests/e2e/scheduled-tasks.spec.ts tests/e2e/background-tasks.spec.ts tests/e2e/agents-feature-disabled.spec.ts",
+    "test:e2e:a11y": "playwright test tests/e2e/a11y",
+    "test:e2e:stagehand": "playwright test tests/e2e/stagehand",
+    "test:e2e:smoke": "playwright test --grep '@smoke'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

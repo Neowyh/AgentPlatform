@@ -10,6 +10,9 @@
 
 - [覆盖矩阵](coverage-matrix.md)：能力与测试层级的责任映射。
 - [测试迁移账本](test-migration-ledger.md)：测试移动、删除和等价覆盖的验收依据。
+- [测试 Lane 运行手册](test-lane-runbook.md)：PR 与交付级 lane 的运行、判定和交接规则。
+- [测试清单](../../scripts/test_inventory.py)：复用文件发现结果，输出文件、节点、lane 归属和收集状态。
+- [运行前检查](../../scripts/test_preflight.py)：按 lane 检查工具、锁文件、浏览器、可写目录和 socket 条件。
 
 执行入口：
 

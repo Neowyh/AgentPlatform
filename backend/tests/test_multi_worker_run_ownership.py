@@ -938,6 +938,7 @@ async def test_renewal_exception_through_confirmed_expiry_fail_stops_run():
 
 
 @pytest.mark.anyio
+@pytest.mark.serial
 async def test_hung_renewal_is_bounded_by_confirmed_lease_deadline():
     """A blocked store call cannot keep execution alive beyond the lease."""
     config = _lease_config(lease_seconds=30, heartbeat_enabled=True)

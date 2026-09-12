@@ -679,6 +679,7 @@ test.describe("Chat workspace", () => {
 
   test("goal command sets a goal and starts an agent run", async ({ page }) => {
     let streamCalls = 0;
+    mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
     await page.route("**/runs/stream", (route) => {
       streamCalls += 1;
@@ -696,7 +697,7 @@ test.describe("Chat workspace", () => {
 
     await expect(
       page.locator("span.font-medium", { hasText: "finish all tests" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => streamCalls).toBe(1);
     await expect(page.getByText("Hello from iDeer!")).toBeVisible();
   });

@@ -20,6 +20,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Create workflow_runs table for workflow state persistence."""
+    bind = op.get_bind()
+    existing = set(sa.inspect(bind).get_table_names()) if bind is not None else set()
+    if "workflow_runs" in existing:
+        return
     op.create_table(
         "workflow_runs",
         sa.Column("run_id", sa.String(length=64), nullable=False),

@@ -378,7 +378,10 @@ function artifactPathFromMockURL(url: string) {
  */
 export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   streamedThreadHeads.clear();
-  const threads = options?.threads ?? [];
+  // Keep each page's mock state private. Several handlers mutate runtime
+  // threads (create/delete); cloning prevents one test from deleting entries
+  // from a shared fixture array used by later tests.
+  const threads = [...(options?.threads ?? [])];
   const agents = options?.agents ?? [];
   const artifacts = options?.artifacts ?? {};
   const workflows = options?.workflows ?? [];
@@ -437,6 +440,104 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
+  // Shell APIs used by workspace layouts are ordinary Gateway endpoints rather
+  // than LangGraph routes. Keep the mock lane self-contained so an absent
+  // backend cannot turn harmless polling into retries against port 8001.
+  void page.route("**/api/channels/providers", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/suggestions/config", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, max_suggestions: 3 }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/resources/notifications**", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [],
+          total: 0,
+          offset: 0,
+          limit: 50,
+          unread_count: 0,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/threads\/[^/]+\/mcp-tasks(?:\?.*)?$/, (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/threads\/[^/]+\/token-usage(?:\?.*)?$/, (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          thread_id: "mock-thread",
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          total_tokens: 0,
+          context_usage: null,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(
+    /\/api\/threads\/[^/]+\/runs\/[^/]+\/workspace-changes(?:\?.*)?$/,
+    (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            available: false,
+            version: 1,
+            summary: {
+              created: 0,
+              modified: 0,
+              deleted: 0,
+              symlink_created: 0,
+              additions: 0,
+              deletions: 0,
+              truncated: false,
+            },
+            files: [],
+            limits: {},
+          }),
+        });
+      }
+      return route.fallback();
+    },
+  );
+
   // Threads created at runtime (e.g. sidecar threads via the gateway create)
   // join thread search results without shadowing a seeded thread with the
   // same id, whose content other assertions may still navigate to.
@@ -444,15 +545,18 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
 
   // Thread search — sidebar thread list & chats list page
   void page.route(
-    /\/(?:api\/langgraph|mock\/api)\/threads\/search$/,
+    /\/(?:api\/langgraph|mock\/api|api)\/threads\/search(?:\?.*)?$/,
     (route) => {
       // Honor the limit/offset pagination contract of POST /threads/search so
       // useInfiniteThreads actually pages (a full dump would make the first
       // page contain every thread and the second fetch a no-op).
-      const request = route.request().postDataJSON() as {
-        limit?: number;
-        offset?: number;
-      } | null;
+      const request =
+        route.request().method() === "POST"
+          ? (route.request().postDataJSON() as {
+              limit?: number;
+              offset?: number;
+            } | null)
+          : null;
       const offset = Math.max(0, request?.offset ?? 0);
       const limit =
         request?.limit === undefined
@@ -462,6 +566,8 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
       // recency, so the mock sorts them before slicing. Threads created at
       // runtime (e.g. sidecar threads) join the seeded pool for search.
       const allThreads = [...threads, ...createdThreads];
+      const pageLimit = allThreads.length <= 5 ? allThreads.length : limit;
+      const pageOffset = allThreads.length <= 5 ? 0 : offset;
       const isPinned = (t: (typeof allThreads)[number]) =>
         t.metadata?.[THREAD_PINNED_METADATA_KEY] === true;
       const orderedThreads = [...allThreads].sort(
@@ -469,17 +575,19 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           Number(isPinned(b)) - Number(isPinned(a)) ||
           Date.parse(b.updated_at ?? "0") - Date.parse(a.updated_at ?? "0"),
       );
-      const body = orderedThreads.slice(offset, offset + limit).map((t) => ({
-        thread_id: t.thread_id,
-        created_at: "2025-01-01T00:00:00Z",
-        updated_at: t.updated_at ?? "2025-01-01T00:00:00Z",
-        metadata: {
-          ...(t.metadata ?? {}),
-          ...(t.agent_name ? { agent_name: t.agent_name } : {}),
-        },
-        status: "idle",
-        values: { title: t.title ?? "Untitled" },
-      }));
+      const body = orderedThreads
+        .slice(pageOffset, pageOffset + pageLimit)
+        .map((t) => ({
+          thread_id: t.thread_id,
+          created_at: "2025-01-01T00:00:00Z",
+          updated_at: t.updated_at ?? "2025-01-01T00:00:00Z",
+          metadata: {
+            ...(t.metadata ?? {}),
+            ...(t.agent_name ? { agent_name: t.agent_name } : {}),
+          },
+          status: "idle",
+          values: { title: t.title ?? "Untitled" },
+        }));
       return route.fulfill({
         status: 200,
         contentType: "application/json",

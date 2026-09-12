@@ -621,9 +621,24 @@ def test_stream_run_executes_real_lead_agent_setup_agent_business_path(isolated_
         run = _wait_for_status(client, thread_id, run_id, "success", timeout=10.0)
         assert run["assistant_id"] == "lead_agent"
 
-        expected_soul = isolated_deer_flow_home / "users" / auth_user_id / "agents" / agent_name / "SOUL.md"
-        assert expected_soul.exists(), f"setup_agent did not write SOUL.md. tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}"
-        assert f"Agent name: {agent_name}" in expected_soul.read_text(encoding="utf-8")
+        import asyncio
+
+        from sqlalchemy import select
+
+        from app.agentplatform.resource_models import Resource
+        from deerflow.persistence.engine import get_session_factory
+
+        async def _fetch_catalog_agent() -> tuple[str, str, int]:
+            async with get_session_factory()() as session:
+                resource = (await session.execute(select(Resource).where(Resource.type == "agent", Resource.slug == agent_name))).scalar_one()
+                return str(resource.owner_id), resource.id, resource.latest_version
+
+        owner_id, resource_id, latest_version = asyncio.run(_fetch_catalog_agent())
+        assert owner_id == auth_user_id
+        published_soul = isolated_deer_flow_home / "resources" / "agents" / resource_id / "versions" / str(latest_version) / "SOUL.md"
+        assert published_soul.exists(), f"setup_agent did not publish SOUL.md. tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}"
+        assert f"Agent name: {agent_name}" in published_soul.read_text(encoding="utf-8")
+        assert not (isolated_deer_flow_home / "users" / auth_user_id / "agents" / agent_name).exists()
         assert not (isolated_deer_flow_home / "users" / "default" / "agents" / agent_name).exists()
 
 

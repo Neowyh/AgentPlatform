@@ -89,17 +89,29 @@ async def get_or_provision_oidc_user(
     try:
         sf = get_session_factory()
         if sf is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Authorization service temporarily unavailable")
-        async with sf() as session:
-            user = await create_auth_user_with_rbac(
-                session,
+            create_oauth_user = getattr(local_provider, "create_oauth_user", None)
+            if create_oauth_user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Authorization service temporarily unavailable",
+                )
+            user = await create_oauth_user(
                 email=email,
-                password=None,
-                username=email,
-                role=UserRole.SUPER_ADMIN if role == "super_admin" else UserRole.USER,
                 oauth_provider=provider_id,
                 oauth_id=identity.subject,
+                system_role="admin" if role == "super_admin" else "user",
             )
+        else:
+            async with sf() as session:
+                user = await create_auth_user_with_rbac(
+                    session,
+                    email=email,
+                    password=None,
+                    username=email,
+                    role=UserRole.SUPER_ADMIN if role == "super_admin" else UserRole.USER,
+                    oauth_provider=provider_id,
+                    oauth_id=identity.subject,
+                )
     except ValueError:
         # Lost a race: a concurrent callback (double-click, replayed code) already
         # inserted a row that collides on the unique index. Re-resolve instead of

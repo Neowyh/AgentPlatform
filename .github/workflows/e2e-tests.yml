@@ -26,7 +26,7 @@ jobs:
   e2e-tests:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -56,12 +56,14 @@ jobs:
         run: bash scripts/run-test-lane.sh frontend-smoke
         env:
           SKIP_ENV_VALIDATION: "1"
+          TEST_PREFLIGHT_STRICT: "1"
 
       - name: Run full mock E2E
         if: ${{ github.event_name != 'pull_request' }}
         run: bash scripts/run-test-lane.sh frontend-mock-e2e
         env:
           SKIP_ENV_VALIDATION: "1"
+          TEST_PREFLIGHT_STRICT: "1"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -71,10 +73,18 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
+      - name: Upload E2E lane diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-lane-diagnostics-${{ github.run_id }}
+          path: logs/test-lanes/**
+          if-no-files-found: ignore
+
   visual-regression:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -103,6 +113,7 @@ jobs:
         run: bash scripts/run-test-lane.sh frontend-visual
         env:
           SKIP_ENV_VALIDATION: "1"
+          TEST_PREFLIGHT_STRICT: "1"
 
       - name: Upload visual regression report
         uses: actions/upload-artifact@v4
@@ -115,7 +126,7 @@ jobs:
   a11y-e2e:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout

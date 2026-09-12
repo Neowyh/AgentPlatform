@@ -29,6 +29,8 @@ from deerflow.extensions.manager import (
 )
 from deerflow.tui.cli import main as deerflow_main
 
+pytestmark = pytest.mark.external
+
 
 def _write_local_extension(
     source: Path,

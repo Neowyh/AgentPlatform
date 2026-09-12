@@ -134,7 +134,7 @@ class TestAsyncContract:
             def submit(self, *args, **kwargs):
                 raise AssertionError("serializer wait used the default executor")
 
-        previous = loop._default_executor
+        previous = getattr(loop, "_default_executor", None)
         loop.set_default_executor(ExplodingExecutor())
         try:
             entered = asyncio.Event()

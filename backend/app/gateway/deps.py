@@ -872,12 +872,16 @@ async def is_admin_user(request: Request) -> bool:
         user = await get_current_user_from_request(request)
 
     # The auth-disabled synthetic user is a dev/E2E bypass with an explicit
-    # trusted source; it keeps its historical admin capability.
+    # trusted source. Preserve the bypass without turning every stubbed user
+    # into an administrator.
     if getattr(request.state, "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
-        return True
+        return getattr(user, "system_role", None) in {"admin", UserRole.SUPER_ADMIN.value}
 
     identity = await resolve_platform_identity(request, user)
-    return identity is not None and identity.get("role") == UserRole.SUPER_ADMIN.value
+    return identity is not None and identity.get("role") in {
+        "admin",
+        UserRole.SUPER_ADMIN.value,
+    }
 
 
 async def require_admin_user(request: Request, *, detail: str) -> None:

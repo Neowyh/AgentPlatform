@@ -17,6 +17,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Fresh schemas already contain the catalog tables through metadata.create_all.
+    # Avoid replaying this revision against that shape during bootstrap parity checks.
+    if sa.inspect(op.get_bind()).has_table("resources"):
+        return
+
     op.create_table(
         "resources",
         sa.Column("id", sa.String(length=36), nullable=False),

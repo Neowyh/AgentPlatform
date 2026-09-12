@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Mapping
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -26,10 +27,16 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 def _resolve_thread_id(body: RunCreateRequest) -> str:
     """Return the thread_id from the request body, or generate a new one."""
-    thread_id = (body.config or {}).get("configurable", {}).get("thread_id")
+    configurable = (body.config or {}).get("configurable")
+    thread_id = configurable.get("thread_id") if isinstance(configurable, Mapping) else None
     if thread_id:
         return str(thread_id)
     return str(uuid.uuid4())
+
+
+def _has_requested_thread(body: RunCreateRequest) -> bool:
+    configurable = (body.config or {}).get("configurable")
+    return isinstance(configurable, Mapping) and bool(configurable.get("thread_id"))
 
 
 @router.post("/stream")
@@ -44,7 +51,7 @@ async def stateless_stream(body: RunCreateRequest, request: Request) -> Streamin
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
-    record = await start_run(body, thread_id, request)
+    record = await start_run(body, thread_id, request, require_existing_thread=_has_requested_thread(body))
 
     return StreamingResponse(
         sse_consumer(bridge, record, request, run_mgr),
@@ -70,7 +77,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
-    record = await start_run(body, thread_id, request)
+    record = await start_run(body, thread_id, request, require_existing_thread=_has_requested_thread(body))
 
     completed = True
     if record.task is not None:

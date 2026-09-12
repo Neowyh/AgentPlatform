@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("Public documentation", () => {
+test.describe("@smoke Public documentation", () => {
   test("renders the Chinese documentation home and application quick start", async ({
     page,
   }) => {

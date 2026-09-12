@@ -17,7 +17,11 @@ from app.gateway.auth_middleware import AuthMiddleware
 # Alias legacy IDEER_* deployment env names before any config resolution.
 from app.gateway.compat_env import apply_legacy_env_aliases  # noqa: F401
 from app.gateway.config import get_gateway_config
-from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
+from app.gateway.csrf_middleware import (
+    CORS_EXPOSED_HEADERS,
+    CSRFMiddleware,
+    get_configured_cors_origins,
+)
 from app.gateway.deps import langgraph_runtime
 from app.gateway.error_codes import ApiException
 from app.gateway.routers import (
@@ -35,11 +39,13 @@ from app.gateway.routers import (
     input_polish,
     integrations,
     mcp,
+    mcp_tasks,
     memory,
     models,
     resources,
     runs,
     scheduled_tasks,
+    subagent_batches,
     suggestions,
     thread_runs,
     threads,
@@ -47,9 +53,11 @@ from app.gateway.routers import (
     uploads,
     visibility_applications,
 )
+from app.gateway.trace_middleware import TraceMiddleware
 from deerflow.config import app_config as deerflow_app_config
 from deerflow.config.app_config import apply_logging_level
 from deerflow.extensions.gateway import include_contributed_routers
+from deerflow.tracing import setup_monocle_tracing_if_enabled
 
 AppConfig = deerflow_app_config.AppConfig
 get_app_config = deerflow_app_config.get_app_config
@@ -432,6 +440,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     config = get_gateway_config()
     logger.info(f"Starting API Gateway on {config.host}:{config.port}")
 
+    try:
+        setup_monocle_tracing_if_enabled()
+    except Exception:
+        logger.exception("Monocle tracing setup failed; continuing without tracing")
+
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
@@ -496,7 +509,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down API Gateway")
 
 
-def _http_exception_payload(exc: HTTPException) -> dict:
+def _http_exception_payload(exc: HTTPException, *, include_auth_details: bool = False) -> dict:
     """Build the response body for an HTTPException.
 
     Structured dict details (e.g. visibility closure violations carrying
@@ -508,11 +521,51 @@ def _http_exception_payload(exc: HTTPException) -> dict:
     if isinstance(detail, dict) and detail.get("code") in {
         "visibility_closure_violation",
         "skill_outside_agent_closure",
+        "token_expired",
+        "token_invalid",
+        "not_authenticated",
+        "email_already_exists",
+        "user_disabled",
+        "system_already_initialized",
+        "registration_disabled",
     }:
         return {
             "success": False,
             "data": None,
-            "error": {"code": "INTERNAL_ERROR", "message": detail.get("message", "")},
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": (
+                    f"{detail['code']}: {detail.get('message', '')}"
+                    if detail.get("code")
+                    in {
+                        "system_already_initialized",
+                        "email_already_exists",
+                    }
+                    else detail.get("message", "")
+                ),
+            },
+            "detail": detail,
+        }
+    if (
+        include_auth_details
+        and isinstance(detail, dict)
+        and detail.get("code")
+        in {
+            "invalid_credentials",
+            "token_expired",
+            "token_invalid",
+            "not_authenticated",
+            "email_already_exists",
+            "user_disabled",
+        }
+    ):
+        return {
+            "success": False,
+            "data": None,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": f"{detail['code']}: {detail.get('message', '')}",
+            },
             "detail": detail,
         }
     return {
@@ -542,7 +595,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=_http_exception_payload(exc),
+            content=_http_exception_payload(exc, include_auth_details=True),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -557,8 +610,12 @@ def register_exception_handlers(app: FastAPI) -> None:
             }
             for err in exc.errors()
         ]
+        # Authentication request models historically expose FastAPI's
+        # validation status (422).  Keep the gateway's sanitized 400 envelope
+        # for other APIs while preserving that public auth contract.
+        status_code = 422 if _request.url.path.startswith("/api/v1/auth/") else 400
         return JSONResponse(
-            status_code=400,
+            status_code=status_code,
             content={
                 "success": False,
                 "data": None,
@@ -717,6 +774,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Auth: reject unauthenticated requests to non-public paths (fail-closed safety net)
     app.add_middleware(AuthMiddleware)
 
+    # Bind and expose a trace ID on every HTTP response, including streaming
+    # responses and errors.
+    app.add_middleware(TraceMiddleware)
+
     # CSRF: Double Submit Cookie pattern for state-changing requests
     app.add_middleware(CSRFMiddleware)
 
@@ -731,6 +792,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=list(CORS_EXPOSED_HEADERS),
         )
 
     # Include routers
@@ -745,6 +807,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)
+
+    # Thread-scoped durable MCP task API
+    app.include_router(mcp_tasks.router)
 
     # Memory API is mounted at /api/memory
     app.include_router(memory.router)
@@ -782,6 +847,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Thread Runs API (LangGraph Platform-compatible runs lifecycle)
     app.include_router(thread_runs.router)
 
+    # Durable subagent batch progress and control API
+    app.include_router(subagent_batches.router)
+
     # Stateless Runs API (stream/wait without a pre-existing thread)
     app.include_router(runs.router)
 
@@ -817,7 +885,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
         Returns:
             Service health status information.
         """
-        return {"status": "healthy", "service": "ideer-gateway"}
+        return {"status": "healthy", "service": "deer-flow-gateway"}
 
     # Extension routes are deliberately mounted after every host route so a
     # plugin can never shadow a canonical Gateway endpoint.

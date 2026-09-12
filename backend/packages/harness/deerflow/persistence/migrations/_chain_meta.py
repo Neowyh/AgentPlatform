@@ -51,6 +51,11 @@ _UNIFIED_REVISIONS = frozenset({CONTROL_PLANE_HEAD, RUNTIME_HEAD, MERGE_REVISION
 #: ever ran the enterprise chain (or the Gateway's create_all, which renders
 #: the unified metadata) has it.
 _CONTROL_PLANE_MARKER_TABLE = "departments"
+# The pre-convergence deployment path stamped only the original control-plane
+# root. Intermediate revisions are still live Alembic positions and must be
+# allowed to advance normally; treating them as already-at-head creates an
+# overlapping upgrade range.
+_LEGACY_CONTROL_PLANE_HEADS = frozenset({"16147afec43b"})
 
 
 def version_locations(migrations_dir: str | pathlib.Path) -> str:
@@ -152,6 +157,17 @@ def adopt_unified_version_state(sync_conn) -> None:
         raise RuntimeError(f"chain-meta: unexpected revision(s) {runtime_rows!r} in {DEERFLOW_VERSION_TABLE}; expected [{RUNTIME_HEAD!r}]. Upgrade to the pre-unification head first.")
 
     has_control_plane_ddl = _CONTROL_PLANE_MARKER_TABLE in tables
+    if unified_rows and set(unified_rows).issubset(_LEGACY_CONTROL_PLANE_HEADS) and has_control_plane_ddl and CONTROL_PLANE_HEAD not in unified_rows:
+        # Some pre-unification databases stamped only the runtime revision
+        # after creating the complete control-plane schema via ``create_all``.
+        # Declare that branch applied before ``upgrade head`` so its DDL is not
+        # replayed (the runtime branch still advances from its recorded row).
+        sync_conn.execute(
+            text(f"INSERT INTO {VERSION_TABLE} (version_num) VALUES (:revision)"),
+            {"revision": CONTROL_PLANE_HEAD},
+        )
+        logging.getLogger(__name__).info("chain-meta: adopted existing control-plane schema at %s", CONTROL_PLANE_HEAD)
+        unified_rows.append(CONTROL_PLANE_HEAD)
     if runtime_rows:
         # Runtime chain applied and recorded in the dedicated table; the
         # control-plane half may or may not have its DDL present (created by
@@ -226,7 +242,22 @@ def _is_create_all_current(sync_conn, tables: set[str]) -> bool:
         return False
     insp = sa_inspect(sync_conn)
     for table_name, table in metadata_tables.items():
-        reflected = {c["name"] for c in insp.get_columns(table_name)}
-        if not {c.name for c in table.columns}.issubset(reflected):
+        reflected_columns = {c["name"]: c for c in insp.get_columns(table_name)}
+        if not set(table.columns).issubset(reflected_columns):
             return False
+        # A name-only check mistakes hand-applied ALTERs for a fresh
+        # ``create_all`` schema.  Compare the same shape dimensions used by
+        # ``safe_add_column`` so drifted legacy databases continue through
+        # the idempotent migration revisions and emit diagnostics.
+        for desired in table.columns:
+            actual = reflected_columns[desired.name]
+            desired_nullable = True if desired.nullable is None else bool(desired.nullable)
+            if bool(actual.get("nullable", True)) != desired_nullable:
+                return False
+            from deerflow.persistence.migrations._helpers import _normalize_default, _type_equivalent
+
+            if _normalize_default(actual.get("default")) != _normalize_default(desired.server_default):
+                return False
+            if not _type_equivalent(actual.get("type"), desired.type):
+                return False
     return True

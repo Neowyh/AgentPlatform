@@ -94,9 +94,9 @@ make dev
 Behavior:
 
 - Stops existing local services first.
-- Starts LangGraph (`2024`), Gateway (`8001`), Frontend (`3000`), nginx (`2026`).
+- Starts Gateway (`8001`), Frontend (`3000`), and nginx (`2026`).
 - Unified app endpoint: `http://localhost:2026`.
-- Logs: `logs/langgraph.log`, `logs/gateway.log`, `logs/frontend.log`, `logs/nginx.log`.
+- Logs: `logs/gateway.log`, `logs/frontend.log`, `logs/nginx.log`.
 
 Stop services:
 

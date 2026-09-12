@@ -60,8 +60,11 @@ class TestSandboxMiddlewareBeforeAgent:
         runtime = MagicMock()
         runtime.context = {"thread_id": "thread-123"}
 
-        result = middleware.before_agent(state, runtime)
+        with patch.object(middleware, "_retain_existing_sandbox", return_value="existing") as retain:
+            result = middleware.before_agent(state, runtime)
         assert result is None
+        retain.assert_called_once()
+        assert runtime.context["sandbox_id"] == "existing"
 
 
 class TestSandboxMiddlewareAfterAgent:

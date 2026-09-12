@@ -154,7 +154,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # through the same fail-closed read the decorators reuse.
         from app.gateway.authz import resolve_platform_identity
 
-        identity = await resolve_platform_identity(request, user)
+        # In local auth-disabled mode a valid session cookie is still honored,
+        # but the minimal test/dev app may not have the RBAC database needed
+        # to resolve users_ext. Keep the session identity and let the local
+        # route authorization defaults apply instead of replacing it or
+        # failing the request with a spurious 503.
+        identity = None if auth_source == AUTH_SOURCE_SESSION and is_auth_disabled() else await resolve_platform_identity(request, user)
         platform_role = identity.get("role") if identity is not None else None
 
         permissions = await resolve_route_permissions(

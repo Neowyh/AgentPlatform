@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from _router_auth_helpers import make_authed_test_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -61,7 +62,7 @@ def _enable_authorization(monkeypatch, provider, *, fail_closed: bool = True, de
 
 def _make_models_app(app_config: AppConfig) -> FastAPI:
     """Build a FastAPI app with the models router and a pinned config."""
-    app = FastAPI()
+    app = make_authed_test_app()
     app.include_router(models_router.router)
     # Pin the config dependency so routes use our test AppConfig.
     app.dependency_overrides[models_router.get_config] = lambda: app_config

@@ -12,6 +12,7 @@ matching the LangGraph Platform wire format expected by the
 
 from __future__ import annotations
 
+import inspect
 import logging
 import shutil
 import uuid
@@ -689,7 +690,17 @@ async def delete_thread_data(thread_id: str, request: Request) -> ThreadDeleteRe
     try:
         validate_thread_id(thread_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid thread_id: {exc}") from exc
+        # Legacy metadata may contain dots; it is safe to remove from stores
+        # because the cleanup helper deliberately skips filesystem paths.
+        if "/" not in thread_id and "\\" not in thread_id and ".." not in thread_id:
+            from app.gateway.deps import get_thread_store
+
+            legacy_result = get_thread_store(request).get(thread_id, user_id=None)
+            legacy_record = await legacy_result if inspect.isawaitable(legacy_result) else None
+            if legacy_record is None:
+                raise HTTPException(status_code=422, detail=f"Invalid thread_id: {exc}") from exc
+        else:
+            raise HTTPException(status_code=422, detail=f"Invalid thread_id: {exc}") from exc
     run_manager = get_run_manager(request)
     try:
         async with goal_thread_lock(thread_id):

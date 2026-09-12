@@ -93,6 +93,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import sqlalchemy as sa
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
@@ -145,7 +146,6 @@ _PG_LOCK_KEY = 0x0DEE_12F1_0BEE_3682
 # (or vice versa) fires that test.
 _BASELINE_TABLE_NAMES: frozenset[str] = frozenset(
     {
-        _VERSION_TABLE,
         "channel_connections",
         "channel_conversations",
         "channel_credentials",
@@ -339,6 +339,20 @@ def _adopt_legacy_version_table(sync_conn: Any) -> None:
     adopt_unified_version_state(sync_conn)
 
 
+def _database_has_head(sync_conn: Any, head: str) -> bool:
+    """Return whether Alembic already recorded the current unified head.
+
+    A merge head can legitimately leave more than one ancestor row in
+    ``alembic_version``. Re-running ``upgrade head`` in that state makes
+    Alembic try to resolve overlapping targets, so the bootstrap path treats
+    the recorded head as the authoritative no-op signal.
+    """
+    if not sa_inspect(sync_conn).has_table(_VERSION_TABLE):
+        return False
+    row = sync_conn.execute(text(f"SELECT 1 FROM {_VERSION_TABLE} WHERE version_num = :head LIMIT 1"), {"head": head}).first()
+    return row is not None
+
+
 def _decide_state(state: dict[str, bool]) -> str:
     """Map a reflected DB state to one of three branch labels.
 
@@ -368,6 +382,47 @@ def _run_create_all_sync(sync_conn: Any) -> None:
         logger.debug("deerflow.persistence.models not found; bootstrap will create empty schema")
 
     Base.metadata.create_all(sync_conn)
+
+    # A small set of historical tables is still owned by the unified Alembic
+    # chain but intentionally has no active ORM model (the workflow runtime
+    # and the skill-application migration read them directly).  Fresh
+    # ``create_all`` databases must contain the same tables as a pure
+    # base-to-head Alembic upgrade, otherwise two new installations diverge.
+    migration_metadata = sa.MetaData()
+    sa.Table(
+        "workflow_runs",
+        migration_metadata,
+        sa.Column("run_id", sa.String(64), primary_key=True),
+        sa.Column("workflow_name", sa.String(128), nullable=False),
+        sa.Column("workflow_yaml", sa.Text, nullable=False),
+        sa.Column("status", sa.String(20), nullable=False),
+        sa.Column("inputs", sa.JSON, nullable=False),
+        sa.Column("steps_state", sa.JSON, nullable=False),
+        sa.Column("current_step", sa.String(128), nullable=True),
+        sa.Column("error", sa.Text, nullable=True),
+        sa.Column("review_result", sa.JSON, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("loop_vars", sa.JSON, nullable=False, server_default=text("'{}'")),
+        sa.Index("ix_workflow_runs_name", "workflow_name"),
+    )
+    sa.Table(
+        "skill_applications",
+        migration_metadata,
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("skill_id", sa.String(128), nullable=False),
+        sa.Column("skill_name", sa.String(128), nullable=False),
+        sa.Column("applicant_id", sa.String(36), nullable=False),
+        sa.Column("request_level", sa.String(32), nullable=False),
+        sa.Column("department_id", sa.String(36), nullable=True),
+        sa.Column("reason", sa.Text, nullable=True),
+        sa.Column("status", sa.String(32), nullable=True),
+        sa.Column("submitted_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column("reviewed_by", sa.String(36), nullable=True),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("review_comment", sa.Text, nullable=True),
+    )
+    migration_metadata.create_all(sync_conn)
 
 
 def _run_baseline_create_all_sync(sync_conn: Any) -> None:
@@ -584,8 +639,13 @@ async def bootstrap_schema(engine: AsyncEngine, *, backend: str, postgres_schema
             await asyncio.to_thread(_upgrade, cfg, "head")
 
         elif decision == "versioned":
-            logger.info("bootstrap: branch=versioned -> upgrade head (%s)", head)
-            await asyncio.to_thread(_upgrade, cfg, "head")
+            async with engine.connect() as conn:
+                at_head = await conn.run_sync(lambda sync_conn: _database_has_head(sync_conn, head))
+            if at_head:
+                logger.info("bootstrap: branch=versioned -> already at head (%s)", head)
+            else:
+                logger.info("bootstrap: branch=versioned -> upgrade head (%s)", head)
+                await asyncio.to_thread(_upgrade, cfg, "head")
 
         else:  # pragma: no cover -- defensive
             raise RuntimeError(f"bootstrap: unhandled decision {decision!r}")

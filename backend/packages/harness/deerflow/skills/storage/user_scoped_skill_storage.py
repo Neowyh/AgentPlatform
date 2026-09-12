@@ -366,20 +366,26 @@ class UserScopedSkillStorage(LocalSkillStorage):
         self._user_custom_root.mkdir(parents=True, exist_ok=True)
         target = self.validate_relative_path(relative_path, self.get_custom_skill_dir(name))
         target.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            delete=False,
-            dir=str(target.parent),
-        ) as tmp_file:
-            tmp_file.write(content)
-            tmp_path = Path(tmp_file.name)
+        tmp_path: Path | None = None
         try:
             with self._skill_projection_mutation():
+                # Keep the temporary source file inside the projection lock.
+                # Otherwise concurrent writers expose each other's temp files
+                # to the source-signature scan and trigger false instability.
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    encoding="utf-8",
+                    delete=False,
+                    dir=str(target.parent),
+                ) as tmp_file:
+                    tmp_file.write(content)
+                    tmp_path = Path(tmp_file.name)
+                assert tmp_path is not None
                 tmp_path.replace(target)
                 make_skill_written_path_sandbox_readable(self.get_custom_skill_dir(name), target)
         except Exception:
-            tmp_path.unlink(missing_ok=True)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
             raise
 
     # ------------------------------------------------------------------

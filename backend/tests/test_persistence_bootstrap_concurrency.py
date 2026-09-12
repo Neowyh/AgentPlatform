@@ -28,7 +28,7 @@ from deerflow.persistence.bootstrap import bootstrap_schema
 pytestmark = pytest.mark.asyncio
 
 
-HEAD = "0018_oauth_identity_pg_partial"
+HEAD = "20260909_device_control_plane"
 
 
 def _url(tmp_path: Path) -> str:
@@ -119,9 +119,11 @@ async def test_late_caller_after_head_is_noop(monkeypatch, tmp_path: Path) -> No
 
         monkeypatch.setattr(bootstrap_mod, "_upgrade", counting_upgrade)
 
-        # Second caller: versioned branch -> calls _upgrade('head').
+        # Second caller: the merge head is already recorded, so bootstrap is
+        # a true no-op and does not ask Alembic to resolve overlapping branch
+        # rows again.
         await bootstrap_schema(engine, backend="sqlite")
-        assert upgrade_calls == ["head"]
+        assert upgrade_calls == []
         assert await _alembic_version(engine) == HEAD
     finally:
         await engine.dispose()

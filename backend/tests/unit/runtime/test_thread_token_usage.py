@@ -51,6 +51,7 @@ def test_thread_token_usage_returns_stable_shape():
             "subagent": 25,
             "middleware": 5,
         },
+        "context_usage": None,
     }
     run_store.aggregate_tokens_by_thread.assert_awaited_once_with("thread-1")
 

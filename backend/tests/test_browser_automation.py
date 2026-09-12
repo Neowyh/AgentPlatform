@@ -74,7 +74,7 @@ class TestBrowserTools:
         session = MagicMock()
         session.navigate = AsyncMock(return_value=_snapshot())
         ctx, manager = await self._patch_session(session)
-        with ctx, patch.object(tools, "_get_tool_config", return_value={}):
+        with ctx, patch.object(tools, "_get_tool_config", return_value={}), patch.object(tools, "_validate_url", return_value=None):
             result = await tools.browser_navigate_tool.coroutine(
                 runtime=_runtime(),
                 url="https://example.com",
@@ -94,7 +94,7 @@ class TestBrowserTools:
         session.screenshot_bytes = AsyncMock(return_value=b"\xff\xd8jpeg-shot")
         session.schedule_live_frames = MagicMock()
         ctx, _ = await self._patch_session(session)
-        with ctx, patch.object(tools, "_get_tool_config", return_value={}):
+        with ctx, patch.object(tools, "_get_tool_config", return_value={}), patch.object(tools, "_validate_url", return_value=None):
             result = await tools.browser_navigate_tool.coroutine(
                 runtime=_runtime(outputs_path=str(outputs)),
                 url="https://example.com",
@@ -120,7 +120,7 @@ class TestBrowserTools:
         session.navigate = AsyncMock(return_value=_snapshot())
         session.screenshot_bytes = AsyncMock(side_effect=RuntimeError("headless crashed"))
         ctx, _ = await self._patch_session(session)
-        with ctx, patch.object(tools, "_get_tool_config", return_value={}):
+        with ctx, patch.object(tools, "_get_tool_config", return_value={}), patch.object(tools, "_validate_url", return_value=None):
             result = await tools.browser_navigate_tool.coroutine(
                 runtime=_runtime(outputs_path=str(outputs)),
                 url="https://example.com",

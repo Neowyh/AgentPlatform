@@ -714,7 +714,7 @@ class TestChannelManager:
         csrf_token = headers["X-CSRF-Token"]
         assert csrf_token
         assert headers["Cookie"] == f"csrf_token={csrf_token}"
-        assert headers["X-DeerFlow-Internal-Token"]
+        assert headers["X-IDeer-Internal-Token"]
 
     def test_concurrent_inbound_for_same_chat_reuses_single_thread(self):
         # Each inbound message is dispatched on its own task, so two messages
@@ -804,7 +804,7 @@ class TestChannelManager:
             assert reply == "Available models:\n• default"
             assert calls[0]["url"] == "http://gateway:8001/api/models"
             assert calls[0]["timeout"] == 10
-            assert calls[0]["headers"]["X-DeerFlow-Internal-Token"]
+            assert calls[0]["headers"]["X-IDeer-Internal-Token"]
 
         _run(go())
 
@@ -7586,7 +7586,7 @@ class TestChannelService:
 
         _run(go())
         assert any("credentials configured but is disabled" in r.message and r.levelno == logging.WARNING for r in caplog.records)
-        assert all("wecom" not in r.message for r in caplog.records)
+        assert all("corp123" not in r.message and "secret" not in r.message for r in caplog.records)
 
     def test_disabled_channel_with_int_creds_emits_warning(self, caplog):
         """Warning is emitted even when YAML-parsed integer credentials are present."""
@@ -7607,7 +7607,7 @@ class TestChannelService:
 
         _run(go())
         assert any("credentials configured but is disabled" in r.message and r.levelno == logging.WARNING for r in caplog.records)
-        assert all("telegram" not in r.message for r in caplog.records)
+        assert all("123456789" not in r.message for r in caplog.records)
 
     def test_disabled_channel_without_creds_emits_info(self, caplog):
         """Only an info log (no warning) is emitted when a channel is disabled with no credentials."""

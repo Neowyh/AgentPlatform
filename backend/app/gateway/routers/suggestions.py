@@ -1,19 +1,28 @@
 import json
 import logging
+import os
+import re
 
 from fastapi import APIRouter, Depends, Request
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
 from deerflow.config.app_config import AppConfig
-from deerflow.models import create_chat_model
+from deerflow.config.suggestions_config import DEFAULT_MAX_SUGGESTIONS, SuggestionsConfig
+from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.tracing import inject_langfuse_metadata
+from deerflow.utils import oneshot_llm
 from deerflow.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["suggestions"])
+
+
+def create_chat_model(**kwargs):
+    """Compatibility seam for callers and tests that patch this route."""
+    return oneshot_llm.create_chat_model(**kwargs)
 
 
 class SuggestionMessage(BaseModel):
@@ -31,6 +40,21 @@ class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list, description="Suggested follow-up questions")
 
 
+def _strip_think_blocks(text: str) -> str:
+    """Remove inline reasoning blocks emitted by reasoning models."""
+    if not text:
+        return ""
+    opening = re.search(r"<think\s*>", text, flags=re.IGNORECASE)
+    if opening is None:
+        return text.strip()
+    close = re.search(r"</think\s*>", text[opening.end() :], flags=re.IGNORECASE)
+    if close is None:
+        return text[: opening.start()].strip()
+    end = opening.end() + close.end()
+    remainder = text[: opening.start()] + text[end:]
+    return remainder.strip()
+
+
 def _strip_markdown_code_fence(text: str) -> str:
     stripped = text.strip()
     if not stripped.startswith("```"):
@@ -42,7 +66,7 @@ def _strip_markdown_code_fence(text: str) -> str:
 
 
 def _parse_json_string_list(text: str) -> list[str] | None:
-    candidate = _strip_markdown_code_fence(text)
+    candidate = _strip_markdown_code_fence(_strip_think_blocks(text))
     start = candidate.find("[")
     end = candidate.rfind("]")
     if start == -1 or end == -1 or end <= start:
@@ -109,6 +133,9 @@ async def generate_suggestions(
     request: Request,
     config: AppConfig = Depends(get_config),
 ) -> SuggestionsResponse:
+    settings = getattr(config, "suggestions", None)
+    if settings is not None and not bool(getattr(settings, "enabled", True)):
+        return SuggestionsResponse(suggestions=[])
     if not body.messages:
         return SuggestionsResponse(suggestions=[])
 
@@ -131,12 +158,40 @@ async def generate_suggestions(
 
     try:
         model = create_chat_model(name=body.model_name, thinking_enabled=False, app_config=config)
-        response = await model.ainvoke([SystemMessage(content=system_instruction), HumanMessage(content=user_content)], config={"run_name": "suggest_agent"})
+        invoke_config: dict = {"run_name": "suggest_agent"}
+        inject_langfuse_metadata(
+            invoke_config,
+            thread_id=str(thread_id),
+            user_id=get_effective_user_id(),
+            assistant_id="suggest_agent",
+            model_name=body.model_name,
+            environment=os.environ.get("DEER_FLOW_ENV") or os.environ.get("ENVIRONMENT"),
+        )
+        response = await model.ainvoke(
+            [
+                oneshot_llm.SystemMessage(content=system_instruction),
+                oneshot_llm.HumanMessage(content=user_content),
+            ],
+            config=invoke_config,
+        )
         raw = _extract_response_text(response.content)
         suggestions = _parse_json_string_list(raw) or []
         cleaned = [s.replace("\n", " ").strip() for s in suggestions if s.strip()]
-        cleaned = cleaned[:n]
+        max_suggestions = int(getattr(settings, "max_suggestions", DEFAULT_MAX_SUGGESTIONS)) if settings is not None else DEFAULT_MAX_SUGGESTIONS
+        cleaned = cleaned[: min(n, max_suggestions)]
         return SuggestionsResponse(suggestions=cleaned)
     except Exception as exc:
         logger.exception("Failed to generate suggestions: thread_id=%s err=%s", thread_id, exc)
         return SuggestionsResponse(suggestions=[])
+
+
+@router.get("/suggestions/config", response_model=SuggestionsConfig)
+async def get_suggestions_config(config: AppConfig = Depends(get_config)) -> SuggestionsConfig:
+    """Return the effective follow-up suggestion settings."""
+    settings = getattr(config, "suggestions", None)
+    if settings is None:
+        return SuggestionsConfig()
+    return SuggestionsConfig(
+        enabled=bool(getattr(settings, "enabled", True)),
+        max_suggestions=int(getattr(settings, "max_suggestions", DEFAULT_MAX_SUGGESTIONS)),
+    )

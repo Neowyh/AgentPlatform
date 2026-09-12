@@ -6,6 +6,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,6 +16,13 @@ COREPACK_NOTICE = "Using pnpm via Corepack."
 
 def find_pnpm_command() -> list[str] | None:
     """Return the preferred pnpm-compatible command for this machine."""
+    configured = os.environ.get("TEST_PNPM_BIN")
+    if (
+        configured
+        and Path(configured).is_file()
+        and Path(configured).stat().st_mode & 0o111
+    ):
+        return [configured]
     pnpm_path = shutil.which("pnpm")
     if pnpm_path:
         return [str(Path(pnpm_path))]
@@ -49,11 +57,15 @@ def run_pnpm(arguments: Sequence[str]) -> int:
         print(COREPACK_NOTICE, file=sys.stderr)
 
     try:
+        env = os.environ.copy()
+        env.setdefault("XDG_DATA_HOME", "/tmp/deer-flow-xdg")
+        env.setdefault("PNPM_HOME", "/tmp/deer-flow-pnpm-home")
         result = subprocess.run(
             [*command, *arguments],
             check=False,
             shell=False,
             cwd=FRONTEND_DIR,
+            env=env,
         )
     except OSError as exc:
         print(f"Error: Failed to run pnpm via {command[0]}: {exc}", file=sys.stderr)

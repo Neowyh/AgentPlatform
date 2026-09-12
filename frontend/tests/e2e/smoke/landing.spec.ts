@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { mockLangGraphAPI } from "../utils/mock-api";
 
-test.describe("Landing page", () => {
+test.describe("@smoke Landing page", () => {
   test("renders the header and hero section", async ({ page }) => {
     await page.goto("/");
 

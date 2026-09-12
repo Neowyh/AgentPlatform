@@ -1,9 +1,7 @@
-"""Stress tests for RMW race in memory fact operations.
+"""Stress tests for concurrent memory fact operations.
 
-create_memory_fact, delete_memory_fact, and update_memory_fact follow a
-read-modify-write pattern with no lock between read and write.  Concurrent
-calls lose data (last-writer-wins).  These tests document the race exists
-and verify the system handles it gracefully (no crashes, no corrupted JSON).
+Read-modify-write mutations are serialized by the file storage provider so
+concurrent calls preserve facts and updates without corrupting JSON.
 """
 
 import concurrent.futures
@@ -112,7 +110,7 @@ def mem_storage_with_10_facts():
 
 
 def test_concurrent_create_memory_fact_stress(mem_storage):
-    """10 concurrent create calls — RMW race loses all but last write."""
+    """10 concurrent create calls preserve every fact."""
     storage, mem_file = mem_storage
 
     with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=storage):
@@ -124,7 +122,7 @@ def test_concurrent_create_memory_fact_stress(mem_storage):
     data = json.loads(mem_file.read_text())
     assert isinstance(data, dict)
     assert isinstance(data.get("facts"), list)
-    assert len(data["facts"]) < 10, "Expected data loss from RMW race: not all 10 creates survived"
+    assert len(data["facts"]) == 10
 
 
 def test_concurrent_delete_memory_fact_stress(mem_storage_with_10_facts):
@@ -144,7 +142,7 @@ def test_concurrent_delete_memory_fact_stress(mem_storage_with_10_facts):
 
 
 def test_concurrent_update_memory_fact_stress(mem_storage_with_facts):
-    """5 concurrent update calls on different ids — RMW race loses some updates."""
+    """5 concurrent updates on different ids preserve every update."""
     storage, mem_file = mem_storage_with_facts
 
     with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=storage):
@@ -164,4 +162,4 @@ def test_concurrent_update_memory_fact_stress(mem_storage_with_facts):
     assert isinstance(data, dict)
     assert isinstance(data.get("facts"), list)
     updated_count = sum(1 for f in data["facts"] if f["content"].startswith("updated-"))
-    assert updated_count < 5, f"Expected data loss: all 5 updates survived (updated={updated_count})"
+    assert updated_count == 5

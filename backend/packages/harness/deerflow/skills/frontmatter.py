@@ -24,6 +24,10 @@ ALLOWED_FRONTMATTER_PROPERTIES = {
     "compatibility",
     "version",
     "author",
+    # Bundled enterprise skills may include localized descriptions and an
+    # explicit network requirement.
+    "description_zh",
+    "requires-internet",
 }
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)

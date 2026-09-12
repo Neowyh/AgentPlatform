@@ -12,6 +12,7 @@ works without modification.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import re
 import uuid
@@ -26,6 +27,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
+from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
 from app.gateway.authz import require_cancel_permission_if, require_permission
 from app.gateway.checkpoint_lineage import (
     CheckpointLineageError,
@@ -36,6 +38,7 @@ from app.gateway.checkpoint_lineage import (
     find_checkpoint_before_message_chronologically,
     is_duration_only_checkpoint,
 )
+from app.gateway.context_usage import build_context_usage
 from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 from app.gateway.run_models import RunCreateRequest as SharedRunCreateRequest
@@ -49,6 +52,7 @@ from deerflow.runtime.secret_context import redact_config_secrets, redact_metada
 from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
 from deerflow.utils.thread_id import ThreadId
+from deerflow.workspace_changes import get_workspace_changes_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
@@ -56,6 +60,7 @@ _artifact_archive_slots = asyncio.Semaphore(4)
 REGENERATE_HISTORY_SCAN_LIMIT = 200
 REGENERATE_HISTORY_RAW_SCAN_LIMIT = REGENERATE_HISTORY_SCAN_LIMIT * 2
 THREAD_MESSAGE_PAGE_SCAN_BATCH = 201
+THREAD_MESSAGE_LEGACY_SCAN_BATCH = 500
 _MISSING_REGENERATE_BASE_DETAIL = "Could not find an addressable checkpoint before the target user message"
 _UNSAFE_REGENERATE_LINEAGE_DETAIL = "Could not safely resolve the checkpoint before the target user message"
 
@@ -144,6 +149,7 @@ class ThreadTokenUsageResponse(BaseModel):
     total_runs: int = 0
     by_model: dict[str, ThreadTokenUsageModelBreakdown] = Field(default_factory=dict)
     by_caller: ThreadTokenUsageCallerBreakdown = Field(default_factory=ThreadTokenUsageCallerBreakdown)
+    context_usage: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +468,13 @@ async def _require_successful_source_run(thread_id: str, run_id: str, request: R
     user_id = await get_current_user(request)
     record = await run_mgr.get(run_id, user_id=user_id)
     if record is None:
+        # Store-only records may have been created on another worker before
+        # owner metadata was persisted. The route-level owner permission has
+        # already run; hydrate that historical record as a read fallback.
+        fallback = await run_mgr.get(run_id)
+        if fallback is not None and getattr(fallback, "store_only", False):
+            record = fallback
+    if record is None:
         records = await run_mgr.list_by_thread(thread_id, user_id=user_id, limit=20)
         record = next((candidate for candidate in records if getattr(candidate, "run_id", None) == run_id), None)
     if record is None or (record_thread_id := getattr(record, "thread_id", None)) and record_thread_id != thread_id:
@@ -704,6 +717,8 @@ async def list_runs(thread_id: ThreadId, request: Request) -> list[RunResponse]:
     run_mgr = get_run_manager(request)
     event_store = get_run_event_store(request)
     user_id = await get_current_user(request)
+    if getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
+        user_id = None
     records = await run_mgr.list_by_thread(thread_id, user_id=user_id)
     return [await _response_with_message_summary(record, event_store) for record in records]
 
@@ -714,6 +729,8 @@ async def get_run(thread_id: ThreadId, run_id: str, request: Request) -> RunResp
     """Get details of a specific run."""
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
+    if getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
+        user_id = None
     record = await run_mgr.get(run_id, user_id=user_id)
     if record is None or record.thread_id != thread_id:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
@@ -772,10 +789,12 @@ async def join_run(thread_id: ThreadId, run_id: str, request: Request) -> Stream
     record = await run_mgr.get(run_id)
     if record is None or record.thread_id != thread_id:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-    if record.store_only:
+    bridge = getattr(request.app.state, "stream_bridge", None)
+    if record.store_only and (bridge is None or getattr(bridge, "supports_cross_process", False) is not True):
         raise HTTPException(status_code=409, detail=f"Run {run_id} is not active on this worker and cannot be streamed")
 
-    bridge = get_stream_bridge(request)
+    if bridge is None:
+        bridge = get_stream_bridge(request)
     return StreamingResponse(
         sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False),
         media_type="text/event-stream",
@@ -822,6 +841,7 @@ async def _stream_existing_run(
     record = await run_mgr.get(run_id)
     if record is None or record.thread_id != thread_id:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    bridge = getattr(request.app.state, "stream_bridge", None)
     if record.store_only and action is None:
         raise HTTPException(status_code=409, detail=f"Run {run_id} is not active on this worker and cannot be streamed")
 
@@ -839,7 +859,8 @@ async def _stream_existing_run(
                 pass
             return Response(status_code=204)
 
-    bridge = get_stream_bridge(request)
+    if bridge is None:
+        bridge = get_stream_bridge(request)
     if action is not None:
         if record.store_only and not bridge.supports_cross_process:
             # The cancel request is durable (the store records ``cancel_action``),
@@ -940,6 +961,7 @@ async def _scan_thread_message_page(
     event_store = get_run_event_store(request)
     run_mgr = get_run_manager(request)
     superseded_run_ids = await run_mgr.list_successful_regenerate_sources(thread_id, user_id=user_id)
+    edit_visibility = await run_mgr.list_edit_replay_visibility(thread_id, user_id=user_id)
     visible_desc: list[dict[str, Any]] = []
     scan_before = before_seq
     while len(visible_desc) < limit + 1:
@@ -952,15 +974,36 @@ async def _scan_thread_message_page(
         if not raw:
             break
         if any(not isinstance(row.get("seq"), int) for row in raw):
+            logger.error(
+                "Thread message scan found rows without sequence values thread_id=%s scan_before=%s row_count=%s",
+                thread_id,
+                scan_before,
+                len(raw),
+            )
             raise RuntimeError("Run event message rows are missing sequence values")
         for row in reversed(raw):
-            if _is_middleware_message_row(row) or row.get("run_id") in superseded_run_ids:
+            caller = str((row.get("metadata") or {}).get("caller", ""))
+            content = row.get("content") or {}
+            if (
+                _is_middleware_message_row(row)
+                or (caller.startswith("subagent:") and content.get("type") == "ai")
+                or row.get("run_id") in superseded_run_ids
+                or row.get("run_id") in edit_visibility.hidden_source_run_ids
+                or row.get("run_id") in edit_visibility.hidden_attempt_run_ids
+            ):
                 continue
             visible_desc.append(row)
             if len(visible_desc) == limit + 1:
                 break
         next_scan_before = min(row["seq"] for row in raw)
         if scan_before is not None and next_scan_before >= scan_before:
+            logger.error(
+                "Thread message scan cursor did not advance thread_id=%s scan_before=%s next_cursor=%s row_count=%s",
+                thread_id,
+                scan_before,
+                next_scan_before,
+                len(raw),
+            )
             raise RuntimeError("Run event message scan did not advance its cursor")
         scan_before = next_scan_before
         if len(raw) < THREAD_MESSAGE_PAGE_SCAN_BATCH:
@@ -995,9 +1038,7 @@ async def _enrich_thread_message_page(
         if row.get("seq") == last_ai_seq_by_run.get(run_id) and run_id in feedback_map:
             feedback = feedback_map[run_id]
             row["feedback"] = {"feedback_id": feedback["feedback_id"], "rating": feedback["rating"], "comment": feedback.get("comment")}
-        content = row.get("content")
-        if isinstance(content, dict) and content.get("type") == "ai" and run_id in run_durations:
-            content.setdefault("additional_kwargs", {})["turn_duration"] = run_durations[run_id]
+    stamp_turn_duration_on_last_ai(data, run_durations)
     return data
 
 
@@ -1028,18 +1069,63 @@ async def list_thread_messages(
 ) -> list[dict]:
     """Return displayable messages for a thread (across all runs), with feedback attached."""
     event_store = get_run_event_store(request)
-    messages = await event_store.list_messages(thread_id, limit=limit, before_seq=before_seq, after_seq=after_seq)
+    user_id = await get_current_user(request)
+    if getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
+        user_id = None
+    run_manager = get_run_manager(request)
+    superseded_result = run_manager.list_successful_regenerate_sources(thread_id, user_id=user_id)
+    superseded_run_ids = await superseded_result if inspect.isawaitable(superseded_result) else superseded_result
+    visibility_result = run_manager.list_edit_replay_visibility(thread_id, user_id=user_id)
+    edit_visibility = await visibility_result if inspect.isawaitable(visibility_result) else visibility_result
+    messages: list[dict[str, Any]] = []
+    scan_before = before_seq
+    while len(messages) < limit:
+        message_kwargs = {
+            "limit": THREAD_MESSAGE_LEGACY_SCAN_BATCH,
+            "before_seq": scan_before,
+            "user_id": user_id,
+        }
+        if after_seq is not None:
+            message_kwargs["after_seq"] = after_seq
+        raw = await event_store.list_messages(thread_id, **message_kwargs)
+        if not raw:
+            break
+        messages.extend(
+            row
+            for row in raw
+            if not (str((row.get("metadata") or {}).get("caller", "")).startswith("subagent:") and (row.get("content") or {}).get("type") == "ai")
+            and row.get("run_id") not in superseded_run_ids
+            and row.get("run_id") not in edit_visibility.hidden_source_run_ids
+            and row.get("run_id") not in edit_visibility.hidden_attempt_run_ids
+        )
+        if before_seq is None and after_seq is None and len(raw) == THREAD_MESSAGE_LEGACY_SCAN_BATCH:
+            raw_seqs = [row.get("seq") for row in raw]
+            if not all(isinstance(seq, int) for seq in raw_seqs):
+                break
+            next_before = min(raw_seqs)
+            if scan_before is not None and next_before >= scan_before:
+                break
+            scan_before = next_before
+            continue
+        break
+    # Stores should honor the limit, but enforce the response contract when a
+    # compatibility store returns more rows than requested.
+    messages = messages[:limit]
+
+    runs_result = run_manager.list_by_thread(thread_id, user_id=user_id)
+    runs = await runs_result if inspect.isawaitable(runs_result) else runs_result
+    stamp_turn_duration_on_last_ai(messages, compute_run_durations(runs))
 
     # Attach feedback to the last AI message of each run
-    feedback_repo = get_feedback_repo(request)
-    user_id = await get_current_user(request)
-    feedback_map = await feedback_repo.list_by_thread_grouped(thread_id, user_id=user_id)
-
     # Find the last ai_message per run_id
     last_ai_per_run: dict[str, int] = {}  # run_id -> index in messages list
     for i, msg in enumerate(messages):
-        if msg.get("event_type") == "ai_message":
+        if msg.get("event_type") in {"ai_message", "llm.ai.response"}:
             last_ai_per_run[msg["run_id"]] = i
+
+    feedback_map: dict[str, dict] = {}
+    if last_ai_per_run:
+        feedback_map = await get_feedback_repo(request).list_by_thread_grouped(thread_id, user_id=user_id)
 
     # Attach feedback field
     last_ai_indices = set(last_ai_per_run.values())
@@ -1069,8 +1155,8 @@ async def list_run_messages(
     run_id: str,
     request: Request,
     limit: int = Query(default=50, le=200, ge=1),
-    before_seq: int | None = Query(default=None),
-    after_seq: int | None = Query(default=None),
+    before_seq: int | None = Query(default=None, ge=1),
+    after_seq: int | None = Query(default=None, ge=1),
 ) -> dict:
     """Return paginated messages for a specific run.
 
@@ -1085,8 +1171,42 @@ async def list_run_messages(
         after_seq=after_seq,
     )
     has_more = len(rows) > limit
-    data = rows[:limit] if has_more else rows
+    if has_more:
+        # The store returns rows in ascending sequence order. A backward page
+        # must retain the newest side so the boundary message is not skipped;
+        # forward pages retain the oldest side for normal cursor progression.
+        data = rows[-limit:] if before_seq is not None or after_seq is None else rows[:limit]
+    else:
+        data = rows
+    # Message retrieval remains useful for read-only/test deployments where
+    # the local run manager is not configured. Enrichment is best-effort and
+    # must not turn an otherwise valid event-store response into a 503.
+    run_manager = getattr(request.app.state, "run_manager", None)
+    if run_manager is not None:
+        run_result = run_manager.get(run_id)
+        run = await run_result if inspect.isawaitable(run_result) else run_result
+        if run is not None:
+            stamp_turn_duration_on_last_ai(data, compute_run_durations([run]))
     return {"data": data, "has_more": has_more}
+
+
+@router.get("/{thread_id}/runs/{run_id}/workspace-changes")
+@require_permission("runs", "read", owner_check=True)
+async def get_run_workspace_changes(
+    thread_id: ThreadId,
+    run_id: str,
+    request: Request,
+    include_files: bool = Query(default=True),
+    include_diff: bool = Query(default=True),
+) -> dict[str, Any]:
+    """Return the verified workspace/output changes recorded for a run."""
+    return await get_workspace_changes_response(
+        get_run_event_store(request),
+        thread_id,
+        run_id,
+        include_files=include_files,
+        include_diff=include_diff,
+    )
 
 
 def _archive_response_chunks(result: ArtifactArchiveResult):
@@ -1243,12 +1363,28 @@ async def list_run_events(
     run_id: str,
     request: Request,
     event_types: str | None = Query(default=None),
+    task_id: str | None = Query(default=None),
     limit: int = Query(default=500, le=2000, ge=1),
+    after_seq: int | None = Query(default=None, ge=1),
 ) -> list[dict]:
     """Return the full event stream for a run (debug/audit)."""
     event_store = get_run_event_store(request)
     types = event_types.split(",") if event_types else None
-    return await event_store.list_events(thread_id, run_id, event_types=types, limit=limit)
+    event_kwargs: dict[str, Any] = {"event_types": types, "limit": limit}
+    if task_id is not None:
+        event_kwargs["task_id"] = task_id
+    if after_seq is not None:
+        event_kwargs["after_seq"] = after_seq
+    elif types is None:
+        # Keep the explicit empty cursor in the default query contract while
+        # remaining compatible with older event-store adapters for filtered
+        # queries.
+        event_kwargs["task_id"] = None
+        event_kwargs["after_seq"] = None
+    events = await event_store.list_events(thread_id, run_id, **event_kwargs)
+    # Legacy persisted ``run.start`` rows may contain credentials. Redact the
+    # response copy while leaving the event store's historical object intact.
+    return [{**event, "metadata": redact_metadata_secrets(event.get("metadata"))} if isinstance(event, dict) and isinstance(event.get("metadata"), dict) else event for event in events]
 
 
 @router.get("/{thread_id}/token-usage", response_model=ThreadTokenUsageResponse)
@@ -1264,4 +1400,5 @@ async def thread_token_usage(
         agg = await run_store.aggregate_tokens_by_thread(thread_id, include_active=True)
     else:
         agg = await run_store.aggregate_tokens_by_thread(thread_id)
-    return ThreadTokenUsageResponse(thread_id=thread_id, **agg)
+    context_usage = await build_context_usage(request, thread_id, run_store)
+    return ThreadTokenUsageResponse(thread_id=thread_id, context_usage=context_usage, **agg)

@@ -20,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import shutil
 from pathlib import Path
 
+import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
@@ -37,6 +39,25 @@ _TOOL_MODULE_NAME = "deerflow.tools.builtins.setup_agent_tool"
 _BUILTINS_MODULE_NAME = "deerflow.tools.builtins"
 
 _installed = False
+
+
+def _write_user_agent_files(*, user_id: str, agent_name: str, description: str, soul: str) -> None:
+    """Keep the per-user file projection in sync with catalog publication."""
+    from deerflow.config.agents_config import get_paths
+
+    target = get_paths().user_agent_dir(user_id, agent_name)
+    created = not target.exists()
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        config: dict[str, str] = {"name": agent_name}
+        if description:
+            config["description"] = description
+        (target / "config.yaml").write_text(yaml.dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        (target / "SOUL.md").write_text(soul, encoding="utf-8")
+    except BaseException:
+        if created:
+            shutil.rmtree(target, ignore_errors=True)
+        raise
 
 
 def _create_canonical_agent(
@@ -64,7 +85,10 @@ def _create_canonical_agent(
     tool_module = importlib.import_module(_TOOL_MODULE_NAME)
     session_factory = tool_module.get_session_factory()
     if session_factory is None:
-        raise RuntimeError("Resource catalog persistence is unavailable")
+        # Standalone tool graphs (and first boot before persistence startup)
+        # still need a durable, user-scoped file result.
+        _write_user_agent_files(user_id=user_id, agent_name=agent_name, description=description, soul=soul)
+        return agent_name
 
     async def _create() -> str:
         async with session_factory() as session:
@@ -164,6 +188,8 @@ def setup_agent(
     agent_name: str | None = runtime.context.get("agent_name") if runtime.context else None
 
     try:
+        if not soul.strip():
+            raise ValueError("soul content is empty; refusing to create agent with an empty SOUL.md")
         agent_name = validate_agent_name(agent_name)
         if agent_name:
             user_id = resolve_runtime_user_id(runtime)

@@ -51,6 +51,15 @@
       "args": ["-m", "app.agentplatform.community.data_analyzer.mcp_server"],
       "env": {},
       "description": "Analyze structured data files (CSV, Excel, JSON) and generate statistical insights"
+    },
+    "openviking": {
+      "enabled": false,
+      "type": "http",
+      "url": "http://127.0.0.1:1933/mcp",
+      "headers": {
+        "X-API-Key": "$OPENVIKING_API_KEY"
+      },
+      "description": "OpenViking memory and knowledge MCP server"
     }
   },
   "skills": {}
