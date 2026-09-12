@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
-from pydantic import BaseModel, Field
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, ConfigDict, Field
 
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
@@ -24,6 +25,7 @@ class KnowledgeSearchInput(BaseModel):
 
     query: str = Field(min_length=1)
     knowledge_base: str = Field(min_length=1, description="Logical knowledge base selector")
+    model_config = ConfigDict(extra="forbid")
 
 
 class KnowledgeRuntimeAdapter:
@@ -53,38 +55,31 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
             continue
         original = tool
 
-        class _ScopedTool:
-            name = "knowledge_search"
-            description = getattr(original, "description", "")
-            args_schema = KnowledgeSearchInput
+        async def _async_search(query: str, knowledge_base: str) -> Any:
+            provider = getattr(original, "coroutine", None)
+            if provider is None:
+                raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+            try:
+                return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(query, logical_kb=knowledge_base)
+            except TypeError as exc:
+                raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 
-            @staticmethod
-            def _arguments(args: Mapping[str, Any]) -> tuple[str, str]:
-                query = args.get("query")
-                logical_kb = args.get("knowledge_base")
-                if not isinstance(query, str) or not isinstance(logical_kb, str):
-                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
-                return query, logical_kb
+        def _sync_search(query: str, knowledge_base: str) -> Any:
+            provider = getattr(original, "func", None)
+            if provider is None:
+                raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+            try:
+                return provider(query, dataset_ids=[scope.resolve(knowledge_base)])
+            except (KeyError, TypeError) as exc:
+                raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 
-            async def ainvoke(self, args: Mapping[str, Any]) -> Any:
-                query, logical_kb = self._arguments(args)
-                provider = getattr(original, "coroutine", None)
-                if provider is None:
-                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
-                try:
-                    return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(query, logical_kb=logical_kb)
-                except TypeError as exc:
-                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
-
-            def invoke(self, args: Mapping[str, Any]) -> Any:
-                query, logical_kb = self._arguments(args)
-                try:
-                    provider = getattr(original, "func", None)
-                    if provider is None:
-                        raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
-                    return provider(query, dataset_ids=[scope.resolve(logical_kb)])
-                except (KeyError, TypeError) as exc:
-                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
-
-        adapted.append(_ScopedTool())
+        adapted.append(
+            StructuredTool.from_function(
+                func=_sync_search,
+                coroutine=_async_search,
+                name="knowledge_search",
+                description=getattr(original, "description", ""),
+                args_schema=KnowledgeSearchInput,
+            )
+        )
     return adapted

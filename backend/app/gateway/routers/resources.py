@@ -404,6 +404,7 @@ def _resource_payload(
 
 def _version_payload(version: ResourceVersion) -> dict[str, Any]:
     return {
+        "revision_id": version.id,
         "resource_id": version.resource_id,
         "version": version.version,
         "content_hash": version.content_hash,
@@ -996,6 +997,20 @@ async def get_resource_dependencies(
                 for dependency, target in rows
             ],
         }
+
+
+@router.get("/{resource_id}/versions")
+@_translate_resource_errors
+async def list_resource_versions(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """List published revisions visible to the caller for PINNED selection."""
+    async with _factory()() as session:
+        service = ResourceService(session, _resource_actor(current_user))
+        await service.get_visible(resource_id)
+        versions = list((await session.execute(select(ResourceVersion).where(ResourceVersion.resource_id == resource_id).order_by(ResourceVersion.version.desc()))).scalars())
+        return {"resource_id": resource_id, "versions": [_version_payload(version) for version in versions]}
 
 
 @router.get("/{resource_id}/published")

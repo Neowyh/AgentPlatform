@@ -37,6 +37,25 @@ export async function getResourceDependencies(
     .dependencies;
 }
 
+export interface ResourceVersionSummary {
+  revision_id: string;
+  resource_id: string;
+  version: number;
+  content_hash: string;
+  published_at: string | null;
+}
+
+export async function listResourceVersions(
+  resourceId: string,
+): Promise<ResourceVersionSummary[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/versions`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load resource versions");
+  return ((await res.json()) as { versions: ResourceVersionSummary[] })
+    .versions;
+}
+
 export async function replaceResourceDependencies(
   resourceId: string,
   dependencies: Array<{

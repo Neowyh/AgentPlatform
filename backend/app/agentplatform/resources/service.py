@@ -1398,8 +1398,15 @@ class ResourceService:
             resolved.append(ResolvedResource(resource=resource, version=version))
             edges = list((await self.session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
             for edge in edges:
-                target = await self._get_visible(edge.target_resource_id)
+                try:
+                    target = await self._get_visible(edge.target_resource_id)
+                except ResourceNotFound:
+                    if edge.required is False:
+                        continue
+                    raise
                 self._assert_visibility_closure(resource, target, actor_user_id=self.actor.user_id)
+                if edge.required is False and target.latest_version < 1:
+                    continue
                 await visit(edge.target_resource_id, edge.revision_id if edge.dependency_mode == "pinned" else None)
             visiting.remove(resource_id)
             visited.add(resource_id)

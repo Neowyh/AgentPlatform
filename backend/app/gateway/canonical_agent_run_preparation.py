@@ -157,7 +157,7 @@ async def prepare_canonical_agent_run(
             bindings = {}
             if knowledge_resources:
                 rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
-                bindings = {knowledge_resources[row.resource_id].slug: row.provider_dataset_id for row in rows.scalars()}
+                bindings = {row.resource_id: row.provider_dataset_id for row in rows.scalars()}
             run_context = diagnostic_context or {}
             tool_config = None
             try:
@@ -170,7 +170,9 @@ async def prepare_canonical_agent_run(
                 deployment_allowed = set()
             else:
                 deployment_allowed = getattr(tool_config, "datasets", None)
-            caller_allowed = {item.resource.slug for item in knowledge_resources.values()}
+            # The scope is keyed by canonical KB UUIDs. Slugs are display
+            # aliases and may collide across owners/departments.
+            caller_allowed = set(knowledge_resources)
             knowledge_scope = calculate_effective_knowledge_scope(
                 bindings,
                 caller_allowed=caller_allowed,

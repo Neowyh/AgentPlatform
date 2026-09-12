@@ -9,6 +9,8 @@ from agentplatform_extension.knowledge.runtime_adapter import (
     adapt_knowledge_tools,
 )
 from agentplatform_extension.knowledge.scope import KnowledgeScope
+from langchain_core.tools import BaseTool
+from langgraph.prebuilt import ToolNode
 
 from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
 
@@ -62,10 +64,14 @@ async def test_adapted_tool_passes_only_resolved_dataset_to_provider() -> None:
     tool = type("Tool", (), {"name": "knowledge_search", "coroutine": staticmethod(provider), "description": "search"})()
     adapted = adapt_knowledge_tools([tool], KnowledgeScope.from_bindings({"docs": "opaque"}))[0]
 
+    assert isinstance(adapted, BaseTool)
+    ToolNode([adapted])
     assert await adapted.ainvoke({"query": "find", "knowledge_base": "docs"}) == "ok"
     assert calls == [{"query": "find", "dataset_ids": ["opaque"]}]
     with pytest.raises(KnowledgeAccessDenied):
         await adapted.ainvoke({"query": "find", "knowledge_base": "opaque"})
+    with pytest.raises(Exception):
+        await adapted.ainvoke({"query": "find", "knowledge_base": "docs", "dataset_id": "opaque"})
 
 
 def test_adapted_tool_exposes_logical_selector_schema_without_provider_id() -> None:

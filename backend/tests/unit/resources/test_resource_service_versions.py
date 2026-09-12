@@ -225,6 +225,40 @@ async def test_agent_can_declare_live_and_pinned_knowledge_dependencies(session:
 
 
 @pytest.mark.asyncio
+async def test_optional_unpublished_dependency_is_omitted_from_runtime_closure(session: AsyncSession) -> None:
+    agent = _resource("optional-agent", resource_type="agent", latest_version=1)
+    knowledge_base = _resource("optional-kb", resource_type="knowledge_base")
+    session.add_all(
+        [
+            agent,
+            knowledge_base,
+            ResourceVersion(
+                id="optional-agent-version",
+                resource_id=agent.id,
+                version=1,
+                content_hash="b" * 64,
+                storage_key="agents/optional-agent/versions/1",
+                scan_result={},
+                content={},
+                created_by="owner",
+            ),
+            ResourceDependency(
+                id="optional-edge",
+                source_resource_id=agent.id,
+                target_resource_id=knowledge_base.id,
+                dependency_mode="live",
+                required=False,
+            ),
+        ]
+    )
+    await session.commit()
+
+    closure = await ResourceService(session, _actor()).resolve_dependency_closure(agent.id)
+
+    assert [item.resource.id for item in closure] == [agent.id]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("dependency", "message"),
     [

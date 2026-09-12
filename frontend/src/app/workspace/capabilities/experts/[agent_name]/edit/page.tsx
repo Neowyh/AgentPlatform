@@ -74,6 +74,10 @@ export default function AgentEditPage() {
       purpose: string | null;
     }>
   >([]);
+  const [knowledgeDependenciesLoaded, setKnowledgeDependenciesLoaded] =
+    useState(false);
+  const [knowledgeDependenciesLoadError, setKnowledgeDependenciesLoadError] =
+    useState(false);
 
   useEffect(() => {
     if (agent) {
@@ -91,6 +95,8 @@ export default function AgentEditPage() {
 
   useEffect(() => {
     if (!agent?.resource_id) return;
+    setKnowledgeDependenciesLoaded(false);
+    setKnowledgeDependenciesLoadError(false);
     void Promise.all([
       listKnowledgeBases(),
       getResourceDependencies(agent.resource_id),
@@ -108,8 +114,13 @@ export default function AgentEditPage() {
               purpose: item.purpose,
             })),
         );
+        setKnowledgeDependenciesLoaded(true);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        // A failed dependency read must never be interpreted as an empty
+        // selection: saving that value would silently remove existing edges.
+        setKnowledgeDependenciesLoadError(true);
+      });
   }, [agent?.resource_id]);
 
   const handleSave = useCallback(async () => {
@@ -122,7 +133,12 @@ export default function AgentEditPage() {
     }
     try {
       const request = agent?.resource_id
-        ? { ...formData, knowledge_dependencies: knowledgeDependencies }
+        ? {
+            ...formData,
+            ...(knowledgeDependenciesLoaded
+              ? { knowledge_dependencies: knowledgeDependencies }
+              : {}),
+          }
         : formData;
       await updateAgent.mutateAsync({ name: agent_name, request });
       toast.success("Agent updated successfully");
@@ -135,6 +151,7 @@ export default function AgentEditPage() {
     agent_name,
     formData,
     knowledgeDependencies,
+    knowledgeDependenciesLoaded,
     originalVisibility,
     router,
     updateAgent,
@@ -394,6 +411,11 @@ export default function AgentEditPage() {
           </div>
 
           {/* SOUL.md */}
+          {knowledgeDependenciesLoadError && (
+            <div className="text-destructive type-body">
+              Knowledge dependencies could not be loaded. Reload before saving.
+            </div>
+          )}
           {knowledgeBases.length > 0 && (
             <div className="space-y-2">
               <Label>KnowledgeBases</Label>

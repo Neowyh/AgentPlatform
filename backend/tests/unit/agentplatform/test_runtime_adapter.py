@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agentplatform_extension.knowledge.scope import KnowledgeScope
+from langchain_core.tools import BaseTool
 
 from app.agentplatform.runtime_adapter import build_canonical_agent_factory
 
@@ -135,7 +136,7 @@ def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(monkeypatch)
     factory({"configurable": {}})
 
     assert observed and observed[0][0].name == "knowledge_search"
-    assert observed[0][0].__class__.__name__ == "_ScopedTool"
+    assert isinstance(observed[0][0], BaseTool)
 
 
 def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(monkeypatch) -> None:
