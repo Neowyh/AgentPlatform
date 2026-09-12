@@ -157,7 +157,7 @@ async def test_migration_dedupes_duplicate_active_rows_before_unique_index(tmp_p
         with sqlite3.connect(db_path) as raw:
             version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
         # Bootstrap upgrades through the later revisions after 0004.
-        assert version_row[0] == "20260909_device_control_plane"
+        assert version_row[0] == "20260911_resource_dependency_kb_fields"
 
         # Sanity: the invariant the index enforces is now true — at most one
         # active row per thread.

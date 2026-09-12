@@ -29,7 +29,7 @@ def _check_sql(model: type) -> set[str]:
 
 
 def test_catalog_enums_are_closed_to_the_accepted_contract() -> None:
-    assert {item.value for item in ResourceType} == {"skill", "agent", "workflow"}
+    assert {item.value for item in ResourceType} == {"skill", "agent", "workflow", "knowledge_base"}
     assert {item.value for item in ResourceLifecycleStatus} == {"active", "archived", "suspended"}
     assert {item.value for item in ResourceStorageKind} == {"filesystem", "database"}
     assert {item.value for item in ResourceProvenance} == {"user", "bundled"}
@@ -86,6 +86,10 @@ def test_dependency_and_snapshot_rows_use_resource_ids_and_actual_versions() -> 
         "id",
         "source_resource_id",
         "target_resource_id",
+        "dependency_mode",
+        "revision_id",
+        "required",
+        "purpose",
         "created_at",
     }
     assert ("source_resource_id", "target_resource_id") in _unique_column_sets(ResourceDependency)
