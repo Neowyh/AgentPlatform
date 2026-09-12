@@ -53,6 +53,8 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
         if getattr(tool, "name", None) != "knowledge_search":
             adapted.append(tool)
             continue
+        if not scope.bindings:
+            continue
         original = tool
 
         async def _async_search(query: str, knowledge_base: str) -> Any:

@@ -26,7 +26,7 @@ from deerflow.persistence.models.workflow_v2 import (
 logger = logging.getLogger(__name__)
 
 
-def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str) -> dict:
+def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str, knowledge_scope: dict[str, str] | None = None) -> dict:
     """Project immutable resource and caller identity into the Run snapshot.
 
     ``WorkflowV2RunRow.snapshot`` is also used for mutable recovery state, so
@@ -50,6 +50,7 @@ def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str) -> dict
         "workflow_resource_id": workflow_resource_id,
         "resource_snapshots": resource_snapshots,
         "allowed_tools": allowed_tools,
+        "knowledge_scope": knowledge_scope or {},
     }
     runtime_assembly_fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {
@@ -63,7 +64,33 @@ def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str) -> dict
         },
         "policy_revision": policy_revision,
         "runtime_assembly_fingerprint": runtime_assembly_fingerprint,
+        "knowledge_scope": {
+            "bindings": dict(knowledge_scope or {}),
+            "logical_selectors": sorted(knowledge_scope or {}),
+        },
     }
+
+
+async def _frozen_knowledge_scope(session, snapshots, actor) -> dict[str, str]:
+    """Calculate the server-owned KB scope before a Workflow Run is claimable."""
+
+    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
+    from deerflow.config import get_app_config
+
+    resource_ids = [snapshot.resource_id for snapshot in snapshots]
+    rows = (await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(resource_ids)))).scalars()
+    bindings = {row.resource_id: row.provider_dataset_id for row in rows}
+    try:
+        tool_config = get_app_config().get_tool_config("knowledge_search")
+        deployment_allowed = getattr(tool_config, "datasets", None)
+    except Exception:
+        deployment_allowed = set()
+    return calculate_effective_knowledge_scope(
+        bindings,
+        caller_allowed=set(bindings),
+        deployment_allowed=deployment_allowed,
+    )
 
 
 def _merge_recovery_snapshot(existing: dict | None, recovery: dict) -> dict:
@@ -333,6 +360,7 @@ class WorkflowV2Store:
                 run_id,
                 actor.user_id,
             )
+            knowledge_scope = await _frozen_knowledge_scope(session, snapshots, actor)
 
             active = ("queued", "running", "paused")
             if user_concurrency is not None:
@@ -371,7 +399,7 @@ class WorkflowV2Store:
                 status="queued",
                 inputs=inputs,
                 model_name=model_name,
-                snapshot={"run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id)},
+                snapshot={"run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
                 department_id=actor.department_id,
@@ -435,6 +463,7 @@ class WorkflowV2Store:
             ).scalar_one()
             if not isinstance(version.content, dict):
                 raise ResourceConflict("Canonical Workflow version has no definition content")
+            knowledge_scope = await _frozen_knowledge_scope(session, snapshots, actor)
 
             run = WorkflowV2RunRow(
                 run_id=run_id,
@@ -444,7 +473,7 @@ class WorkflowV2Store:
                 checkpoint_thread_id=f"wf-{run_id}",
                 status="paused",
                 inputs=dict(inputs),
-                snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id)},
+                snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
                 department_id=actor.department_id,

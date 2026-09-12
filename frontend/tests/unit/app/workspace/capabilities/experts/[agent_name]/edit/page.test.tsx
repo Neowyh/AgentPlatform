@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 const resourceMocks = vi.hoisted(() => ({
   listKnowledgeBases: vi.fn().mockResolvedValue([]),
   getResourceDependencies: vi.fn().mockResolvedValue([]),
+  listResourceVersions: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -229,6 +230,7 @@ beforeEach(() => {
   mocks.toastError.mockClear();
   resourceMocks.listKnowledgeBases.mockReset().mockResolvedValue([]);
   resourceMocks.getResourceDependencies.mockReset().mockResolvedValue([]);
+  resourceMocks.listResourceVersions.mockReset().mockResolvedValue([]);
 
   // Reset agent state to defaults
   agentState.agent = { ...DEFAULT_AGENT };

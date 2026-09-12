@@ -32,7 +32,9 @@ import { useModels } from "@/core/models/hooks";
 import {
   getResourceDependencies,
   listKnowledgeBases,
+  listResourceVersions,
 } from "@/core/resources/api";
+import type { ResourceVersionSummary } from "@/core/resources/api";
 import { useSkills } from "@/core/skills/hooks";
 
 const TOOL_GROUPS = [
@@ -65,6 +67,9 @@ export default function AgentEditPage() {
   const [knowledgeBases, setKnowledgeBases] = useState<
     Array<{ id: string; slug: string; display_name: string }>
   >([]);
+  const [knowledgeBaseVersions, setKnowledgeBaseVersions] = useState<
+    Record<string, ResourceVersionSummary[]>
+  >({});
   const [knowledgeDependencies, setKnowledgeDependencies] = useState<
     Array<{
       resource_id: string;
@@ -101,8 +106,15 @@ export default function AgentEditPage() {
       listKnowledgeBases(),
       getResourceDependencies(agent.resource_id),
     ])
-      .then(([bases, dependencies]) => {
+      .then(async ([bases, dependencies]) => {
+        const versions = await Promise.all(
+          bases.map(
+            async (base) =>
+              [base.id, await listResourceVersions(base.id)] as const,
+          ),
+        );
         setKnowledgeBases(bases);
+        setKnowledgeBaseVersions(Object.fromEntries(versions));
         setKnowledgeDependencies(
           dependencies
             .filter((item) => item.type === "knowledge_base")
@@ -470,24 +482,43 @@ export default function AgentEditPage() {
                             </SelectContent>
                           </Select>
                           {dependency.dependency_mode === "pinned" && (
-                            <Input
-                              placeholder="Revision ID"
-                              value={dependency.revision_id ?? ""}
-                              onChange={(event) =>
+                            <Select
+                              value={dependency.revision_id ?? undefined}
+                              onValueChange={(revisionId) =>
                                 setKnowledgeDependencies((previous) =>
                                   previous.map((item) =>
                                     item.resource_id === knowledgeBase.id
-                                      ? {
-                                          ...item,
-                                          revision_id:
-                                            event.target.value || null,
-                                        }
+                                      ? { ...item, revision_id: revisionId }
                                       : item,
                                   ),
                                 )
                               }
-                            />
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select revision" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(
+                                  knowledgeBaseVersions[knowledgeBase.id] ?? []
+                                ).map((version) => (
+                                  <SelectItem
+                                    key={version.revision_id}
+                                    value={version.revision_id}
+                                  >
+                                    v{version.version} ·{" "}
+                                    {version.revision_id.slice(0, 8)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
+                          {dependency.dependency_mode === "pinned" &&
+                            (knowledgeBaseVersions[knowledgeBase.id] ?? [])
+                              .length === 0 && (
+                              <div className="text-destructive type-body">
+                                No published revisions available
+                              </div>
+                            )}
                         </div>
                       )}
                     </div>

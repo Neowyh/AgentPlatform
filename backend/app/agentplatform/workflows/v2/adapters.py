@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Protocol
 
+from agentplatform_extension.knowledge.runtime_adapter import adapt_knowledge_tools
+from agentplatform_extension.knowledge.scope import KnowledgeScope
+
 
 class ActionAdapter(Protocol):
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any: ...
@@ -29,6 +32,7 @@ class ActionContext:
     outputs: dict[str, Any]
     file_access: dict[str, list[str]] | None = None
     model_name: str | None = None
+    knowledge_scope: KnowledgeScope | None = None
 
     @property
     def idempotency_key(self) -> str:
@@ -55,6 +59,14 @@ class _ToolAdapter:
         self.user_id = user_id
         self._runtime_cache: dict[str, Any] = {}
 
+    def _effective_tool(self, context: ActionContext) -> Any:
+        if context.knowledge_scope is None:
+            return self.tool
+        adapted = adapt_knowledge_tools([self.tool], context.knowledge_scope)
+        if not adapted:
+            raise ActionResolutionError("knowledge tool is unavailable in this workflow scope")
+        return adapted[0]
+
     def _build_runtime(self, context: ActionContext) -> Any:
         from langchain.tools import ToolRuntime
 
@@ -80,12 +92,13 @@ class _ToolAdapter:
         provider = get_sandbox_provider()
         sandbox_id = provider.acquire(thread_id)
         state["sandbox"] = {"sandbox_id": sandbox_id}
+        tool = self._effective_tool(context)
         runtime = ToolRuntime(
             state=state,
             context={"thread_id": thread_id, "run_id": thread_id},
             config={"configurable": {"thread_id": thread_id}},
             stream_writer=lambda _update: None,
-            tools=[self.tool],
+            tools=[tool],
             tool_call_id=None,
             store=None,
         )
@@ -98,9 +111,10 @@ class _ToolAdapter:
         if "runtime" in tool_params:
             del tool_params["runtime"]
         tool_params["runtime"] = runtime
-        if hasattr(self.tool, "ainvoke"):
-            return await self.tool.ainvoke(tool_params)
-        return await asyncio.to_thread(self.tool.invoke, tool_params)
+        tool = self._effective_tool(context)
+        if hasattr(tool, "ainvoke"):
+            return await tool.ainvoke(tool_params)
+        return await asyncio.to_thread(tool.invoke, tool_params)
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "progress", "message": "started"}
@@ -208,9 +222,12 @@ class _AgentAdapter:
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
         )
+        tools = get_available_tools(groups=config_yaml.get("tool_groups"), app_config=get_app_config())
+        if context.knowledge_scope is not None:
+            tools = adapt_knowledge_tools(tools, context.knowledge_scope)
         executor = SubagentExecutor(
             subagent,
-            get_available_tools(groups=config_yaml.get("tool_groups"), app_config=get_app_config()),
+            tools,
             app_config=get_app_config(),
             thread_id=context.run_id,
         )
@@ -339,7 +356,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         groups = intersect_tool_groups(config.tool_groups, self.allowed_tool_groups)
         executor = CanonicalSubagentExecutor(
             subagent,
-            get_available_tools(groups=groups, app_config=app_config),
+            adapt_knowledge_tools(get_available_tools(groups=groups, app_config=app_config), context.knowledge_scope) if context.knowledge_scope is not None else get_available_tools(groups=groups, app_config=app_config),
             app_config=app_config,
             thread_id=context.run_id,
         )
