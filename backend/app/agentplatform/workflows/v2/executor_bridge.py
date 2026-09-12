@@ -30,6 +30,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, override
 
+from agentplatform_extension.knowledge.runtime_adapter import adapt_knowledge_tools
+from agentplatform_extension.knowledge.scope import KnowledgeScope
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
 
@@ -41,6 +43,28 @@ from deerflow.subagents.executor import SubagentExecutor, SubagentStatus
 __all__ = ["SubagentStatus", "WorkflowSubagentConfig", "WorkflowSubagentExecutor"]
 
 _PENDING_FILE_SCOPE: ContextVar[list[Any] | None] = ContextVar("workflow_file_scope_middlewares", default=None)
+_PENDING_KNOWLEDGE_SCOPE: ContextVar[KnowledgeScope | None] = ContextVar("workflow_knowledge_scope", default=None)
+
+
+def _install_scope_aware_tool_loading() -> None:
+    """Apply the current Workflow scope to tools loaded by native delegation."""
+
+    import deerflow.tools as deerflow_tools
+
+    original = deerflow_tools.get_available_tools
+    if getattr(original, "_workflow_knowledge_scope_aware", False):
+        return
+
+    def scoped_tools(*args: Any, **kwargs: Any) -> list[Any]:
+        tools = original(*args, **kwargs)
+        scope = _PENDING_KNOWLEDGE_SCOPE.get()
+        return adapt_knowledge_tools(tools, scope) if scope is not None else tools
+
+    scoped_tools._workflow_knowledge_scope_aware = True  # type: ignore[attr-defined]
+    deerflow_tools.get_available_tools = scoped_tools
+
+
+_install_scope_aware_tool_loading()
 
 
 class RunWorkspacePathsMiddleware(AgentMiddleware[AgentState]):
@@ -115,6 +139,7 @@ class WorkflowSubagentConfig(SubagentConfig):
     """
 
     file_access: dict[str, list[str]] | None = None
+    knowledge_scope: KnowledgeScope | None = None
 
 
 class WorkflowSubagentExecutor(SubagentExecutor):
@@ -134,6 +159,7 @@ class WorkflowSubagentExecutor(SubagentExecutor):
         progress_callback: Any = None,
     ) -> Any:
         file_access = getattr(self.config, "file_access", None)
+        knowledge_scope = getattr(self.config, "knowledge_scope", None)
         canonical_run_id = getattr(self, "canonical_run_id", None)
 
         original_thread_id = self.thread_id
@@ -159,11 +185,13 @@ class WorkflowSubagentExecutor(SubagentExecutor):
             if not pending_middlewares:
                 pending_middlewares = None
         token = _PENDING_FILE_SCOPE.set(pending_middlewares)
+        knowledge_token = _PENDING_KNOWLEDGE_SCOPE.set(knowledge_scope)
         try:
             if progress_callback is None:
                 return await super()._aexecute(task, result_holder)
             return await self._aexecute_with_progress(task, result_holder, progress_callback)
         finally:
+            _PENDING_KNOWLEDGE_SCOPE.reset(knowledge_token)
             _PENDING_FILE_SCOPE.reset(token)
             if scoped:
                 self.thread_id = original_thread_id

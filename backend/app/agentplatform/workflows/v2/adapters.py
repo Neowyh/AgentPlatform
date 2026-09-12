@@ -221,6 +221,7 @@ class _AgentAdapter:
             model=model_name or config_yaml.get("model") or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
+            knowledge_scope=context.knowledge_scope,
         )
         tools = get_available_tools(groups=config_yaml.get("tool_groups"), app_config=get_app_config())
         if context.knowledge_scope is not None:
@@ -345,6 +346,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
             model=model_name or config.model or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
+            knowledge_scope=context.knowledge_scope,
         )
         frozen_skills = list(self.skills)
 
