@@ -23,7 +23,6 @@ _warned: set[str] = set()
 _RAGFLOW_UUID_PATTERN = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{32}|[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})(?![0-9A-Fa-f])")
 _MAX_PARALLEL_RETRIEVAL_GROUPS = 4
 _NO_RELEVANT_CONTENT = "No relevant content found."
-_KNOWLEDGE_ACCESS_DENIED = "Error: KNOWLEDGE_ACCESS_DENIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,12 +73,6 @@ class _RAGFlowRetrievalSettings(BaseModel):
         if value.username is not None or value.password is not None:
             raise ValueError("base_url must not contain username or password information")
         return value
-
-
-class _KnowledgeSearchInput(BaseModel):
-    """Model-facing query-only schema; runtime scope stays server-side."""
-
-    query: str
 
 
 def _api_key(settings: _RAGFlowRetrievalSettings) -> str | None:
@@ -218,11 +211,8 @@ def _log_missing_dataset(*, position: int, dataset_id: str, code: object = None)
 async def _resolve_datasets(
     client: RAGFlowClient,
     settings: _RAGFlowRetrievalSettings,
-    *,
-    dataset_ids: list[str] | None = None,
 ) -> tuple[list[_ResolvedDataset] | None, str | None]:
-    configured_ids = settings.datasets if dataset_ids is None else dataset_ids
-    if configured_ids is None:
+    if settings.datasets is None:
         datasets = await client.list_datasets()
         resolved_by_id: dict[str, _ResolvedDataset] = {}
         for dataset in datasets:
@@ -239,7 +229,7 @@ async def _resolve_datasets(
         return list(resolved_by_id.values()), None
 
     resolved_datasets: list[_ResolvedDataset] = []
-    for position, bound_id in enumerate(configured_ids, start=1):
+    for position, bound_id in enumerate(settings.datasets, start=1):
         datasets = await client.list_datasets(dataset_id=bound_id)
         resolved = _current_dataset(datasets, bound_id)
         if resolved is None:
@@ -351,7 +341,7 @@ async def _retrieve_dataset_groups(
     return _merge_group_results(successful_results, page_size=settings.page_size)
 
 
-async def knowledge_search(query: str, *, dataset_ids: list[str] | None = None) -> str:
+async def knowledge_search(query: str) -> str:
     """Search the configured RAGFlow scope, defaulting to every accessible dataset."""
     query = query.strip()
     if not query:
@@ -361,17 +351,9 @@ async def knowledge_search(query: str, *, dataset_ids: list[str] | None = None) 
     if settings is None:
         return error or "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
 
-    if dataset_ids is not None:
-        requested = list(dict.fromkeys(dataset_id.strip() for dataset_id in dataset_ids if isinstance(dataset_id, str) and dataset_id.strip()))
-        if not requested:
-            return _KNOWLEDGE_ACCESS_DENIED
-        if settings.datasets is not None and not set(requested).issubset(settings.datasets):
-            return _KNOWLEDGE_ACCESS_DENIED
-        dataset_ids = requested
-
     client = _build_client(settings)
     try:
-        datasets, resolution_error = await _resolve_datasets(client, settings, dataset_ids=dataset_ids)
+        datasets, resolution_error = await _resolve_datasets(client, settings)
         if resolution_error is not None:
             return resolution_error
         if not datasets:  # Defensive; both resolution paths return a non-empty scope.
@@ -401,23 +383,18 @@ def _tool_description() -> str:
     return f"{base} If knowledge_search.datasets is omitted, all datasets accessible to the configured RAGFlow API key are searched. Dataset IDs are never shown to the model."
 
 
-async def _knowledge_search_entrypoint(query: str, **kwargs: Any) -> str:
+async def _knowledge_search_entrypoint(query: str) -> str:
     """Search the configured RAGFlow datasets, or every accessible dataset by default.
 
     Args:
         query: Specific question or search terms to retrieve from the configured private documents.
     """
-    # ``dataset_ids`` is an internal server-side scope projection. It is
-    # accepted by the coroutine for the enterprise adapter, while ``**kwargs``
-    # keeps it out of the model-facing StructuredTool schema.
-    dataset_ids = kwargs.get("dataset_ids")
-    return await knowledge_search(query, dataset_ids=dataset_ids if isinstance(dataset_ids, list) else None)
+    return await knowledge_search(query)
 
 
 knowledge_search_tool = StructuredTool.from_function(
     coroutine=_knowledge_search_entrypoint,
     name="knowledge_search",
     description=_tool_description(),
-    args_schema=_KnowledgeSearchInput,
     parse_docstring=True,
 )

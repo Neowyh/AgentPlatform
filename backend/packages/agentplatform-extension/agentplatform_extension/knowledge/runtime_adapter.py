@@ -42,8 +42,53 @@ class KnowledgeRuntimeAdapter:
             resolved = self.scope.resolve(logical_kb)
         except KeyError as exc:
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
-        result = self.search(query, dataset_ids=[resolved])
+        if _accepts_dataset_ids(self.search):
+            result = self.search(query, dataset_ids=[resolved])
+        else:
+            result = _search_legacy_ragflow(self.search, query, resolved)
         return await result if inspect.isawaitable(result) else result
+
+
+def _accepts_dataset_ids(search: Callable[..., Any]) -> bool:
+    try:
+        parameters = inspect.signature(search).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(parameter.name == "dataset_ids" or parameter.kind is parameter.VAR_KEYWORD for parameter in parameters)
+
+
+async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset_id: str) -> Any:
+    """Use the unmodified provider implementation while retaining its helpers."""
+
+    if "ragflow" not in getattr(search, "__module__", "").lower():
+        raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+    from deerflow.community.ragflow import tools as provider
+
+    settings, error = provider._settings_or_error()
+    if settings is None:
+        return error or "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
+    client = provider._build_client(settings)
+    try:
+        scoped_settings = settings.model_copy(update={"datasets": [dataset_id]})
+        datasets, resolution_error = await provider._resolve_datasets(client, scoped_settings)
+        if resolution_error is not None:
+            return resolution_error
+        if not datasets:
+            return "Error: No RAGFlow datasets could be resolved; check knowledge_search in config.yaml."
+        groups = provider._group_searchable_datasets(datasets)
+        if not groups:
+            return provider._NO_RELEVANT_CONTENT
+        result = await provider._retrieve_dataset_groups(client, settings, query, groups)
+        names_by_id = {dataset.dataset_id: dataset.name for dataset in datasets}
+        formatted = provider.format_retrieval_result(
+            result,
+            dataset_names_by_id=names_by_id,
+            max_chars_per_chunk=settings.max_chars_per_chunk,
+            max_total_chars=settings.max_total_chars,
+        )
+        return provider._redact_api_key(formatted, provider._api_key(settings))
+    except Exception as exc:
+        return provider._tool_error(exc, settings)
 
 
 def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
