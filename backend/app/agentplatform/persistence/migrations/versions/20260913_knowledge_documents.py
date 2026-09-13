@@ -12,7 +12,15 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    if sa.inspect(op.get_bind()).has_table("knowledge_documents"):
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("knowledge_documents"):
+        existing = {column["name"] for column in inspector.get_columns("knowledge_documents")}
+        if "failure_code" not in existing:
+            op.add_column("knowledge_documents", sa.Column("failure_code", sa.String(length=64), nullable=True))
+        if "failure_message" not in existing:
+            op.add_column("knowledge_documents", sa.Column("failure_message", sa.String(length=255), nullable=True))
+        if "ingestion_attempt" not in existing:
+            op.add_column("knowledge_documents", sa.Column("ingestion_attempt", sa.Integer(), nullable=False))
         return
     op.create_table(
         "knowledge_documents",
@@ -27,6 +35,9 @@ def upgrade() -> None:
         sa.Column("metadata_json", sa.JSON(), nullable=False),
         sa.Column("provider_document_id", sa.String(length=128), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("failure_code", sa.String(length=64), nullable=True),
+        sa.Column("failure_message", sa.String(length=255), nullable=True),
+        sa.Column("ingestion_attempt", sa.Integer(), nullable=False),
         sa.Column("created_by", sa.String(length=64), sa.ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

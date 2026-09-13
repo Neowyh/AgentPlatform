@@ -8,10 +8,14 @@ export {
   listKnowledgeBases,
   listKnowledgeDocuments,
   uploadKnowledgeDocument,
+  retryKnowledgeDocument,
+  rebuildKnowledgeDocumentIndex,
 } from "./api";
 export {
   useCreateKnowledgeBase,
   useDocuments,
   useKnowledgeBases,
   useUploadKnowledgeDocument,
+  useRetryKnowledgeDocument,
+  useRebuildKnowledgeDocumentIndex,
 } from "./hooks";

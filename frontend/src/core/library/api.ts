@@ -20,6 +20,10 @@ export interface KnowledgeDocument {
   content_hash: string;
   source: "upload";
   status: "uploaded" | "processing" | "ready" | "failed";
+  failure_code?: string | null;
+  failure_message?: string | null;
+  ingestion_attempt?: number;
+  can_modify?: boolean;
   metadata: Record<string, unknown>;
   created_at: string | null;
   updated_at: string | null;
@@ -80,3 +84,26 @@ export async function uploadKnowledgeDocument(
   if (!res.ok) await extractError(res, "Failed to upload document");
   return (await res.json()) as KnowledgeDocument;
 }
+
+async function updateKnowledgeDocument(
+  resourceId: string,
+  documentId: string,
+  action: "retry" | "rebuild-index",
+): Promise<KnowledgeDocument> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/documents/${encodeURIComponent(documentId)}/${action}`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to update document");
+  return (await res.json()) as KnowledgeDocument;
+}
+
+export const retryKnowledgeDocument = (
+  resourceId: string,
+  documentId: string,
+) => updateKnowledgeDocument(resourceId, documentId, "retry");
+
+export const rebuildKnowledgeDocumentIndex = (
+  resourceId: string,
+  documentId: string,
+) => updateKnowledgeDocument(resourceId, documentId, "rebuild-index");

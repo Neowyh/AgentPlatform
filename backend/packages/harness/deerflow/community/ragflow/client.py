@@ -64,6 +64,7 @@ class RAGFlowClient:
         *,
         params: dict[str, object] | list[tuple[str, str]] | None = None,
         json: dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
     ) -> dict[str, Any]:
         request_headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -79,7 +80,7 @@ class RAGFlowClient:
 
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
-                response = await client.request(method, path, params=params, json=json)
+                response = await client.request(method, path, params=params, json=json, files=files)
         except httpx.TimeoutException:
             raise RAGFlowConnectionError(f"RAGFlow request timed out after {self.timeout:g} seconds.") from None
         except httpx.RequestError as exc:
@@ -108,6 +109,33 @@ class RAGFlowClient:
             message = self._redact(payload.get("message") or "RAGFlow request failed.")
             raise RAGFlowAPIError(message, code=code)
         return payload
+
+    async def upload_document(
+        self,
+        dataset_id: str,
+        *,
+        filename: str,
+        content: bytes,
+        mime_type: str,
+    ) -> str:
+        payload = await self._request(
+            "POST",
+            f"/datasets/{dataset_id}/documents",
+            files={"file": (filename, content, mime_type)},
+        )
+        data = payload.get("data")
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            document_id = data[0].get("id")
+        elif isinstance(data, dict):
+            document_id = data.get("id")
+        else:
+            document_id = None
+        if not isinstance(document_id, str) or not document_id:
+            raise RAGFlowProtocolError("RAGFlow returned no document ID.")
+        return document_id
+
+    async def parse_document(self, dataset_id: str, document_id: str) -> None:
+        await self._request("POST", f"/datasets/{dataset_id}/documents/{document_id}/parse")
 
     async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
         """Resolve one dataset ID, or enumerate every page when no ID is given."""

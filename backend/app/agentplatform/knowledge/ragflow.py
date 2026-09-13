@@ -1,0 +1,40 @@
+"""Management-side RAGFlow adapter; provider details stay outside API payloads."""
+
+from __future__ import annotations
+
+from deerflow.community.ragflow import tools as ragflow_tools
+from deerflow.community.ragflow.client import RAGFlowAPIError, RAGFlowClient, RAGFlowConnectionError, RAGFlowProtocolError
+
+from .provider import KnowledgeProviderError, ProviderIngestionResult
+
+
+class RAGFlowKnowledgeProvider:
+    def __init__(self, client: RAGFlowClient) -> None:
+        self.client = client
+
+    async def ingest(
+        self,
+        *,
+        dataset_id: str,
+        filename: str,
+        mime_type: str,
+        content: bytes,
+        provider_document_id: str | None = None,
+        rebuild: bool = False,
+    ) -> ProviderIngestionResult:
+        try:
+            document_id = provider_document_id or await self.client.upload_document(dataset_id, filename=filename, content=content, mime_type=mime_type)
+            await self.client.parse_document(dataset_id, document_id)
+            return ProviderIngestionResult(document_id, "ready")
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable") from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response") from exc
+        except RAGFlowAPIError as exc:
+            code = "parse_failed" if "parse" in str(exc).lower() else "index_failed"
+            raise KnowledgeProviderError(code, provider_document_id=document_id) from exc
+
+
+def configured_ragflow_provider() -> RAGFlowKnowledgeProvider | None:
+    settings, _ = ragflow_tools._settings_or_error()
+    return RAGFlowKnowledgeProvider(ragflow_tools._build_client(settings)) if settings is not None else None

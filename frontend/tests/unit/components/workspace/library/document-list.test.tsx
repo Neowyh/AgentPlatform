@@ -28,6 +28,8 @@ vi.mock("@/core/library", () => ({
     error: null,
     mutateAsync: vi.fn(),
   }),
+  useRetryKnowledgeDocument: () => ({ mutateAsync: vi.fn() }),
+  useRebuildKnowledgeDocumentIndex: () => ({ mutateAsync: vi.fn() }),
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────

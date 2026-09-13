@@ -2,7 +2,12 @@
 
 import type { ChangeEvent } from "react";
 
-import { useDocuments, useUploadKnowledgeDocument } from "@/core/library";
+import {
+  useDocuments,
+  useRebuildKnowledgeDocumentIndex,
+  useRetryKnowledgeDocument,
+  useUploadKnowledgeDocument,
+} from "@/core/library";
 
 export function DocumentList({
   knowledgeBaseId,
@@ -11,6 +16,8 @@ export function DocumentList({
 }) {
   const { documents, isLoading, error } = useDocuments(knowledgeBaseId);
   const upload = useUploadKnowledgeDocument(knowledgeBaseId ?? "");
+  const retry = useRetryKnowledgeDocument(knowledgeBaseId ?? "");
+  const rebuild = useRebuildKnowledgeDocumentIndex(knowledgeBaseId ?? "");
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -70,6 +77,22 @@ export function DocumentList({
               >
                 {doc.status}
               </span>
+              {doc.can_modify && doc.status === "failed" ? (
+                <button
+                  type="button"
+                  onClick={() => void retry.mutateAsync(doc.id)}
+                >
+                  Retry
+                </button>
+              ) : null}
+              {doc.can_modify && doc.status === "ready" ? (
+                <button
+                  type="button"
+                  onClick={() => void rebuild.mutateAsync(doc.id)}
+                >
+                  Rebuild index
+                </button>
+              ) : null}
               <span className="text-muted-foreground type-body">
                 {doc.created_at ?? ""}
               </span>

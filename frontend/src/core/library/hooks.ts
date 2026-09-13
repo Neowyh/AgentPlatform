@@ -5,6 +5,8 @@ import {
   listKnowledgeBases,
   listKnowledgeDocuments,
   uploadKnowledgeDocument,
+  retryKnowledgeDocument,
+  rebuildKnowledgeDocumentIndex,
 } from "./api";
 import type { CreateKnowledgeBaseRequest } from "./api";
 
@@ -45,3 +47,23 @@ export function useUploadKnowledgeDocument(resourceId: string) {
       }),
   });
 }
+
+function useDocumentAction(
+  action: (resourceId: string, documentId: string) => Promise<unknown>,
+  resourceId: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => action(resourceId, documentId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-documents", resourceId],
+      }),
+  });
+}
+
+export const useRetryKnowledgeDocument = (resourceId: string) =>
+  useDocumentAction(retryKnowledgeDocument, resourceId);
+
+export const useRebuildKnowledgeDocumentIndex = (resourceId: string) =>
+  useDocumentAction(rebuildKnowledgeDocumentIndex, resourceId);

@@ -15,6 +15,7 @@ import app.agentplatform.resource_models  # noqa: F401
 import app.agentplatform.visibility_models  # noqa: F401
 from app.agentplatform.knowledge.documents import DocumentValidationError, KnowledgeDocumentService
 from app.agentplatform.knowledge.models import KnowledgeDocument
+from app.agentplatform.knowledge.provider import KnowledgeProviderError, ProviderIngestionResult
 from app.agentplatform.resources.service import ResourceAction, ResourceActor
 from deerflow.persistence.base import Base
 
@@ -54,6 +55,18 @@ class FakeUpload:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class FakeProvider:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls = []
+
+    async def ingest(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.fail:
+            raise KnowledgeProviderError("parse_failed", "internal provider detail")
+        return ProviderIngestionResult("provider-doc-1")
 
 
 @pytest.mark.asyncio
@@ -156,3 +169,46 @@ async def test_upload_cleans_original_when_database_commit_fails(session, tmp_pa
         await session.commit()
 
     assert not original.exists()
+
+
+@pytest.mark.asyncio
+async def test_processing_failure_is_sanitized_and_retry_reuses_logical_document(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await ResourceService(session, _actor()).bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+    failed = await KnowledgeDocumentService(session, _actor(), FakeProvider(fail=True)).process(document["id"], resource_id=kb.id)
+    assert failed["status"] == "failed"
+    assert failed["failure_code"] == "parse_failed"
+    assert failed["failure_message"] == "The provider could not parse this document."
+    assert "internal" not in str(failed)
+
+    provider = FakeProvider()
+    recovered = await KnowledgeDocumentService(session, _actor(), provider).retry(document["id"], resource_id=kb.id)
+    await session.commit()
+    assert recovered["status"] == "ready"
+    assert recovered["id"] == document["id"]
+    assert provider.calls[0]["provider_document_id"] is None
+    assert recovered["ingestion_attempt"] == 2
+
+
+@pytest.mark.asyncio
+async def test_cross_kb_document_action_is_rejected_before_provider_call(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    resources = ResourceService(session, _actor())
+    first = await resources.create_resource(resource_type="knowledge_base", slug="first", display_name="First", storage_kind="database")
+    second = await resources.create_resource(resource_type="knowledge_base", slug="second", display_name="Second", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(first.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+    provider = FakeProvider()
+    with pytest.raises(Exception, match="not found"):
+        await KnowledgeDocumentService(session, _actor(), provider).retry(document["id"], resource_id=second.id)
+    assert provider.calls == []
