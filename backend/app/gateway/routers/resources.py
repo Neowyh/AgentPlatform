@@ -490,6 +490,16 @@ def _extract_resource_archive(
 
 
 def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
+    snapshot = run.snapshot
+    if isinstance(snapshot, dict):
+        evidence = snapshot.get("run_evidence")
+        if isinstance(evidence, dict):
+            scope = evidence.get("knowledge_scope")
+            if isinstance(scope, dict) and "bindings" in scope:
+                # Provider dataset IDs stay backend-only; users see the KB
+                # UUIDs and frozen revision identities instead.
+                sanitized = {key: value for key, value in scope.items() if key != "bindings"}
+                snapshot = {**snapshot, "run_evidence": {**evidence, "knowledge_scope": sanitized}}
     return {
         "run_id": run.run_id,
         "workflow": resource_id,
@@ -497,7 +507,7 @@ def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
         "status": run.status,
         "model_name": run.model_name,
         "definition_version": run.definition_version,
-        "snapshot": run.snapshot,
+        "snapshot": snapshot,
         "error": run.error,
     }
 

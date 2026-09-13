@@ -155,6 +155,13 @@ class RunResourceSnapshot(Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     authz_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     selection_role: Mapped[str] = mapped_column(String(16), nullable=False, default="resolved", server_default="resolved")
+    knowledge_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    knowledge_revision_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    provider_dataset_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    retrieval_profile_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_profile_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (

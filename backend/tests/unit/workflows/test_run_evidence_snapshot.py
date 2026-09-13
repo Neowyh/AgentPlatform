@@ -14,6 +14,7 @@ def test_canonical_workflow_evidence_is_caller_scoped_and_immutable() -> None:
             content_hash="a" * 64,
             selection_role="root",
             authz_revision=7,
+            knowledge_revision_id=None,
         ),
         SimpleNamespace(
             resource_id="agent-1",
@@ -21,6 +22,9 @@ def test_canonical_workflow_evidence_is_caller_scoped_and_immutable() -> None:
             content_hash="b" * 64,
             selection_role="resolved",
             authz_revision=8,
+            knowledge_revision_id="revision-9",
+            knowledge_revision_no=9,
+            manifest_hash="c" * 64,
         ),
     ]
     actor = SimpleNamespace(user_id="caller", tool_groups=frozenset({"read", "write"}))

@@ -13,6 +13,7 @@ import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
 import app.agentplatform.rbac_models  # noqa: F401 - register users_ext for audit FK  # noqa: F401 - register users_ext
 import app.agentplatform.resource_models  # noqa: F401 - register resource tables
 import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.knowledge.models import KnowledgeRevision
 from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
@@ -197,14 +198,27 @@ async def test_agent_can_declare_live_and_pinned_knowledge_dependencies(session:
         content={"description": "published"},
         created_by="owner",
     )
-    session.add_all([agent, live_knowledge_base, pinned_knowledge_base, knowledge_version])
+    published_revision = KnowledgeRevision(
+        id="kb-published-revision-1",
+        knowledge_base_id=pinned_knowledge_base.id,
+        revision_no=1,
+        status="published",
+        manifest_hash="a" * 64,
+        manifest_json=[],
+        provider_doc_map_json={},
+        document_count=1,
+        provider_dataset_id="published-dataset-1",
+        publish_attempt=1,
+        created_by="owner",
+    )
+    session.add_all([agent, live_knowledge_base, pinned_knowledge_base, knowledge_version, published_revision])
     await session.commit()
 
     dependencies = await ResourceService(session, _actor()).replace_dependencies(
         agent.id,
         [
             {"resource_id": live_knowledge_base.id, "dependency_mode": "live", "required": False, "purpose": "product docs"},
-            {"resource_id": pinned_knowledge_base.id, "dependency_mode": "pinned", "revision_id": knowledge_version.id},
+            {"resource_id": pinned_knowledge_base.id, "dependency_mode": "pinned", "revision_id": published_revision.id},
         ],
     )
 
@@ -218,7 +232,7 @@ async def test_agent_can_declare_live_and_pinned_knowledge_dependencies(session:
     )
     assert (pinned_dependency.dependency_mode, pinned_dependency.revision_id, pinned_dependency.required, pinned_dependency.purpose) == (
         "pinned",
-        knowledge_version.id,
+        published_revision.id,
         True,
         None,
     )
@@ -282,7 +296,7 @@ async def test_knowledge_dependency_declaration_validates_mode_and_revision(
 
 
 @pytest.mark.asyncio
-async def test_pinned_knowledge_dependency_resolves_declared_version(session: AsyncSession) -> None:
+async def test_pinned_knowledge_dependency_resolves_published_revision(session: AsyncSession) -> None:
     agent = _resource("agent-kb-pinned", resource_type="agent", latest_version=1)
     knowledge_base = _resource("kb-pinned", resource_type="knowledge_base", latest_version=2)
     version_one = ResourceVersion(
@@ -315,17 +329,35 @@ async def test_pinned_knowledge_dependency_resolves_declared_version(session: As
         content={},
         created_by="owner",
     )
-    session.add_all([agent, knowledge_base, agent_version, version_one, version_two])
+    pinned_revision = KnowledgeRevision(
+        id="kb-published-revision-1",
+        knowledge_base_id=knowledge_base.id,
+        revision_no=1,
+        status="published",
+        manifest_hash="1" * 64,
+        manifest_json=[],
+        provider_doc_map_json={},
+        document_count=1,
+        provider_dataset_id="published-dataset-1",
+        publish_attempt=1,
+        created_by="owner",
+    )
+    session.add_all([agent, knowledge_base, agent_version, version_one, version_two, pinned_revision])
     await session.commit()
+
     service = ResourceService(session, _actor())
     await service.replace_dependencies(
         agent.id,
-        [{"resource_id": knowledge_base.id, "dependency_mode": "pinned", "revision_id": version_one.id}],
+        [{"resource_id": knowledge_base.id, "dependency_mode": "pinned", "revision_id": pinned_revision.id}],
     )
 
     closure = await service.resolve_dependency_closure(agent.id)
 
-    assert [(item.resource.id, item.version.version) for item in closure] == [(agent.id, 1), (knowledge_base.id, 1)]
+    assert [(item.resource.id, item.version.version) for item in closure] == [(agent.id, 1), (knowledge_base.id, 2)]
+    kb_item = next(item for item in closure if item.resource.id == knowledge_base.id)
+    assert kb_item.knowledge_revision is not None
+    assert kb_item.knowledge_revision.id == pinned_revision.id
+    assert kb_item.knowledge_revision.manifest_hash == "1" * 64
 
 
 @pytest.mark.asyncio

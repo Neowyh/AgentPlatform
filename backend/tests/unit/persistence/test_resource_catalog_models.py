@@ -105,6 +105,13 @@ def test_dependency_and_snapshot_rows_use_resource_ids_and_actual_versions() -> 
         "content_hash",
         "authz_revision",
         "selection_role",
+        "knowledge_revision_id",
+        "knowledge_revision_no",
+        "manifest_hash",
+        "provider_type",
+        "provider_dataset_id",
+        "retrieval_profile_hash",
+        "embedding_profile_hash",
         "resolved_at",
     }
     assert ("run_id", "resource_id") in _unique_column_sets(RunResourceSnapshot)

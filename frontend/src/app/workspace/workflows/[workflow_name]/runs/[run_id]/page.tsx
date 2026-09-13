@@ -13,6 +13,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { KnowledgeSnapshotCard } from "@/components/workspace/workflows/knowledge-snapshot-card";
 import { NodeDetailPanel } from "@/components/workspace/workflows/node-detail";
 import { RunGraph } from "@/components/workspace/workflows/run-graph";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
@@ -277,6 +278,7 @@ export default function WorkflowRunDetailPage() {
                 {t.workflows.definitionMismatchHint}
               </p>
             )}
+          <KnowledgeSnapshotCard snapshot={runStatus.snapshot} />
           <Card className="overflow-hidden">
             <CardHeader className="border-b">
               <CardTitle>{t.workflows.runStatus}</CardTitle>

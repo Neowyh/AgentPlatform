@@ -46,6 +46,15 @@ def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str, knowled
     ]
     policy_revision = str(max(snapshot.authz_revision for snapshot in snapshots))
     allowed_tools = sorted(actor.tool_groups) if actor.tool_groups is not None else []
+    knowledge_revisions = {
+        snapshot.resource_id: {
+            "revision_id": snapshot.knowledge_revision_id,
+            "revision_no": snapshot.knowledge_revision_no,
+            "manifest_hash": snapshot.manifest_hash,
+        }
+        for snapshot in snapshots
+        if snapshot.knowledge_revision_id
+    }
     fingerprint_payload = {
         "workflow_resource_id": workflow_resource_id,
         "resource_snapshots": resource_snapshots,
@@ -67,20 +76,25 @@ def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str, knowled
         "knowledge_scope": {
             "bindings": dict(knowledge_scope or {}),
             "logical_selectors": sorted(knowledge_scope or {}),
+            "revisions": knowledge_revisions,
         },
     }
 
 
 async def _frozen_knowledge_scope(session, snapshots, actor) -> dict[str, str]:
-    """Calculate the server-owned KB scope before a Workflow Run is claimable."""
+    """Freeze the KB scope from the run's knowledge revision snapshots.
 
-    from app.agentplatform.knowledge.models import KnowledgeBase
+    Bindings come from the resolved published revisions recorded on the run
+    snapshot, never from the mutable draft binding, so a Workflow Run keeps
+    retrieving from the revision it started with.
+    """
+
     from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
     from deerflow.config import get_app_config
 
-    resource_ids = [snapshot.resource_id for snapshot in snapshots]
-    rows = (await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(resource_ids)))).scalars()
-    bindings = {row.resource_id: row.provider_dataset_id for row in rows}
+    bindings = {snapshot.resource_id: snapshot.provider_dataset_id for snapshot in snapshots if snapshot.knowledge_revision_id and snapshot.provider_dataset_id}
+    if not bindings:
+        return {}
     try:
         tool_config = get_app_config().get_tool_config("knowledge_search")
         deployment_allowed = getattr(tool_config, "datasets", None)

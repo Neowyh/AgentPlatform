@@ -58,7 +58,6 @@ async def prepare_canonical_agent_run(
     from agentplatform_extension.knowledge.scope import KnowledgeScope
     from sqlalchemy import select
 
-    from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument
     from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
     from app.agentplatform.rbac_models import UserModel, UserRole
     from app.agentplatform.resource_runtime import CanonicalResourceLoader, ResourceRuntimeError, ResourceStorage
@@ -154,22 +153,19 @@ async def prepare_canonical_agent_run(
             skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
             knowledge_resources = {item.resource.id: item.resource for item in closure if item.resource.type == "knowledge_base"}
+            # LIVE/PINNED bindings come from the revision resolved into the
+            # closure (frozen at enqueue), never from the mutable draft
+            # dataset binding; the allowlist is the revision's own document
+            # set. A KB without a published revision was already rejected by
+            # closure resolution.
             bindings = {}
             ready_document_ids: dict[str, list[str]] = {}
-            if knowledge_resources:
-                rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
-                bindings = {row.resource_id: row.provider_dataset_id for row in rows.scalars()}
-                ready_rows = await session.execute(
-                    select(KnowledgeDocument.resource_id, KnowledgeDocument.provider_document_id).where(
-                        KnowledgeDocument.resource_id.in_(knowledge_resources),
-                        KnowledgeDocument.status == "ready",
-                        KnowledgeDocument.provider_document_id.is_not(None),
-                    )
-                )
-                for resource_id, provider_document_id in ready_rows:
-                    dataset_id = bindings.get(resource_id)
-                    if dataset_id and provider_document_id:
-                        ready_document_ids.setdefault(dataset_id, []).append(provider_document_id)
+            for item in closure:
+                revision = item.knowledge_revision
+                if revision is None or not revision.provider_dataset_id:
+                    continue
+                bindings[item.resource.id] = revision.provider_dataset_id
+                ready_document_ids[revision.provider_dataset_id] = [str(provider_document_id) for provider_document_id in (revision.provider_doc_map_json or {}).values()]
             run_context = diagnostic_context or {}
             tool_config = None
             try:

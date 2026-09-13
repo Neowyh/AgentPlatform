@@ -11,7 +11,7 @@ from enum import StrEnum
 from sqlalchemy import Select, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agentplatform.knowledge.models import KnowledgeBase
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRevision
 from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
@@ -70,6 +70,18 @@ class VisibilityApplicationPage:
 class ResolvedResource:
     resource: Resource
     version: ResourceVersion
+    knowledge_revision: KnowledgeRevision | None = None
+
+
+def _knowledge_profile_hash(profile: dict | None, provider_type: str | None) -> str:
+    """Deterministic hash of the profile values in effect at freeze time."""
+
+    import hashlib
+    import json
+
+    payload = {"provider_type": provider_type, "profile": profile or {}}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class ResourceError(RuntimeError):
@@ -1289,14 +1301,17 @@ class ResourceService:
                 raise ResourceConflict("revision_id is required for pinned dependencies")
             revision = (
                 await self.session.execute(
-                    select(ResourceVersion.id).where(
-                        ResourceVersion.id == revision_id,
-                        ResourceVersion.resource_id == target.id,
+                    select(KnowledgeRevision.id).where(
+                        KnowledgeRevision.id == revision_id,
+                        KnowledgeRevision.knowledge_base_id == target.id,
                     )
                 )
             ).scalar_one_or_none()
             if revision is None:
                 raise ResourceConflict("revision_id does not belong to the KnowledgeBase")
+            status = (await self.session.execute(select(KnowledgeRevision.status).where(KnowledgeRevision.id == revision_id))).scalar_one_or_none()
+            if status != "published":
+                raise ResourceConflict("revision_id must reference a published Knowledge Revision")
         elif revision_id is not None:
             raise ResourceConflict("revision_id must be empty for live dependencies")
         if not explicit:
@@ -1360,6 +1375,30 @@ class ResourceService:
             await self._get_visible(target.id, include_inactive=True)
         return rows
 
+    async def _resolve_published_revision(self, resource_id: str, forced_revision_id: str | None) -> KnowledgeRevision:
+        """Resolve the frozen knowledge revision a Run must use.
+
+        LIVE dependencies take the KB's current published revision; a pinned
+        dependency anchors on one explicit revision ID. Both reject when no
+        usable published revision exists — a run never falls back to draft
+        content or the mutable provider binding.
+        """
+
+        if forced_revision_id is not None:
+            query = select(KnowledgeRevision).where(
+                KnowledgeRevision.id == forced_revision_id,
+                KnowledgeRevision.knowledge_base_id == resource_id,
+            )
+        else:
+            kb_row = await self.session.get(KnowledgeBase, resource_id)
+            if kb_row is None or not kb_row.active_revision_id:
+                raise ResourceConflict(f"KnowledgeBase {resource_id} has no published revision to run against")
+            query = select(KnowledgeRevision).where(KnowledgeRevision.id == kb_row.active_revision_id)
+        revision = (await self.session.execute(query)).scalar_one_or_none()
+        if revision is None or revision.status != "published":
+            raise ResourceConflict(f"KnowledgeBase {resource_id} has no published revision to run against")
+        return revision
+
     async def resolve_dependency_closure(self, root_resource_id: str) -> list[ResolvedResource]:
         self._require_action(ResourceAction.USE)
         resolved: list[ResolvedResource] = []
@@ -1375,7 +1414,7 @@ class ResourceService:
             resource = await self._get_visible(resource_id)
             if resource.latest_version < 1:
                 raise ResourceConflict(f"Resource {resource_id} has no published version")
-            if forced_revision_id is not None:
+            if forced_revision_id is not None and resource.type != "knowledge_base":
                 version = (
                     await self.session.execute(
                         select(ResourceVersion).where(
@@ -1395,7 +1434,10 @@ class ResourceService:
                 ).scalar_one_or_none()
             if version is None:
                 raise ResourceConflict(f"Resource {resource_id} latest version is missing")
-            resolved.append(ResolvedResource(resource=resource, version=version))
+            knowledge_revision = None
+            if resource.type == "knowledge_base":
+                knowledge_revision = await self._resolve_published_revision(resource.id, forced_revision_id)
+            resolved.append(ResolvedResource(resource=resource, version=version, knowledge_revision=knowledge_revision))
             edges = list((await self.session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
             for edge in edges:
                 try:
@@ -1433,19 +1475,34 @@ class ResourceService:
             selected = next((item.resource for item in closure if item.resource.id == selected_resource_id), None)
             if selected is None or selected.type != "skill":
                 raise ResourceConflict(f"Selected Skill {selected_resource_id} is outside the resource closure")
-        snapshots = [
-            RunResourceSnapshot(
-                id=str(uuid.uuid4()),
-                run_id=run_id,
-                root_resource_id=root_resource_id,
-                resource_id=item.resource.id,
-                version=item.version.version,
-                content_hash=item.version.content_hash,
-                authz_revision=item.resource.authz_revision,
-                selection_role=("root" if item.resource.id == root_resource_id else "preferred" if item.resource.id == selected_resource_id else "resolved"),
+        knowledge_rows: dict[str, KnowledgeBase] = {}
+        kb_ids = [item.resource.id for item in closure if item.resource.type == "knowledge_base" and item.knowledge_revision is not None]
+        if kb_ids:
+            rows = await self.session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(kb_ids)))
+            knowledge_rows = {row.resource_id: row for row in rows.scalars()}
+        snapshots = []
+        for item in closure:
+            revision = item.knowledge_revision
+            kb_row = knowledge_rows.get(item.resource.id)
+            snapshots.append(
+                RunResourceSnapshot(
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    root_resource_id=root_resource_id,
+                    resource_id=item.resource.id,
+                    version=item.version.version,
+                    content_hash=item.version.content_hash,
+                    authz_revision=item.resource.authz_revision,
+                    selection_role=("root" if item.resource.id == root_resource_id else "preferred" if item.resource.id == selected_resource_id else "resolved"),
+                    knowledge_revision_id=revision.id if revision is not None else None,
+                    knowledge_revision_no=revision.revision_no if revision is not None else None,
+                    manifest_hash=revision.manifest_hash if revision is not None else None,
+                    provider_type=kb_row.provider_type if revision is not None and kb_row is not None else None,
+                    provider_dataset_id=revision.provider_dataset_id if revision is not None else None,
+                    retrieval_profile_hash=_knowledge_profile_hash(kb_row.retrieval_profile_json, kb_row.provider_type) if kb_row is not None else None,
+                    embedding_profile_hash=_knowledge_profile_hash(kb_row.embedding_profile_json, kb_row.provider_type) if kb_row is not None else None,
+                )
             )
-            for item in closure
-        ]
         self.session.add_all(snapshots)
         await self.session.flush()
         return snapshots

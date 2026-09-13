@@ -539,6 +539,15 @@ async def _canonical_selection_metadata(
                 "version": snapshot.version,
                 "content_hash": snapshot.content_hash,
                 "selection_role": snapshot.selection_role,
+                **(
+                    {
+                        "knowledge_revision_id": snapshot.knowledge_revision_id,
+                        "knowledge_revision_no": snapshot.knowledge_revision_no,
+                        "knowledge_manifest_hash": snapshot.manifest_hash,
+                    }
+                    if snapshot.knowledge_revision_id
+                    else {}
+                ),
             }
             for _resource, _version, snapshot in rows
         ],
