@@ -853,7 +853,8 @@ async def list_knowledge_documents(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        documents = await KnowledgeDocumentService(session, _resource_actor(current_user)).list_documents(resource_id)
+        documents = await KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider()).list_documents(resource_id)
+        await session.commit()
         return {"items": documents, "total": len(documents)}
 
 

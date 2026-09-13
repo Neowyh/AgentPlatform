@@ -22,10 +22,11 @@ class RAGFlowKnowledgeProvider:
         provider_document_id: str | None = None,
         rebuild: bool = False,
     ) -> ProviderIngestionResult:
+        document_id = provider_document_id
         try:
-            document_id = provider_document_id or await self.client.upload_document(dataset_id, filename=filename, content=content, mime_type=mime_type)
+            document_id = document_id or await self.client.upload_document(dataset_id, filename=filename, content=content, mime_type=mime_type)
             await self.client.parse_document(dataset_id, document_id)
-            return ProviderIngestionResult(document_id, "ready")
+            return ProviderIngestionResult(document_id, "processing")
         except RAGFlowConnectionError as exc:
             raise KnowledgeProviderError("unavailable") from exc
         except RAGFlowProtocolError as exc:
@@ -33,6 +34,16 @@ class RAGFlowKnowledgeProvider:
         except RAGFlowAPIError as exc:
             code = "parse_failed" if "parse" in str(exc).lower() else "index_failed"
             raise KnowledgeProviderError(code, provider_document_id=document_id) from exc
+
+    async def get_status(self, *, dataset_id: str, provider_document_id: str) -> str:
+        try:
+            return await self.client.get_document_status(dataset_id, provider_document_id)
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable", provider_document_id=provider_document_id) from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response", provider_document_id=provider_document_id) from exc
+        except RAGFlowAPIError as exc:
+            raise KnowledgeProviderError("index_failed", provider_document_id=provider_document_id) from exc
 
 
 def configured_ragflow_provider() -> RAGFlowKnowledgeProvider | None:

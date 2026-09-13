@@ -93,8 +93,11 @@ class KnowledgeDocumentService:
     async def list_documents(self, resource_id: str) -> list[dict[str, object]]:
         resource = await self._knowledge_base(resource_id)
         rows = await self.session.execute(select(KnowledgeDocument).where(KnowledgeDocument.resource_id == resource_id).order_by(KnowledgeDocument.created_at, KnowledgeDocument.id))
+        documents = list(rows.scalars())
+        for document in documents:
+            await self._refresh(document)
         can_modify = resource.owner_id == self.resource_service.actor.user_id
-        return [_document_payload(item, can_modify=can_modify) for item in rows.scalars()]
+        return [_document_payload(item, can_modify=can_modify) for item in documents]
 
     async def upload(self, resource_id: str, upload) -> dict[str, object]:
         await self._knowledge_base(resource_id, modify=True)
@@ -174,7 +177,7 @@ class KnowledgeDocumentService:
 
     async def process(self, document_id: str, *, resource_id: str | None = None, rebuild: bool = False) -> dict[str, object]:
         document = await self._document(document_id, resource_id=resource_id, modify=True)
-        if document.status == "ready" and not rebuild:
+        if document.status in {"processing", "ready"} and not rebuild:
             return _document_payload(document)
         document.status = "processing"
         document.failure_code = None
@@ -208,6 +211,30 @@ class KnowledgeDocumentService:
 
     async def retry(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
         return await self.process(document_id, resource_id=resource_id)
+
+    async def _refresh(self, document: KnowledgeDocument) -> None:
+        if self.provider is None or document.status != "processing" or not document.provider_document_id:
+            return
+        try:
+            binding = await self.resource_service.get_knowledge_binding(document.resource_id)
+            if not binding.provider_dataset_id:
+                return
+            status = await self.provider.get_status(
+                dataset_id=binding.provider_dataset_id,
+                provider_document_id=document.provider_document_id,
+            )
+            if status in {"processing", "ready", "failed"}:
+                document.status = status
+                if status == "failed":
+                    document.failure_code = "index_failed"
+                    document.failure_message = "The provider could not index this document."
+                else:
+                    document.failure_code = None
+                    document.failure_message = None
+        except Exception as exc:  # provider boundary: retain a retryable state
+            document.failure_code, document.failure_message = stable_provider_error(exc)
+            document.status = "failed"
+        await self.session.flush()
 
     async def rebuild_index(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
         return await self.process(document_id, resource_id=resource_id, rebuild=True)

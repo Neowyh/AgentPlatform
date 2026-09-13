@@ -20,7 +20,10 @@ def upgrade() -> None:
         if "failure_message" not in existing:
             op.add_column("knowledge_documents", sa.Column("failure_message", sa.String(length=255), nullable=True))
         if "ingestion_attempt" not in existing:
-            op.add_column("knowledge_documents", sa.Column("ingestion_attempt", sa.Integer(), nullable=False))
+            op.add_column("knowledge_documents", sa.Column("ingestion_attempt", sa.Integer(), nullable=True))
+            op.execute(sa.text("UPDATE knowledge_documents SET ingestion_attempt = 0 WHERE ingestion_attempt IS NULL"))
+            with op.batch_alter_table("knowledge_documents") as batch_op:
+                batch_op.alter_column("ingestion_attempt", nullable=False)
         return
     op.create_table(
         "knowledge_documents",

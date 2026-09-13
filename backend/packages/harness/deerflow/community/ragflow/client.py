@@ -137,6 +137,18 @@ class RAGFlowClient:
     async def parse_document(self, dataset_id: str, document_id: str) -> None:
         await self._request("POST", f"/datasets/{dataset_id}/documents/{document_id}/parse")
 
+    async def get_document_status(self, dataset_id: str, document_id: str) -> str:
+        payload = await self._request("GET", f"/datasets/{dataset_id}/documents/{document_id}")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise RAGFlowProtocolError("RAGFlow returned an invalid document status.")
+        value = str(data.get("run") or data.get("status") or "").upper()
+        if value in {"DONE", "READY", "SUCCESS", "3"}:
+            return "ready"
+        if value in {"FAIL", "FAILED", "ERROR", "4"}:
+            return "failed"
+        return "processing"
+
     async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
         """Resolve one dataset ID, or enumerate every page when no ID is given."""
         if dataset_id is not None:

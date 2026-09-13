@@ -58,15 +58,16 @@ class FakeUpload:
 
 
 class FakeProvider:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, status: str = "ready") -> None:
         self.fail = fail
+        self.status = status
         self.calls = []
 
     async def ingest(self, **kwargs):
         self.calls.append(kwargs)
         if self.fail:
             raise KnowledgeProviderError("parse_failed", "internal provider detail")
-        return ProviderIngestionResult("provider-doc-1")
+        return ProviderIngestionResult("provider-doc-1", self.status)
 
 
 @pytest.mark.asyncio
@@ -208,7 +209,28 @@ async def test_cross_kb_document_action_is_rejected_before_provider_call(session
     monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
     document = await KnowledgeDocumentService(session, _actor()).upload(first.id, FakeUpload("guide.txt", b"hello"))
     await session.commit()
-    provider = FakeProvider()
+    provider = FakeProvider(status="processing")
     with pytest.raises(Exception, match="not found"):
         await KnowledgeDocumentService(session, _actor(), provider).retry(document["id"], resource_id=second.id)
     assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_reprocessing_a_processing_document_does_not_start_another_provider_task(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    resources = ResourceService(session, _actor())
+    kb = await resources.create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await resources.bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+
+    provider = FakeProvider(status="processing")
+    first = await KnowledgeDocumentService(session, _actor(), provider).process(document["id"], resource_id=kb.id)
+    second = await KnowledgeDocumentService(session, _actor(), provider).process(document["id"], resource_id=kb.id)
+
+    assert first["status"] == "processing"
+    assert second["status"] == "processing"
+    assert len(provider.calls) == 1

@@ -33,6 +33,8 @@ class KnowledgeProvider(Protocol):
         rebuild: bool = False,
     ) -> ProviderIngestionResult: ...
 
+    async def get_status(self, *, dataset_id: str, provider_document_id: str) -> str: ...
+
 
 def stable_provider_error(exc: Exception) -> tuple[str, str]:
     """Map provider errors to a low-cardinality, non-sensitive user message."""
