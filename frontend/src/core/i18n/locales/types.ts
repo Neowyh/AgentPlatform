@@ -1403,6 +1403,7 @@ export interface Translations {
     search: string;
     documents: string;
     knowledgeBases: string;
+    revisions: string;
   };
 
   // Settings

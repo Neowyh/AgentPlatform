@@ -41,6 +41,74 @@ export interface CreateKnowledgeBaseRequest {
   displayName: string;
 }
 
+export type KnowledgeRevisionStatus =
+  | "draft"
+  | "indexing"
+  | "ready"
+  | "published"
+  | "failed"
+  | "superseded"
+  | "archived";
+
+export interface KnowledgeRevision {
+  id: string;
+  resource_id: string;
+  revision_no: number;
+  status: KnowledgeRevisionStatus;
+  manifest_hash: string;
+  document_count: number;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  created_at: string | null;
+  published_at: string | null;
+}
+
+export interface KnowledgeRevisionDocument {
+  document_id: string;
+  content_hash: string;
+  filename: string;
+  size_bytes: number;
+  mime_type: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface KnowledgeRevisionDetail extends KnowledgeRevision {
+  documents: KnowledgeRevisionDocument[];
+}
+
+export async function listKnowledgeRevisions(
+  resourceId: string,
+): Promise<KnowledgeRevision[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge-revisions`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load revisions");
+  const data = (await res.json()) as { items: KnowledgeRevision[] };
+  return data.items;
+}
+
+export async function getKnowledgeRevision(
+  resourceId: string,
+  revisionId: string,
+): Promise<KnowledgeRevisionDetail> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge-revisions/${encodeURIComponent(revisionId)}`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load revision");
+  return (await res.json()) as KnowledgeRevisionDetail;
+}
+
+export async function createKnowledgeRevision(
+  resourceId: string,
+): Promise<KnowledgeRevision> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge-revisions`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to create revision");
+  return (await res.json()) as KnowledgeRevision;
+}
+
 export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/resources?type=knowledge_base&limit=200`,

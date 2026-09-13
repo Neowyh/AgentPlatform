@@ -27,6 +27,7 @@ from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageMan
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
 from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
+from app.agentplatform.knowledge.revisions import KnowledgeRevisionService
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
 from app.agentplatform.resource_runtime import (
@@ -929,6 +930,52 @@ async def delete_knowledge_document(
             {"resource_id": resource_id, "status": document["status"], "failure_code": document["failure_code"]},
         )
         return document
+
+
+@router.post("/{resource_id}/knowledge-revisions", status_code=201)
+@_translate_resource_errors
+async def create_knowledge_revision(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        revision = await KnowledgeRevisionService(session, _resource_actor(current_user)).create_revision(resource_id)
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_revision_created",
+            "knowledge_revision",
+            str(revision["id"]),
+            {
+                "resource_id": resource_id,
+                "revision_no": revision["revision_no"],
+                "manifest_hash": revision["manifest_hash"],
+                "document_count": revision["document_count"],
+            },
+        )
+        return revision
+
+
+@router.get("/{resource_id}/knowledge-revisions")
+@_translate_resource_errors
+async def list_knowledge_revisions(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        revisions = await KnowledgeRevisionService(session, _resource_actor(current_user)).list_revisions(resource_id)
+        return {"items": revisions, "total": len(revisions)}
+
+
+@router.get("/{resource_id}/knowledge-revisions/{revision_id}")
+@_translate_resource_errors
+async def get_knowledge_revision(
+    resource_id: str,
+    revision_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeRevisionService(session, _resource_actor(current_user)).get_revision(resource_id, revision_id)
 
 
 @router.put("/{resource_id}/knowledge-draft")

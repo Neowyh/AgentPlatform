@@ -2,8 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createKnowledgeBase,
+  createKnowledgeRevision,
+  getKnowledgeRevision,
   listKnowledgeBases,
   listKnowledgeDocuments,
+  listKnowledgeRevisions,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
@@ -71,3 +74,35 @@ export const useRebuildKnowledgeDocumentIndex = (resourceId: string) =>
 
 export const useDeleteKnowledgeDocument = (resourceId: string) =>
   useDocumentAction(deleteKnowledgeDocument, resourceId);
+
+export function useKnowledgeRevisions(resourceId: string | undefined) {
+  const query = useQuery({
+    queryKey: ["knowledge-revisions", resourceId],
+    queryFn: () => listKnowledgeRevisions(resourceId!),
+    enabled: Boolean(resourceId),
+  });
+  return { revisions: query.data ?? [], ...query };
+}
+
+export function useKnowledgeRevision(
+  resourceId: string | undefined,
+  revisionId: string | undefined,
+) {
+  const query = useQuery({
+    queryKey: ["knowledge-revisions", resourceId, revisionId],
+    queryFn: () => getKnowledgeRevision(resourceId!, revisionId!),
+    enabled: Boolean(resourceId && revisionId),
+  });
+  return query;
+}
+
+export function useCreateKnowledgeRevision(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => createKnowledgeRevision(resourceId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-revisions", resourceId],
+      }),
+  });
+}

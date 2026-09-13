@@ -1759,6 +1759,7 @@ export const enUS: Translations = {
     search: "Search documents...",
     documents: "Documents",
     knowledgeBases: "Knowledge Bases",
+    revisions: "Revisions",
   },
 
   // Settings

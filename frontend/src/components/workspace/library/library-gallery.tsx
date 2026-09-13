@@ -8,6 +8,7 @@ import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
 import { KnowledgeBaseList } from "./knowledge-base-list";
+import { RevisionList } from "./revision-list";
 
 export function LibraryGallery() {
   const { t } = useI18n();
@@ -15,6 +16,9 @@ export function LibraryGallery() {
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] =
     useState<string>();
   const selectedId = selectedKnowledgeBaseId ?? knowledgeBases[0]?.id;
+  const selectedKnowledgeBase = knowledgeBases.find(
+    (kb) => kb.id === selectedId,
+  );
 
   return (
     <div className="workbench-collection-surface flex h-full flex-col gap-6 p-6">
@@ -55,6 +59,7 @@ export function LibraryGallery() {
           <TabsTrigger value="knowledge-bases">
             {t.library.knowledgeBases}
           </TabsTrigger>
+          <TabsTrigger value="revisions">{t.library.revisions}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
@@ -63,6 +68,13 @@ export function LibraryGallery() {
 
         <TabsContent value="knowledge-bases" className="flex-1">
           <KnowledgeBaseList onSelect={setSelectedKnowledgeBaseId} />
+        </TabsContent>
+
+        <TabsContent value="revisions" className="flex-1">
+          <RevisionList
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
         </TabsContent>
       </Tabs>
     </div>

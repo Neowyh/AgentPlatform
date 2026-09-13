@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -72,4 +72,52 @@ class KnowledgeDocument(Base):
         CheckConstraint("source = 'upload'", name="ck_knowledge_documents_source"),
         CheckConstraint("size_bytes >= 0", name="ck_knowledge_documents_size"),
         Index("ix_knowledge_documents_resource_created", "resource_id", "created_at"),
+    )
+
+
+class KnowledgeRevision(Base):
+    """Immutable manifest of KnowledgeBase content at candidate creation (M4).
+
+    A revision freezes the logical documents and content versions that are
+    ready at creation time; the manifest hash is computed deterministically so
+    identical content yields an identical hash. Published revisions and their
+    provider datasets never change afterwards.
+    """
+
+    __tablename__ = "knowledge_base_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    provider_doc_map_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    document_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider_dataset_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_revision_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    publish_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("knowledge_base_id", "revision_no", name="uq_knowledge_base_revisions_no"),
+        CheckConstraint(
+            "status in ('draft','indexing','ready','published','failed','superseded','archived')",
+            name="ck_knowledge_base_revisions_status",
+        ),
+        CheckConstraint("document_count >= 0", name="ck_knowledge_base_revisions_document_count"),
+        Index(
+            "uq_knowledge_base_revisions_active_publish",
+            "knowledge_base_id",
+            unique=True,
+            sqlite_where=text("status = 'indexing'"),
+            postgresql_where=text("status = 'indexing'"),
+        ),
     )
