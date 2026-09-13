@@ -10,6 +10,7 @@ export {
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
+  deleteKnowledgeDocument,
 } from "./api";
 export {
   useCreateKnowledgeBase,
@@ -18,4 +19,5 @@ export {
   useUploadKnowledgeDocument,
   useRetryKnowledgeDocument,
   useRebuildKnowledgeDocumentIndex,
+  useDeleteKnowledgeDocument,
 } from "./hooks";

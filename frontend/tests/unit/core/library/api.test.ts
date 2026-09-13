@@ -9,6 +9,7 @@ vi.mock("@/core/config", () => ({
 
 import {
   createKnowledgeBase,
+  deleteKnowledgeDocument,
   listKnowledgeBases,
   listKnowledgeDocuments,
   uploadKnowledgeDocument,
@@ -103,6 +104,21 @@ describe("KnowledgeBase API facade", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:8000/api/resources/kb-1/documents",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+    );
+  });
+
+  test("deletes a document through its KnowledgeBase resource", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({ id: "doc-1", status: "deleted" }),
+    );
+
+    await expect(deleteKnowledgeDocument("kb/1", "doc/1")).resolves.toEqual({
+      id: "doc-1",
+      status: "deleted",
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/resources/kb%2F1/documents/doc%2F1",
+      { method: "DELETE" },
     );
   });
 });

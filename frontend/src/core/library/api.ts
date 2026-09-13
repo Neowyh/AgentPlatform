@@ -19,7 +19,14 @@ export interface KnowledgeDocument {
   mime_type: string;
   content_hash: string;
   source: "upload";
-  status: "uploaded" | "processing" | "ready" | "failed";
+  status:
+    | "uploaded"
+    | "processing"
+    | "ready"
+    | "failed"
+    | "deleting"
+    | "delete_failed"
+    | "deleted";
   failure_code?: string | null;
   failure_message?: string | null;
   ingestion_attempt?: number;
@@ -107,3 +114,15 @@ export const rebuildKnowledgeDocumentIndex = (
   resourceId: string,
   documentId: string,
 ) => updateKnowledgeDocument(resourceId, documentId, "rebuild-index");
+
+export async function deleteKnowledgeDocument(
+  resourceId: string,
+  documentId: string,
+): Promise<KnowledgeDocument> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/documents/${encodeURIComponent(documentId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) await extractError(res, "Failed to delete document");
+  return (await res.json()) as KnowledgeDocument;
+}

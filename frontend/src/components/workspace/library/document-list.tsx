@@ -5,6 +5,7 @@ import type { ChangeEvent } from "react";
 import {
   useDocuments,
   useRebuildKnowledgeDocumentIndex,
+  useDeleteKnowledgeDocument,
   useRetryKnowledgeDocument,
   useUploadKnowledgeDocument,
 } from "@/core/library";
@@ -18,6 +19,7 @@ export function DocumentList({
   const upload = useUploadKnowledgeDocument(knowledgeBaseId ?? "");
   const retry = useRetryKnowledgeDocument(knowledgeBaseId ?? "");
   const rebuild = useRebuildKnowledgeDocumentIndex(knowledgeBaseId ?? "");
+  const remove = useDeleteKnowledgeDocument(knowledgeBaseId ?? "");
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -49,7 +51,9 @@ export function DocumentList({
       <div className="space-y-3">
         <UploadControl pending={upload.isPending} onChange={handleUpload} />
         {upload.error ? (
-          <div className="text-destructive">Unable to upload document.</div>
+          <div role="alert" className="text-destructive">
+            Unable to upload document.
+          </div>
         ) : null}
         <div className="text-muted-foreground">No documents found</div>
       </div>
@@ -60,7 +64,14 @@ export function DocumentList({
     <div className="space-y-3">
       <UploadControl pending={upload.isPending} onChange={handleUpload} />
       {upload.error ? (
-        <div className="text-destructive">Unable to upload document.</div>
+        <div role="alert" className="text-destructive">
+          Unable to upload document.
+        </div>
+      ) : null}
+      {retry.error || rebuild.error || remove.error ? (
+        <div role="alert" className="text-destructive">
+          Unable to update document.
+        </div>
       ) : null}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {documents.map((doc) => (
@@ -91,6 +102,16 @@ export function DocumentList({
                   onClick={() => void rebuild.mutateAsync(doc.id)}
                 >
                   Rebuild index
+                </button>
+              ) : null}
+              {doc.can_modify && doc.status !== "deleted" ? (
+                <button
+                  type="button"
+                  disabled={remove.isPending}
+                  aria-busy={remove.isPending}
+                  onClick={() => void remove.mutateAsync(doc.id)}
+                >
+                  {remove.isPending ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
               <span className="text-muted-foreground type-body">

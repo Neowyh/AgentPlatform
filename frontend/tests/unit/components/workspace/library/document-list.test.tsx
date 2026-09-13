@@ -1,4 +1,5 @@
 import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ const mockDocuments = [
     name: "Document 1",
     status: "ready",
     created_at: "2024-01-01",
+    can_modify: true,
   },
   {
     id: "doc-2",
@@ -17,6 +19,8 @@ const mockDocuments = [
     created_at: "2024-01-02",
   },
 ];
+
+const deleteDocument = vi.fn();
 
 vi.mock("@/core/library", () => ({
   useDocuments: () => ({
@@ -30,6 +34,11 @@ vi.mock("@/core/library", () => ({
   }),
   useRetryKnowledgeDocument: () => ({ mutateAsync: vi.fn() }),
   useRebuildKnowledgeDocumentIndex: () => ({ mutateAsync: vi.fn() }),
+  useDeleteKnowledgeDocument: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: deleteDocument,
+  }),
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -65,5 +74,19 @@ describe("DocumentList", () => {
     render(<DocumentList knowledgeBaseId="kb-1" />);
     expect(screen.getByText("doc-1")).toBeInTheDocument();
     expect(screen.getByText("doc-2")).toBeInTheDocument();
+  });
+
+  test("allows owners to delete a document", async () => {
+    render(<DocumentList knowledgeBaseId="kb-1" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(deleteDocument).toHaveBeenCalledWith("doc-1");
+  });
+
+  test("does not expose delete to read-only users", () => {
+    render(<DocumentList knowledgeBaseId="kb-1" />);
+
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
   });
 });

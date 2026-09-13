@@ -39,6 +39,10 @@ vi.mock("@/core/i18n/hooks", () => ({
   }),
 }));
 
+vi.mock("@/core/library", () => ({
+  useKnowledgeBases: () => ({ knowledgeBases: [] }),
+}));
+
 vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({
     children,

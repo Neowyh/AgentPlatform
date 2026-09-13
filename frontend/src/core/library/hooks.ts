@@ -7,6 +7,7 @@ import {
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
+  deleteKnowledgeDocument,
 } from "./api";
 import type { CreateKnowledgeBaseRequest } from "./api";
 
@@ -67,3 +68,6 @@ export const useRetryKnowledgeDocument = (resourceId: string) =>
 
 export const useRebuildKnowledgeDocumentIndex = (resourceId: string) =>
   useDocumentAction(rebuildKnowledgeDocumentIndex, resourceId);
+
+export const useDeleteKnowledgeDocument = (resourceId: string) =>
+  useDocumentAction(deleteKnowledgeDocument, resourceId);
