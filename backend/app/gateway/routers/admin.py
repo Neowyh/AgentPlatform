@@ -35,6 +35,7 @@ RESOURCE_TYPE_LABELS = {
     "tool": "工具",
     "skill": "Skill",
     "workflow": "工作流",
+    "knowledge_base": "知识库",
 }
 
 
@@ -134,6 +135,7 @@ async def get_admin_stats(
         "total_tools": type_counts["tool"],
         "total_skills": type_counts["skill"],
         "total_workflows": type_counts["workflow"],
+        "total_knowledge_bases": type_counts["knowledge_base"],
         "total_resources": sum(type_counts.values()),
         "audit_logs": audit_count,
         "pending_applications": pending_app_count,
@@ -143,7 +145,7 @@ async def get_admin_stats(
 @router.get("/resources")
 @require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_resources(
-    resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow"),
+    resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow|knowledge_base"),
     visibility: str | None = Query(default=None, pattern="^(private|department|public)$", description="Filter by visibility"),
     owner_id: str | None = Query(default=None, description="Filter by owner user id"),
     lifecycle_status: str | None = Query(default=None, pattern="^(active|archived|suspended)$", description="Filter by lifecycle status"),

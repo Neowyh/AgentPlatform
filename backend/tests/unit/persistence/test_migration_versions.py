@@ -184,6 +184,23 @@ def test_resource_tables_migration_declares_indexes_and_drop_order(monkeypatch):
     assert op.dropped_tables == ["visibility_applications", "resource_metadata"]
 
 
+def test_resource_dependency_kb_fields_migration_adds_and_drops_declaration_columns(monkeypatch):
+    migration = _load("20260911_resource_dependency_kb_fields")
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+
+    migration.upgrade()
+
+    assert op.batches[0].table_name == "resource_dependencies"
+    assert op.batches[0].added_columns == ["dependency_mode", "revision_id", "required", "purpose"]
+
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+    migration.downgrade()
+
+    assert op.batches[0].dropped_columns == ["purpose", "required", "revision_id", "dependency_mode"]
+
+
 def test_departments_users_ext_migration_declares_tables_and_drop_order(monkeypatch):
     migration = _load("16147afec43b_add_departments_and_users_ext_tables")
     monkeypatch.setattr(migration.sa, "inspect", lambda bind: op.inspector)

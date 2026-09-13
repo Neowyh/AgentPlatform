@@ -35,6 +35,7 @@ const TYPE_STYLES: Record<string, string> = {
   tool: "bg-orange-100 text-orange-800",
   skill: "bg-blue-100 text-blue-800",
   workflow: "bg-green-100 text-green-800",
+  knowledge_base: "bg-cyan-100 text-cyan-800",
 };
 
 const VISIBILITY_STYLES: Record<string, string> = {
@@ -67,6 +68,7 @@ export default function ResourcesPage() {
     { value: "tool", label: t.admin.resources.toolLabel },
     { value: "skill", label: "Skill" },
     { value: "workflow", label: t.admin.resources.workflowLabel },
+    { value: "knowledge_base", label: t.admin.resources.knowledgeBaseLabel },
   ];
 
   const VISIBILITY_LABELS: Record<string, string> = {

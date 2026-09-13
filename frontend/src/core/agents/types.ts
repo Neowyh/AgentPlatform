@@ -42,6 +42,7 @@ export interface CreateAgentRequest {
   reasoning_effort?: ReasoningEffort | null;
   soul?: string;
   visibility?: string;
+  knowledge_dependencies?: UpdateAgentRequest["knowledge_dependencies"];
 }
 
 export interface UpdateAgentRequest {
@@ -56,4 +57,11 @@ export interface UpdateAgentRequest {
   soul?: string | null;
   draft_revision?: number;
   visibility?: string | null;
+  knowledge_dependencies?: Array<{
+    resource_id: string;
+    dependency_mode?: "live" | "pinned";
+    revision_id?: string | null;
+    required?: boolean;
+    purpose?: string | null;
+  }>;
 }

@@ -62,10 +62,18 @@ function fromCanonicalPublished(payload: {
   version: { version: number };
   content: CanonicalWorkflowDefinition;
   yaml_content?: string;
+  dependencies?: Array<{
+    resource_id: string;
+    type?: string;
+    dependency_mode: "live" | "pinned";
+    revision_id: string | null;
+    required: boolean;
+    purpose: string | null;
+  }>;
 }): WorkflowDetail {
   const summary = fromCanonicalResource(payload.resource);
   const content = payload.content;
-  return {
+  const result: WorkflowDetail = {
     ...summary,
     description: content.description ?? "",
     version: String(payload.version.version),
@@ -79,6 +87,18 @@ function fromCanonicalPublished(payload: {
     steps: content.nodes,
     edges: content.edges,
   };
+  if (payload.dependencies !== undefined) {
+    result.knowledge_dependencies = payload.dependencies
+      .filter((item) => item.type === "knowledge_base")
+      .map((item) => ({
+        resource_id: item.resource_id,
+        dependency_mode: item.dependency_mode,
+        revision_id: item.revision_id,
+        required: item.required,
+        purpose: item.purpose,
+      }));
+  }
+  return result;
 }
 
 async function getCanonicalWorkflow(
@@ -88,9 +108,10 @@ async function getCanonicalWorkflow(
     `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/published`,
   );
   if (!res.ok) return extractError(res, `Workflow '${resourceId}' not found`);
-  return fromCanonicalPublished(
-    (await res.json()) as Parameters<typeof fromCanonicalPublished>[0],
-  );
+  const payload = (await res.json()) as Parameters<
+    typeof fromCanonicalPublished
+  >[0];
+  return fromCanonicalPublished(payload);
 }
 
 function workflowNameFromYaml(content: string): string {
@@ -190,6 +211,7 @@ export async function updateWorkflow(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: data.yaml_content,
+        dependencies: data.knowledge_dependencies,
         expected_revision: data.draft_revision,
       }),
     },

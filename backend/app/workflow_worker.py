@@ -206,7 +206,15 @@ async def execute_workflow_task(
         # a later crash/take-over must count as a fresh attempt again.
         await store.clear_resume_command(task.task_id)
     else:
-        invocation = {"run_id": run_id, "inputs": run.inputs, "state": {}, "outputs": {}, "model_name": run.model_name}
+        evidence = run.snapshot.get("run_evidence", {}) if isinstance(run.snapshot, dict) else {}
+        invocation = {
+            "run_id": run_id,
+            "inputs": run.inputs,
+            "state": {},
+            "outputs": {},
+            "model_name": run.model_name,
+            "knowledge_scope": evidence.get("knowledge_scope"),
+        }
 
     event_limit = config.workflow_runtime.max_events_per_run
 

@@ -15,6 +15,21 @@ from fastapi import HTTPException, Request
 from app.gateway.authz import _cached_rbac_identity
 
 
+def _scope_restriction(context: dict[str, Any], key: str) -> set[str] | None:
+    """Read an optional logical/provider KB restriction from run context."""
+
+    value = context.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return {item for item in value if isinstance(item, str) and item.strip()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return {item for item in value if isinstance(item, str) and item.strip()}
+    return set()
+
+
 class SelectedSkillOutsideClosure(Exception):
     """Diagnostic-only conflict for an Expert/Skill mismatch."""
 
@@ -40,8 +55,11 @@ async def prepare_canonical_agent_run(
 ) -> Any:
     """Prepare one canonical Agent Run from the authenticated user's view."""
 
+    from agentplatform_extension.knowledge.scope import KnowledgeScope
     from sqlalchemy import select
 
+    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
     from app.agentplatform.rbac_models import UserModel, UserRole
     from app.agentplatform.resource_runtime import CanonicalResourceLoader, ResourceRuntimeError, ResourceStorage
     from app.agentplatform.resource_service import (
@@ -54,6 +72,7 @@ async def prepare_canonical_agent_run(
         VisibilityClosureError,
     )
     from app.agentplatform.runtime_adapter import build_canonical_agent_factory
+    from deerflow.config.app_config import get_app_config
     from deerflow.config.paths import get_paths
     from deerflow.persistence.engine import get_session_factory
 
@@ -134,6 +153,33 @@ async def prepare_canonical_agent_run(
             definition = await loader.load_agent(run_id, resource_id)
             skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
+            knowledge_resources = {item.resource.id: item.resource for item in closure if item.resource.type == "knowledge_base"}
+            bindings = {}
+            if knowledge_resources:
+                rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
+                bindings = {row.resource_id: row.provider_dataset_id for row in rows.scalars()}
+            run_context = diagnostic_context or {}
+            tool_config = None
+            try:
+                tool_config = get_app_config().get_tool_config("knowledge_search")
+            except Exception:
+                # A deployment policy that cannot be read must deny retrieval;
+                # treating it as absent would turn a configuration failure into
+                # an authorization bypass.
+                tool_config = None
+                deployment_allowed = set()
+            else:
+                deployment_allowed = getattr(tool_config, "datasets", None)
+            # The scope is keyed by canonical KB UUIDs. Slugs are display
+            # aliases and may collide across owners/departments.
+            caller_allowed = set(knowledge_resources)
+            knowledge_scope = calculate_effective_knowledge_scope(
+                bindings,
+                caller_allowed=caller_allowed,
+                workflow_allowed=_scope_restriction(run_context, "knowledge_scope"),
+                runtime_allowed=_scope_restriction(run_context, "runtime_knowledge_scope"),
+                deployment_allowed=deployment_allowed,
+            )
             await asyncio.to_thread(
                 storage.create_run_skill_view,
                 run_id,
@@ -144,6 +190,7 @@ async def prepare_canonical_agent_run(
             definition,
             skills,
             runner_tool_groups=actor.tool_groups,
+            knowledge_scope=KnowledgeScope.from_bindings(knowledge_scope),
         )
     except ResourceNotFound as exc:
         raise HTTPException(404, str(exc)) from exc

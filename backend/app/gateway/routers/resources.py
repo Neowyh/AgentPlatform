@@ -1,4 +1,4 @@
-"""UUID-first facade for canonical Skill, Agent, and Workflow resources."""
+"""UUID-first facade for canonical Skill, Agent, Workflow, and KnowledgeBase resources."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
+from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
 from app.agentplatform.resource_runtime import (
@@ -157,21 +158,31 @@ def _skill_description_zh(
 
 
 class ResourceCreateRequest(BaseModel):
-    type: str = Field(pattern="^(skill|agent|workflow)$")
+    type: str = Field(pattern="^(skill|agent|workflow|knowledge_base)$")
     slug: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=255)
     storage_kind: str = Field(pattern="^(filesystem|database)$")
 
 
+class DependencyDeclarationRequest(BaseModel):
+    resource_id: str = Field(min_length=1)
+    dependency_mode: str = Field(default="live", pattern="^(live|pinned)$")
+    revision_id: str | None = None
+    required: bool = True
+    purpose: str | None = Field(default=None, max_length=256)
+
+
 class WorkflowDraftRequest(BaseModel):
     content: dict[str, Any] | str
     expected_revision: int = Field(ge=0)
+    dependencies: list[DependencyDeclarationRequest] = Field(default_factory=list)
 
 
 class AgentDraftRequest(BaseModel):
     config: dict[str, Any]
     soul: str = ""
     expected_revision: int = Field(ge=0)
+    knowledge_dependencies: list[DependencyDeclarationRequest] = Field(default_factory=list)
 
 
 class SkillDraftRequest(BaseModel):
@@ -185,7 +196,8 @@ class PublishRequest(BaseModel):
 
 
 class DependencyRequest(BaseModel):
-    resource_ids: list[str]
+    resource_ids: list[str] = Field(default_factory=list)
+    dependencies: list[DependencyDeclarationRequest] | None = None
 
 
 class ForkRequest(BaseModel):
@@ -218,6 +230,16 @@ class TransferRequest(BaseModel):
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     model_name: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class KnowledgeBindingRequest(BaseModel):
+    provider_dataset_id: str = Field(min_length=1, max_length=128)
+    provider_type: str = Field(default="ragflow", min_length=1, max_length=32)
+
+
+class KnowledgeDraftRequest(BaseModel):
+    content: dict[str, Any]
+    expected_revision: int = Field(ge=0)
 
 
 def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
@@ -382,6 +404,7 @@ def _resource_payload(
 
 def _version_payload(version: ResourceVersion) -> dict[str, Any]:
     return {
+        "revision_id": version.id,
         "resource_id": version.resource_id,
         "version": version.version,
         "content_hash": version.content_hash,
@@ -498,7 +521,7 @@ def _required_canonical_resume_roles(
 @router.get("")
 @_translate_resource_errors
 async def list_resources(
-    resource_type: str | None = Query(default=None, alias="type", pattern="^(skill|agent|workflow)$"),
+    resource_type: str | None = Query(default=None, alias="type", pattern="^(skill|agent|workflow|knowledge_base)$"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -805,6 +828,98 @@ async def create_resource(
         return _resource_payload(resource, current_user=current_user)
 
 
+@router.get("/{resource_id}/knowledge")
+@_translate_resource_errors
+async def get_knowledge_binding(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).get_knowledge_binding(resource_id)
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": binding.provider_dataset_id is not None,
+            "sync_status": binding.sync_status,
+        }
+
+
+@router.put("/{resource_id}/knowledge-draft")
+@_translate_resource_errors
+async def save_knowledge_draft(
+    resource_id: str,
+    body: KnowledgeDraftRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        draft = await ResourcePublisher(
+            ResourceService(session, _resource_actor(current_user)),
+            ResourceStorage(get_paths().base_dir),
+        ).save_database_draft(
+            resource_id,
+            content=body.content,
+            expected_revision=body.expected_revision,
+        )
+        return {
+            "resource_id": draft.resource_id,
+            "revision": draft.revision,
+            "content_hash": draft.content_hash,
+        }
+
+
+@router.post("/{resource_id}/knowledge", status_code=200)
+@_translate_resource_errors
+async def bind_knowledge_dataset(
+    resource_id: str,
+    body: KnowledgeBindingRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).bind_knowledge_dataset(
+            resource_id,
+            provider_dataset_id=body.provider_dataset_id,
+            provider_type=body.provider_type,
+        )
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_dataset_bound",
+            "knowledge_base",
+            resource_id,
+            {"provider_type": binding.provider_type, "bound": True},
+        )
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": True,
+            "sync_status": binding.sync_status,
+        }
+
+
+@router.delete("/{resource_id}/knowledge", status_code=200)
+@_translate_resource_errors
+async def unbind_knowledge_dataset(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        binding = await ResourceService(session, _resource_actor(current_user)).unbind_knowledge_dataset(resource_id)
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_dataset_unbound",
+            "knowledge_base",
+            resource_id,
+            {"provider_type": binding.provider_type, "bound": False},
+        )
+        return {
+            "resource_id": binding.resource_id,
+            "provider_type": binding.provider_type,
+            "bound": False,
+            "sync_status": binding.sync_status,
+        }
+
+
 @router.get("/aliases/{resource_type}/{slug}")
 @_translate_resource_errors
 async def resolve_resource_alias(
@@ -827,7 +942,9 @@ async def get_resource(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        resource = await ResourceService(session, _resource_actor(current_user)).get_visible(resource_id)
+        service = ResourceService(session, _resource_actor(current_user))
+        resource = await service.get_visible(resource_id)
+        dependency_rows = await service.list_dependencies(resource_id)
         favorites = await _favorite_ids(session, str(current_user.id), [resource.id])
         return {
             **_resource_payload(
@@ -840,7 +957,60 @@ async def get_resource(
                 resource,
                 ResourceStorage(get_paths().base_dir),
             ),
+            "dependencies": [
+                {
+                    "resource_id": target.id,
+                    "type": target.type,
+                    "slug": target.slug,
+                    "display_name": target.display_name,
+                    "dependency_mode": dependency.dependency_mode or "live",
+                    "revision_id": dependency.revision_id,
+                    "required": dependency.required is not False,
+                    "purpose": dependency.purpose,
+                }
+                for dependency, target in dependency_rows
+            ],
         }
+
+
+@router.get("/{resource_id}/dependencies")
+@_translate_resource_errors
+async def get_resource_dependencies(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        rows = await ResourceService(session, _resource_actor(current_user)).list_dependencies(resource_id)
+        return {
+            "resource_id": resource_id,
+            "dependencies": [
+                {
+                    "resource_id": target.id,
+                    "type": target.type,
+                    "slug": target.slug,
+                    "display_name": target.display_name,
+                    "dependency_mode": dependency.dependency_mode or "live",
+                    "revision_id": dependency.revision_id,
+                    "required": dependency.required is not False,
+                    "purpose": dependency.purpose,
+                }
+                for dependency, target in rows
+            ],
+        }
+
+
+@router.get("/{resource_id}/versions")
+@_translate_resource_errors
+async def list_resource_versions(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """List published revisions visible to the caller for PINNED selection."""
+    async with _factory()() as session:
+        service = ResourceService(session, _resource_actor(current_user))
+        await service.get_visible(resource_id)
+        versions = list((await session.execute(select(ResourceVersion).where(ResourceVersion.resource_id == resource_id).order_by(ResourceVersion.version.desc()))).scalars())
+        return {"resource_id": resource_id, "versions": [_version_payload(version) for version in versions]}
 
 
 @router.get("/{resource_id}/published")
@@ -854,12 +1024,26 @@ async def get_published_resource(
         service = ResourceService(session, _resource_actor(current_user))
         resource = await service.get_visible(resource_id)
         published = await service.get_published_content(resource_id, version=version)
+        dependency_rows = await service.list_dependencies(resource_id)
         payload: dict[str, Any] = {
             "resource": _resource_payload(resource, current_user=current_user),
             "version": _version_payload(published),
             "content": published.content,
+            "dependencies": [
+                {
+                    "resource_id": target.id,
+                    "type": target.type,
+                    "slug": target.slug,
+                    "display_name": target.display_name,
+                    "dependency_mode": dependency.dependency_mode or "live",
+                    "revision_id": dependency.revision_id,
+                    "required": dependency.required is not False,
+                    "purpose": dependency.purpose,
+                }
+                for dependency, target in dependency_rows
+            ],
         }
-        if resource.type == "workflow":
+        if resource.type in {"workflow", "knowledge_base"}:
             payload["yaml_content"] = yaml.safe_dump(published.content, sort_keys=False, allow_unicode=True)
             return payload
         expected_key = f"{'skills' if resource.type == 'skill' else 'agents'}/{resource.id}/versions/{published.version}"
@@ -921,7 +1105,7 @@ async def export_resource(
         service = ResourceService(session, _resource_actor(current_user))
         resource = await service.get_visible(resource_id)
         published = await service.get_published_content(resource_id, version=version)
-        if resource.type == "workflow":
+        if resource.type in {"workflow", "knowledge_base"}:
             body = yaml.safe_dump(published.content, sort_keys=False, allow_unicode=True)
             return Response(
                 body,
@@ -976,6 +1160,7 @@ async def save_workflow_draft(
             node.action.name = target.id
             dependencies.append(target.id)
         dependencies = list(dict.fromkeys(dependencies))
+        dependencies.extend(item.model_dump() for item in body.dependencies if item.resource_id not in dependencies)
         content = workflow.model_dump(mode="json", by_alias=True)
         await service.replace_dependencies(resource_id, dependencies)
         draft = await ResourcePublisher(service, ResourceStorage(get_paths().base_dir)).save_database_draft(
@@ -1016,10 +1201,11 @@ async def save_agent_draft(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
-            dependencies = list(dict.fromkeys(dependencies))
+            skill_dependencies = list(dict.fromkeys(dependencies))
+            knowledge_dependencies = [item.model_dump() for item in body.knowledge_dependencies if item.resource_id not in skill_dependencies]
             config = dict(body.config)
             if skills is not None:
-                config["skills"] = dependencies
+                config["skills"] = skill_dependencies
             await asyncio.to_thread(
                 write_agent_draft_source,
                 source,
@@ -1027,7 +1213,7 @@ async def save_agent_draft(
                 config=config,
                 soul=body.soul,
             )
-            await service.replace_dependencies(resource.id, dependencies)
+            await service.replace_dependencies(resource.id, [*skill_dependencies, *knowledge_dependencies])
             draft = await ResourcePublisher(
                 service,
                 ResourceStorage(get_paths().base_dir),
@@ -1168,12 +1354,26 @@ async def replace_dependencies(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
+        declarations = body.dependencies if body.dependencies is not None else body.resource_ids
         dependencies = await ResourceService(session, _resource_actor(current_user)).replace_dependencies(
             resource_id,
-            body.resource_ids,
+            [item.model_dump() if isinstance(item, DependencyDeclarationRequest) else item for item in declarations],
         )
         await session.commit()
-        return {"resource_id": resource_id, "resource_ids": [item.target_resource_id for item in dependencies]}
+        return {
+            "resource_id": resource_id,
+            "resource_ids": [item.target_resource_id for item in dependencies],
+            "dependencies": [
+                {
+                    "resource_id": item.target_resource_id,
+                    "dependency_mode": item.dependency_mode or "live",
+                    "revision_id": item.revision_id,
+                    "required": item.required is not False,
+                    "purpose": item.purpose,
+                }
+                for item in dependencies
+            ],
+        }
 
 
 @router.post("/{resource_id}/fork", status_code=201)

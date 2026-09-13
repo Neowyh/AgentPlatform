@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
+from agentplatform_extension.knowledge.scope import KnowledgeScope
 from jsonschema import Draft202012Validator
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
@@ -21,6 +22,16 @@ from .adapters import ActionAdapterRegistry, ActionContext
 from .errors import node_failure_payload
 from .file_roots import lookup_path, materialize_state, missing_written_artifacts, path_within_root, render_template, unparsable_json_artifacts, workflow_state_path, workflow_state_root
 from .schema import EdgeV2, NodeV2, WorkflowV2
+
+
+def _knowledge_scope_from_state(state: dict[str, Any]) -> KnowledgeScope | None:
+    value = state.get("knowledge_scope")
+    if not isinstance(value, dict):
+        return None
+    bindings = value.get("bindings")
+    if not isinstance(bindings, dict):
+        return None
+    return KnowledgeScope.from_bindings({str(logical): str(dataset) for logical, dataset in bindings.items()})
 
 
 class WorkflowCancelled(RuntimeError):
@@ -257,6 +268,7 @@ class WorkflowGraphCompiler:
                 outputs=dict(state.get("outputs", {})),
                 file_access=file_access,
                 model_name=state.get("model_name"),
+                knowledge_scope=_knowledge_scope_from_state(state),
             )
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
             await self._emit(

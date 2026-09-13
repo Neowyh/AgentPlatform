@@ -1851,6 +1851,7 @@ export const zhCN: Translations = {
       agentLabel: "智能体",
       toolLabel: "工具",
       workflowLabel: "工作流",
+      knowledgeBaseLabel: "知识库",
       allVisibilityLabel: "全部可见性",
       privateLabel: "私有",
       departmentLabel: "部门",

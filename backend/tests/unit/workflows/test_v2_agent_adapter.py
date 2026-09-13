@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 import deerflow.config
 import deerflow.tools.tools
@@ -293,6 +294,35 @@ async def test_canonical_agent_adapter_intersects_runner_groups_and_never_loads_
     assert FakeExecutor.captured[0].name == "agent-uuid"
     assert FakeExecutor.effective_user_ids == ["runner"]
     assert FakeExecutor.canonical_run_ids == ["run-canonical"]
+
+
+@pytest.mark.asyncio
+async def test_canonical_agent_adapter_narrows_workflow_scope_to_agent_dependencies(
+    env: pytest.MonkeyPatch,
+) -> None:
+    definition = CanonicalAgentDefinition(
+        resource_id="agent-uuid",
+        version=1,
+        content_hash="a" * 64,
+        path=Path("/unused"),
+        config=AgentConfig(name="writer", tool_groups=[], skills=[]),
+        soul="Frozen soul",
+        knowledge_resource_ids=frozenset({"kb-allowed"}),
+    )
+    adapter = _CanonicalAgentAdapter(definition, [], "runner", allowed_tool_groups=None)
+    context = ActionContext(
+        workflow_name="flow",
+        run_id="run-canonical-scope",
+        node_id="node",
+        inputs={},
+        state={},
+        outputs={},
+        knowledge_scope=KnowledgeScope.from_bindings({"kb-allowed": "dataset-a", "kb-hidden": "dataset-b"}),
+    )
+
+    await adapter.run(context, {"prompt": "work"})
+
+    assert FakeExecutor.captured[0].knowledge_scope.as_mapping()["bindings"] == {"kb-allowed": "dataset-a"}
 
 
 @pytest.mark.asyncio

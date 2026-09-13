@@ -122,8 +122,13 @@ export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { ...request, name: undefined },
+        config: {
+          ...request,
+          name: undefined,
+          knowledge_dependencies: undefined,
+        },
         soul: request.soul,
+        knowledge_dependencies: request.knowledge_dependencies,
         expected_revision: 0,
       }),
     },
@@ -168,8 +173,13 @@ export async function updateAgent(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config: { ...request, name: undefined },
+        config: {
+          ...request,
+          name: undefined,
+          knowledge_dependencies: undefined,
+        },
         soul: request.soul,
+        knowledge_dependencies: request.knowledge_dependencies,
         expected_revision: request.draft_revision ?? 0,
       }),
     },

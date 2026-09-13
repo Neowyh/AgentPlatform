@@ -33,6 +33,7 @@ class CanonicalAgentDefinition:
     path: Path
     config: AgentConfig
     soul: str
+    knowledge_resource_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -153,6 +154,18 @@ class CanonicalResourceLoader:
         if inspected.content_hash != version.content_hash:
             raise ResourceRuntimeError(f"Agent version hash mismatch for {resource.id}@{version.version}")
         config, soul = load_validated_agent_definition(path, fallback_name=resource.slug)
+        knowledge_resource_ids = frozenset(
+            (
+                await self.session.execute(
+                    select(Resource.id)
+                    .join(ResourceDependency, ResourceDependency.target_resource_id == Resource.id)
+                    .where(
+                        ResourceDependency.source_resource_id == resource.id,
+                        Resource.type == "knowledge_base",
+                    )
+                )
+            ).scalars()
+        )
         return CanonicalAgentDefinition(
             resource_id=resource.id,
             version=version.version,
@@ -160,6 +173,7 @@ class CanonicalResourceLoader:
             path=path,
             config=config,
             soul=soul,
+            knowledge_resource_ids=knowledge_resource_ids,
         )
 
     async def load_workflow(self, run_id: str, resource_id: str) -> CanonicalWorkflowDefinition:

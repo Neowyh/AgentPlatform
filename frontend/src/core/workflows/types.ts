@@ -57,6 +57,13 @@ export interface WorkflowDetail extends WorkflowSummary {
   nodes: WorkflowNode[];
   steps: WorkflowNode[];
   edges: Array<{ from: string; to: string; max_iterations?: number }>;
+  knowledge_dependencies?: Array<{
+    resource_id: string;
+    dependency_mode?: "live" | "pinned";
+    revision_id?: string | null;
+    required?: boolean;
+    purpose?: string | null;
+  }>;
 }
 
 export interface WorkflowRunResult {

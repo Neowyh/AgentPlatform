@@ -19,6 +19,7 @@ class ResourceType(StrEnum):
     SKILL = "skill"
     AGENT = "agent"
     WORKFLOW = "workflow"
+    KNOWLEDGE_BASE = "knowledge_base"
 
 
 class ResourceLifecycleStatus(StrEnum):
@@ -87,7 +88,7 @@ class Resource(Base):
 
     __table_args__ = (
         UniqueConstraint("type", "owner_id", "slug", name="uq_resources_type_owner_slug"),
-        CheckConstraint("type IN ('skill', 'agent', 'workflow')", name="ck_resources_type"),
+        CheckConstraint("type IN ('skill', 'agent', 'workflow', 'knowledge_base')", name="ck_resources_type"),
         CheckConstraint("visibility IN ('private', 'department', 'public')", name="ck_resources_visibility"),
         CheckConstraint("lifecycle_status IN ('active', 'archived', 'suspended')", name="ck_resources_lifecycle"),
         CheckConstraint("storage_kind IN ('filesystem', 'database')", name="ck_resources_storage_kind"),
@@ -130,6 +131,10 @@ class ResourceDependency(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"), nullable=False)
     target_resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="RESTRICT"), nullable=False)
+    dependency_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (
