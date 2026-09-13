@@ -62,12 +62,18 @@ class FakeProvider:
         self.fail = fail
         self.status = status
         self.calls = []
+        self.delete_calls = []
 
     async def ingest(self, **kwargs):
         self.calls.append(kwargs)
         if self.fail:
             raise KnowledgeProviderError("parse_failed", "internal provider detail")
         return ProviderIngestionResult("provider-doc-1", self.status)
+
+    async def delete_document(self, **kwargs):
+        self.delete_calls.append(kwargs)
+        if self.fail:
+            raise KnowledgeProviderError("unavailable", "internal provider detail")
 
 
 @pytest.mark.asyncio
@@ -234,3 +240,51 @@ async def test_reprocessing_a_processing_document_does_not_start_another_provide
     assert first["status"] == "processing"
     assert second["status"] == "processing"
     assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_provider_document_and_original_file(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await ResourceService(session, _actor()).bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+    provider = FakeProvider()
+    await KnowledgeDocumentService(session, _actor(), provider).process(document["id"], resource_id=kb.id)
+    await session.commit()
+    row = await session.get(KnowledgeDocument, document["id"])
+    assert row is not None
+    original = tmp_path / row.storage_key
+
+    deleted = await KnowledgeDocumentService(session, _actor(), provider).delete(document["id"], resource_id=kb.id)
+
+    assert deleted["status"] == "deleted"
+    assert provider.delete_calls == [{"dataset_id": "dataset-1", "provider_document_id": "provider-doc-1"}]
+    assert not original.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_failure_is_recoverable_and_sanitized(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await ResourceService(session, _actor()).bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+    await KnowledgeDocumentService(session, _actor(), FakeProvider()).process(document["id"], resource_id=kb.id)
+    await session.commit()
+    provider = FakeProvider(fail=True)
+    failed = await KnowledgeDocumentService(session, _actor(), provider).delete(document["id"], resource_id=kb.id)
+
+    assert failed["status"] == "delete_failed"
+    assert failed["failure_code"] == "unavailable"
+    assert failed["failure_message"] == "The knowledge provider is temporarily unavailable."
+    assert "internal" not in str(failed)
+    row = await session.get(KnowledgeDocument, document["id"])
+    assert row is not None
+    assert (tmp_path / row.storage_key).exists()

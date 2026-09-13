@@ -149,6 +149,9 @@ class RAGFlowClient:
             return "failed"
         return "processing"
 
+    async def delete_document(self, dataset_id: str, document_id: str) -> None:
+        await self._request("DELETE", f"/datasets/{dataset_id}/documents", params={"ids": document_id})
+
     async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
         """Resolve one dataset ID, or enumerate every page when no ID is given."""
         if dataset_id is not None:
@@ -206,6 +209,7 @@ class RAGFlowClient:
         similarity_threshold: float = 0.2,
         vector_similarity_weight: float = 0.3,
         top_k: int = 256,
+        document_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Retrieve chunks from an explicit, non-empty dataset allowlist."""
         if not dataset_ids or not all(isinstance(dataset_id, str) and dataset_id.strip() for dataset_id in dataset_ids):
@@ -219,6 +223,8 @@ class RAGFlowClient:
             "vector_similarity_weight": vector_similarity_weight,
             "top_k": top_k,
         }
+        if document_ids is not None:
+            request_body["document_ids"] = document_ids
 
         payload = await self._request("POST", "/retrieval", json=request_body)
         data = payload.get("data")

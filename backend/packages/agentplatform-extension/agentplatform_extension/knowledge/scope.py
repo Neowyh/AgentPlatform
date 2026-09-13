@@ -11,13 +11,20 @@ class KnowledgeScope:
     """Logical selector to opaque provider dataset mapping for one Run."""
 
     bindings: tuple[tuple[str, str], ...] = ()
+    ready_document_ids: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @classmethod
-    def from_bindings(cls, bindings: Mapping[str, str] | Iterable[tuple[str, str]]) -> KnowledgeScope:
+    def from_bindings(
+        cls,
+        bindings: Mapping[str, str] | Iterable[tuple[str, str]],
+        *,
+        ready_document_ids: Mapping[str, Iterable[str]] | None = None,
+    ) -> KnowledgeScope:
         values = dict(bindings)
         if any(not logical.strip() or not dataset.strip() for logical, dataset in values.items()):
             raise ValueError("knowledge scope selectors and dataset bindings must not be empty")
-        return cls(tuple(sorted((str(logical), str(dataset)) for logical, dataset in values.items())))
+        documents = tuple(sorted((str(dataset), tuple(sorted({str(document_id) for document_id in ids}))) for dataset, ids in (ready_document_ids or {}).items()))
+        return cls(tuple(sorted((str(logical), str(dataset)) for logical, dataset in values.items())), documents)
 
     @property
     def logical_selectors(self) -> frozenset[str]:
@@ -33,9 +40,20 @@ class KnowledgeScope:
                 return dataset
         raise KeyError(logical_selector)
 
+    def document_ids_for(self, dataset_id: str) -> tuple[str, ...] | None:
+        for dataset, document_ids in self.ready_document_ids:
+            if dataset == dataset_id:
+                return document_ids
+        return None
+
     def intersect(self, other: KnowledgeScope) -> KnowledgeScope:
         allowed = other.dataset_allowlist | other.logical_selectors
-        return KnowledgeScope.from_bindings((logical, dataset) for logical, dataset in self.bindings if logical in allowed or dataset in allowed)
+        bindings = tuple((logical, dataset) for logical, dataset in self.bindings if logical in allowed or dataset in allowed)
+        datasets = {dataset for _, dataset in bindings}
+        return KnowledgeScope.from_bindings(
+            bindings,
+            ready_document_ids={dataset: ids for dataset, ids in self.ready_document_ids if dataset in datasets},
+        )
 
     def as_mapping(self) -> dict[str, object]:
         return {"logical_selectors": sorted(self.logical_selectors), "dataset_allowlist": sorted(self.dataset_allowlist), "bindings": dict(self.bindings)}

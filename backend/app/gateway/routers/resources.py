@@ -909,6 +909,28 @@ async def rebuild_knowledge_document_index(
         return document
 
 
+@router.delete("/{resource_id}/documents/{document_id}")
+@_translate_resource_errors
+async def delete_knowledge_document(
+    resource_id: str,
+    document_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        service = KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider())
+        document = await service.delete(document_id, resource_id=resource_id)
+        await session.commit()
+        action = "knowledge_document_deleted" if document["status"] == "deleted" else "knowledge_document_delete_failed"
+        await record_audit(
+            str(current_user.id),
+            action,
+            "knowledge_document",
+            document_id,
+            {"resource_id": resource_id, "status": document["status"], "failure_code": document["failure_code"]},
+        )
+        return document
+
+
 @router.put("/{resource_id}/knowledge-draft")
 @_translate_resource_errors
 async def save_knowledge_draft(

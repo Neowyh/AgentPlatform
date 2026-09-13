@@ -239,6 +239,32 @@ class KnowledgeDocumentService:
     async def rebuild_index(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
         return await self.process(document_id, resource_id=resource_id, rebuild=True)
 
+    async def delete(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
+        document = await self._document(document_id, resource_id=resource_id, modify=True)
+        if document.status == "deleted":
+            return _document_payload(document)
+
+        document.status = "deleting"
+        document.failure_code = None
+        document.failure_message = None
+        await self.session.flush()
+        try:
+            binding = await self.resource_service.get_knowledge_binding(document.resource_id)
+            if document.provider_document_id and (self.provider is None or not binding.provider_dataset_id):
+                raise KnowledgeProviderError("unavailable")
+            if self.provider is not None and document.provider_document_id and binding.provider_dataset_id:
+                await self.provider.delete_document(
+                    dataset_id=binding.provider_dataset_id,
+                    provider_document_id=document.provider_document_id,
+                )
+            (get_paths().base_dir / document.storage_key).unlink(missing_ok=True)
+            document.status = "deleted"
+        except Exception as exc:  # provider/storage boundary: retain a recovery record
+            document.status = "delete_failed"
+            document.failure_code, document.failure_message = stable_provider_error(exc)
+        await self.session.flush()
+        return _document_payload(document)
+
     async def _document(self, document_id: str, *, resource_id: str | None, modify: bool) -> KnowledgeDocument:
         document = await self.session.get(KnowledgeDocument, document_id)
         if document is None:

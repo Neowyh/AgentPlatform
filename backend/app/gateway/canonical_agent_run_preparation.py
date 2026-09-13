@@ -58,7 +58,7 @@ async def prepare_canonical_agent_run(
     from agentplatform_extension.knowledge.scope import KnowledgeScope
     from sqlalchemy import select
 
-    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument
     from app.agentplatform.knowledge.scope import calculate_effective_knowledge_scope
     from app.agentplatform.rbac_models import UserModel, UserRole
     from app.agentplatform.resource_runtime import CanonicalResourceLoader, ResourceRuntimeError, ResourceStorage
@@ -155,9 +155,21 @@ async def prepare_canonical_agent_run(
             skills = [value.skill for value in skill_definitions]
             knowledge_resources = {item.resource.id: item.resource for item in closure if item.resource.type == "knowledge_base"}
             bindings = {}
+            ready_document_ids: dict[str, list[str]] = {}
             if knowledge_resources:
                 rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
                 bindings = {row.resource_id: row.provider_dataset_id for row in rows.scalars()}
+                ready_rows = await session.execute(
+                    select(KnowledgeDocument.resource_id, KnowledgeDocument.provider_document_id).where(
+                        KnowledgeDocument.resource_id.in_(knowledge_resources),
+                        KnowledgeDocument.status == "ready",
+                        KnowledgeDocument.provider_document_id.is_not(None),
+                    )
+                )
+                for resource_id, provider_document_id in ready_rows:
+                    dataset_id = bindings.get(resource_id)
+                    if dataset_id and provider_document_id:
+                        ready_document_ids.setdefault(dataset_id, []).append(provider_document_id)
             run_context = diagnostic_context or {}
             tool_config = None
             try:
@@ -180,6 +192,7 @@ async def prepare_canonical_agent_run(
                 runtime_allowed=_scope_restriction(run_context, "runtime_knowledge_scope"),
                 deployment_allowed=deployment_allowed,
             )
+            knowledge_scope = {logical: dataset for logical, dataset in knowledge_scope.items() if ready_document_ids.get(dataset)}
             await asyncio.to_thread(
                 storage.create_run_skill_view,
                 run_id,
@@ -190,7 +203,10 @@ async def prepare_canonical_agent_run(
             definition,
             skills,
             runner_tool_groups=actor.tool_groups,
-            knowledge_scope=KnowledgeScope.from_bindings(knowledge_scope),
+            knowledge_scope=KnowledgeScope.from_bindings(
+                knowledge_scope,
+                ready_document_ids={dataset: ready_document_ids[dataset] for dataset in knowledge_scope.values()},
+            ),
         )
     except ResourceNotFound as exc:
         raise HTTPException(404, str(exc)) from exc

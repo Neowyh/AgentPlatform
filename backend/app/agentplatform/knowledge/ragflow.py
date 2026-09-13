@@ -45,6 +45,16 @@ class RAGFlowKnowledgeProvider:
         except RAGFlowAPIError as exc:
             raise KnowledgeProviderError("index_failed", provider_document_id=provider_document_id) from exc
 
+    async def delete_document(self, *, dataset_id: str, provider_document_id: str) -> None:
+        try:
+            await self.client.delete_document(dataset_id, provider_document_id)
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable", provider_document_id=provider_document_id) from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response", provider_document_id=provider_document_id) from exc
+        except RAGFlowAPIError as exc:
+            raise KnowledgeProviderError("delete_failed", provider_document_id=provider_document_id) from exc
+
 
 def configured_ragflow_provider() -> RAGFlowKnowledgeProvider | None:
     settings, _ = ragflow_tools._settings_or_error()

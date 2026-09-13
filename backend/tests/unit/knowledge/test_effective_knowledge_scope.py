@@ -53,6 +53,14 @@ def test_delegation_can_only_narrow_scope() -> None:
     assert child.scope.as_mapping()["bindings"] == {"b": "db"}
 
 
+def test_scope_keeps_platform_ready_document_allowlist_when_delegating() -> None:
+    parent = KnowledgeScope.from_bindings({"a": "da", "b": "db"}, ready_document_ids={"da": ["doc-a"]})
+    child = parent.intersect(KnowledgeScope.from_bindings({"a": "da"}))
+
+    assert child.document_ids_for("da") == ("doc-a",)
+    assert child.document_ids_for("db") is None
+
+
 @pytest.mark.asyncio
 async def test_adapted_tool_passes_only_resolved_dataset_to_provider() -> None:
     calls: list[dict] = []

@@ -45,7 +45,7 @@ class KnowledgeRuntimeAdapter:
         if _accepts_dataset_ids(self.search):
             result = self.search(query, dataset_ids=[resolved])
         else:
-            result = _search_legacy_ragflow(self.search, query, resolved)
+            result = _search_legacy_ragflow(self.search, query, resolved, document_ids=self.scope.document_ids_for(resolved))
         return await result if inspect.isawaitable(result) else result
 
 
@@ -57,7 +57,7 @@ def _accepts_dataset_ids(search: Callable[..., Any]) -> bool:
     return any(parameter.name == "dataset_ids" or parameter.kind is parameter.VAR_KEYWORD for parameter in parameters)
 
 
-async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset_id: str) -> Any:
+async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset_id: str, *, document_ids: tuple[str, ...] | None = None) -> Any:
     """Use the unmodified provider implementation while retaining its helpers."""
 
     if "ragflow" not in getattr(search, "__module__", "").lower():
@@ -78,7 +78,13 @@ async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset
         groups = provider._group_searchable_datasets(datasets)
         if not groups:
             return provider._NO_RELEVANT_CONTENT
-        result = await provider._retrieve_dataset_groups(client, settings, query, groups)
+        result = await provider._retrieve_dataset_groups(
+            client,
+            settings,
+            query,
+            groups,
+            document_ids_by_dataset={dataset_id: list(document_ids)} if document_ids is not None else None,
+        )
         names_by_id = {dataset.dataset_id: dataset.name for dataset in datasets}
         formatted = provider.format_retrieval_result(
             result,

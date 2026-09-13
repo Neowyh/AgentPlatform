@@ -317,19 +317,22 @@ async def _retrieve_dataset_groups(
     settings: _RAGFlowRetrievalSettings,
     query: str,
     groups: list[tuple[str, list[str]]],
+    document_ids_by_dataset: Mapping[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     semaphore = asyncio.Semaphore(_MAX_PARALLEL_RETRIEVAL_GROUPS)
 
     async def retrieve_group(dataset_ids: list[str]) -> dict[str, Any]:
         async with semaphore:
-            return await client.retrieve(
-                query,
-                dataset_ids=dataset_ids,
-                page_size=settings.page_size,
-                similarity_threshold=settings.similarity_threshold,
-                vector_similarity_weight=settings.vector_similarity_weight,
-                top_k=settings.top_k,
-            )
+            retrieval_options = {
+                "dataset_ids": dataset_ids,
+                "page_size": settings.page_size,
+                "similarity_threshold": settings.similarity_threshold,
+                "vector_similarity_weight": settings.vector_similarity_weight,
+                "top_k": settings.top_k,
+            }
+            if document_ids_by_dataset is not None:
+                retrieval_options["document_ids"] = [document_id for dataset_id in dataset_ids for document_id in document_ids_by_dataset.get(dataset_id, [])]
+            return await client.retrieve(query, **retrieval_options)
 
     results = await asyncio.gather(*(retrieve_group(dataset_ids) for _, dataset_ids in groups), return_exceptions=True)
     successful_results: list[dict[str, Any]] = []
