@@ -585,6 +585,10 @@ Use it as-is. Or tear it apart and make it yours.
 
 ## Core Features
 
+### Knowledge Center
+
+The Knowledge Center lists and creates canonical KnowledgeBase resources through the authenticated Resource API. Each user sees only resources permitted by Resource Governance; new knowledge bases start as private resources. Provider credentials, URLs, and dataset identifiers remain outside ordinary Knowledge Center responses.
+
 ### Skills & Tools
 
 Skills are what make iDeer do *almost anything*.

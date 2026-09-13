@@ -38,6 +38,10 @@ This project has been extended with enterprise intranet platform capabilities on
 - `data_analyzer`: CSV/Excel/JSON analysis (`community/data_analyzer/`)
 - Each tool has both Community Tool and MCP Server deployment modes
 
+### Knowledge Center
+- KnowledgeBase list and create operations use the canonical `/api/resources` boundary with Resource Governance visibility filtering.
+- Knowledge Center responses expose canonical identity and visibility only; provider infrastructure bindings remain server-side.
+
 ### Testing
 - Workflow tests: `backend/tests/unit/workflows/test_schema_parser.py`, `backend/tests/unit/scripts/test_template.py`
 - Tool tests: `backend/tests/unit/tools/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`

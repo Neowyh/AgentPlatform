@@ -114,6 +114,36 @@ async def test_get_visible_hides_an_inaccessible_resource_as_not_found(session: 
 
 
 @pytest.mark.asyncio
+async def test_knowledge_base_visibility_and_write_permission_are_enforced(
+    session: AsyncSession,
+) -> None:
+    private_other = _resource("private-kb", owner_id="other", visibility="private")
+    private_other.type = "knowledge_base"
+    private_other.storage_kind = "database"
+    private_other.storage_key = "knowledge_bases/private-kb"
+    public_other = _resource("public-kb", owner_id="other", visibility="public")
+    public_other.type = "knowledge_base"
+    public_other.storage_kind = "database"
+    public_other.storage_key = "knowledge_bases/public-kb"
+    session.add_all([private_other, public_other])
+    await session.commit()
+
+    service = ResourceService(session, _actor(permissions={ResourceAction.READ}))
+    page = await service.list_visible(resource_type="knowledge_base")
+
+    assert [item.id for item in page.items] == ["public-kb"]
+    with pytest.raises(ResourceNotFound):
+        await service.get_visible("private-kb")
+    with pytest.raises(ResourcePermissionDenied, match="resources:write"):
+        await service.create_resource(
+            resource_type="knowledge_base",
+            slug="new-kb",
+            display_name="New KB",
+            storage_kind="database",
+        )
+
+
+@pytest.mark.asyncio
 async def test_resolve_legacy_alias_prefers_current_owner_then_requires_unique_shared_match(
     session: AsyncSession,
 ) -> None:
