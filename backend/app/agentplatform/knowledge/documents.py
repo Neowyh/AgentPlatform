@@ -8,7 +8,7 @@ import os
 import uuid
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.knowledge.models import KnowledgeDocument
@@ -98,6 +98,27 @@ class KnowledgeDocumentService:
         destination = root / f"{document_id}-{filename}"
         digest = hashlib.sha256()
         size = 0
+        cleanup_registered = False
+
+        def remove_cleanup_listeners() -> None:
+            nonlocal cleanup_registered
+            if cleanup_registered:
+                event.remove(self.session.sync_session, "after_rollback", cleanup_after_rollback)
+                event.remove(self.session.sync_session, "after_commit", cleanup_after_commit)
+                cleanup_registered = False
+
+        def cleanup_after_rollback(_session) -> None:
+            nonlocal cleanup_registered
+            temporary.unlink(missing_ok=True)
+            destination.unlink(missing_ok=True)
+            event.remove(self.session.sync_session, "after_commit", cleanup_after_commit)
+            cleanup_registered = False
+
+        def cleanup_after_commit(_session) -> None:
+            nonlocal cleanup_registered
+            event.remove(self.session.sync_session, "after_rollback", cleanup_after_rollback)
+            cleanup_registered = False
+
         try:
             with temporary.open("xb") as target:
                 while chunk := await upload.read(1024 * 1024):
@@ -116,6 +137,9 @@ class KnowledgeDocumentService:
             if duplicate is not None:
                 raise DocumentValidationError("Document already exists in this KnowledgeBase")
             os.replace(temporary, destination)
+            event.listen(self.session.sync_session, "after_rollback", cleanup_after_rollback, once=True)
+            event.listen(self.session.sync_session, "after_commit", cleanup_after_commit, once=True)
+            cleanup_registered = True
             document = KnowledgeDocument(
                 id=document_id,
                 resource_id=resource_id,
@@ -131,6 +155,7 @@ class KnowledgeDocumentService:
             await self.session.flush()
             return _document_payload(document)
         except BaseException:
+            remove_cleanup_listeners()
             temporary.unlink(missing_ok=True)
             destination.unlink(missing_ok=True)
             raise

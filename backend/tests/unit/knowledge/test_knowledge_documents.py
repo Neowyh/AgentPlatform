@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.agentplatform.audit_model  # noqa: F401
@@ -78,9 +80,13 @@ async def test_upload_persists_hash_metadata_and_isolated_original(session, tmp_
     assert "provider_document_id" not in document
     row = await session.get(KnowledgeDocument, document["id"])
     assert row is not None
-    assert (tmp_path / row.storage_key).read_bytes() == b"hello knowledge"
+    storage_path = tmp_path / row.storage_key
+    assert storage_path.read_bytes() == b"hello knowledge"
     assert upload.closed is True
     assert await session.get(KnowledgeBase, kb.id) is not None
+    await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.id == document["id"]))
+    await session.rollback()
+    assert storage_path.exists()
 
 
 @pytest.mark.asyncio
@@ -113,3 +119,40 @@ async def test_non_owner_is_rejected_before_upload_side_effect(session, tmp_path
     with pytest.raises(ResourceNotFound):
         await KnowledgeDocumentService(session, _actor("other")).upload(kb.id, FakeUpload("guide.txt", b"x"))
     assert not (tmp_path / "knowledge-documents").exists()
+
+
+@pytest.mark.asyncio
+async def test_upload_cleans_original_when_database_commit_fails(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr(
+        "app.agentplatform.knowledge.documents.get_paths",
+        lambda: SimpleNamespace(base_dir=tmp_path),
+    )
+
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello knowledge"))
+    row = await session.get(KnowledgeDocument, document["id"])
+    assert row is not None
+    original = tmp_path / row.storage_key
+    assert original.exists()
+
+    session.add(
+        KnowledgeDocument(
+            id="conflicting-document",
+            resource_id=kb.id,
+            original_filename="other.txt",
+            size_bytes=1,
+            mime_type="text/plain",
+            content_hash="different-hash",
+            storage_key=row.storage_key,
+            metadata_json={},
+            created_by="owner",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        await session.commit()
+
+    assert not original.exists()
