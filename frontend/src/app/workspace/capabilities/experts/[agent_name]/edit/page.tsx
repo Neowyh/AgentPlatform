@@ -24,6 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  KnowledgeDependencySelector,
+  type KnowledgeDependencyOption,
+} from "@/components/workspace/capabilities/knowledge-dependency-selector";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent, useUpdateAgent } from "@/core/agents";
 import type { UpdateAgentRequest } from "@/core/agents";
@@ -32,9 +36,7 @@ import { useModels } from "@/core/models/hooks";
 import {
   getResourceDependencies,
   listKnowledgeBases,
-  listResourceVersions,
 } from "@/core/resources/api";
-import type { ResourceVersionSummary } from "@/core/resources/api";
 import { useSkills } from "@/core/skills/hooks";
 
 const TOOL_GROUPS = [
@@ -67,22 +69,14 @@ export default function AgentEditPage() {
   const [knowledgeBases, setKnowledgeBases] = useState<
     Array<{ id: string; slug: string; display_name: string }>
   >([]);
-  const [knowledgeBaseVersions, setKnowledgeBaseVersions] = useState<
-    Record<string, ResourceVersionSummary[]>
-  >({});
   const [knowledgeDependencies, setKnowledgeDependencies] = useState<
-    Array<{
-      resource_id: string;
-      dependency_mode: "live" | "pinned";
-      revision_id: string | null;
-      required: boolean;
-      purpose: string | null;
-    }>
+    KnowledgeDependencyOption[]
   >([]);
   const [knowledgeDependenciesLoaded, setKnowledgeDependenciesLoaded] =
     useState(false);
   const [knowledgeDependenciesLoadError, setKnowledgeDependenciesLoadError] =
     useState(false);
+  const [revisionsLoadError, setRevisionsLoadError] = useState(false);
 
   useEffect(() => {
     if (agent) {
@@ -106,15 +100,8 @@ export default function AgentEditPage() {
       listKnowledgeBases(),
       getResourceDependencies(agent.resource_id),
     ])
-      .then(async ([bases, dependencies]) => {
-        const versions = await Promise.all(
-          bases.map(
-            async (base) =>
-              [base.id, await listResourceVersions(base.id)] as const,
-          ),
-        );
+      .then(([bases, dependencies]) => {
         setKnowledgeBases(bases);
-        setKnowledgeBaseVersions(Object.fromEntries(versions));
         setKnowledgeDependencies(
           dependencies
             .filter((item) => item.type === "knowledge_base")
@@ -144,6 +131,14 @@ export default function AgentEditPage() {
       return;
     }
     try {
+      if (knowledgeDependenciesLoadError || revisionsLoadError) {
+        // A failed dependency or revision read must never be saved: the
+        // selection on screen is not proven to match the stored edges.
+        toast.error(
+          "Knowledge dependencies could not be loaded. Reload before saving.",
+        );
+        return;
+      }
       const request = agent?.resource_id
         ? {
             ...formData,
@@ -164,6 +159,8 @@ export default function AgentEditPage() {
     formData,
     knowledgeDependencies,
     knowledgeDependenciesLoaded,
+    knowledgeDependenciesLoadError,
+    revisionsLoadError,
     originalVisibility,
     router,
     updateAgent,
@@ -190,24 +187,6 @@ export default function AgentEditPage() {
         ? prev.skills.filter((s) => s !== skillName)
         : [...(prev.skills ?? []), skillName],
     }));
-  };
-
-  const toggleKnowledgeBase = (resourceId: string) => {
-    setKnowledgeDependencies((previous) => {
-      const existing = previous.find((item) => item.resource_id === resourceId);
-      return existing
-        ? previous.filter((item) => item.resource_id !== resourceId)
-        : [
-            ...previous,
-            {
-              resource_id: resourceId,
-              dependency_mode: "live",
-              revision_id: null,
-              required: true,
-              purpose: null,
-            },
-          ];
-    });
   };
 
   if (isLoadingAgent) {
@@ -423,111 +402,16 @@ export default function AgentEditPage() {
           </div>
 
           {/* SOUL.md */}
-          {knowledgeDependenciesLoadError && (
-            <div className="text-destructive type-body">
-              Knowledge dependencies could not be loaded. Reload before saving.
-            </div>
-          )}
-          {knowledgeBases.length > 0 && (
-            <div className="space-y-2">
-              <Label>KnowledgeBases</Label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {knowledgeBases.map((knowledgeBase) => {
-                  const dependency = knowledgeDependencies.find(
-                    (item) => item.resource_id === knowledgeBase.id,
-                  );
-                  return (
-                    <div
-                      key={knowledgeBase.id}
-                      className="space-y-2 rounded-md border p-3"
-                    >
-                      <label className="flex cursor-pointer items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={dependency !== undefined}
-                          onChange={() => toggleKnowledgeBase(knowledgeBase.id)}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        <span className="type-body truncate font-medium">
-                          {knowledgeBase.display_name || knowledgeBase.slug}
-                        </span>
-                      </label>
-                      {dependency && (
-                        <div className="flex gap-2">
-                          <Select
-                            value={dependency.dependency_mode}
-                            onValueChange={(value: "live" | "pinned") =>
-                              setKnowledgeDependencies((previous) =>
-                                previous.map((item) =>
-                                  item.resource_id === knowledgeBase.id
-                                    ? {
-                                        ...item,
-                                        dependency_mode: value,
-                                        revision_id:
-                                          value === "live"
-                                            ? null
-                                            : item.revision_id,
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="live">LIVE</SelectItem>
-                              <SelectItem value="pinned">PINNED</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {dependency.dependency_mode === "pinned" && (
-                            <Select
-                              value={dependency.revision_id ?? undefined}
-                              onValueChange={(revisionId) =>
-                                setKnowledgeDependencies((previous) =>
-                                  previous.map((item) =>
-                                    item.resource_id === knowledgeBase.id
-                                      ? { ...item, revision_id: revisionId }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select revision" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(
-                                  knowledgeBaseVersions[knowledgeBase.id] ?? []
-                                ).map((version) => (
-                                  <SelectItem
-                                    key={version.revision_id}
-                                    value={version.revision_id}
-                                  >
-                                    v{version.version} ·{" "}
-                                    {version.revision_id.slice(0, 8)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {dependency.dependency_mode === "pinned" &&
-                            (knowledgeBaseVersions[knowledgeBase.id] ?? [])
-                              .length === 0 && (
-                              <div className="text-destructive type-body">
-                                No published revisions available
-                              </div>
-                            )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
+          <div className="space-y-2">
+            <Label>KnowledgeBases</Label>
+            <KnowledgeDependencySelector
+              knowledgeBases={knowledgeBases}
+              dependencies={knowledgeDependencies}
+              onChange={setKnowledgeDependencies}
+              loadError={knowledgeDependenciesLoadError}
+              onRevisionsLoadError={setRevisionsLoadError}
+            />
+          </div>
           {/* SOUL.md */}
           <div className="space-y-2">
             <Label htmlFor="soul">SOUL.md</Label>

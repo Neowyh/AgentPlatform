@@ -114,6 +114,10 @@ vi.mock("@/core/skills/hooks", () => ({
 
 vi.mock("@/core/resources/api", () => resourceMocks);
 
+vi.mock("@/core/library/api", () => ({
+  listKnowledgeRevisions: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
   WorkspaceBreadcrumb: () => <div data-testid="breadcrumb" />,
 }));

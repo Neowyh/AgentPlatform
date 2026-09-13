@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { KnowledgeDependencySelector } from "@/components/workspace/capabilities/knowledge-dependency-selector";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
@@ -209,96 +210,11 @@ export default function WorkflowEditPage() {
         <div className="border-b px-6 py-3">
           <div className="mx-auto max-w-2xl space-y-2">
             <div className="type-body font-medium">KnowledgeBases</div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {knowledgeBases.map((knowledgeBase) => {
-                const dependency = knowledgeDependencies.find(
-                  (item) => item.resource_id === knowledgeBase.id,
-                );
-                return (
-                  <label
-                    key={knowledgeBase.id}
-                    className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md border p-3"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={dependency !== undefined}
-                      onChange={() =>
-                        setKnowledgeDependencies((previous) =>
-                          dependency
-                            ? previous.filter(
-                                (item) => item.resource_id !== knowledgeBase.id,
-                              )
-                            : [
-                                ...previous,
-                                {
-                                  resource_id: knowledgeBase.id,
-                                  dependency_mode: "live",
-                                  revision_id: null,
-                                  required: true,
-                                  purpose: null,
-                                },
-                              ],
-                        )
-                      }
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <span className="type-body truncate">
-                      {knowledgeBase.display_name || knowledgeBase.slug}
-                    </span>
-                    {dependency && (
-                      <div className="flex gap-2">
-                        <select
-                          value={dependency.dependency_mode}
-                          onChange={(event) =>
-                            setKnowledgeDependencies((previous) =>
-                              previous.map((item) =>
-                                item.resource_id === knowledgeBase.id
-                                  ? {
-                                      ...item,
-                                      dependency_mode: event.target.value as
-                                        | "live"
-                                        | "pinned",
-                                      revision_id:
-                                        event.target.value === "live"
-                                          ? null
-                                          : item.revision_id,
-                                    }
-                                  : item,
-                              ),
-                            )
-                          }
-                          className="type-compact h-8 rounded border px-2"
-                          aria-label={`${knowledgeBase.slug} dependency mode`}
-                        >
-                          <option value="live">LIVE</option>
-                          <option value="pinned">PINNED</option>
-                        </select>
-                        {dependency.dependency_mode === "pinned" && (
-                          <input
-                            value={dependency.revision_id ?? ""}
-                            onChange={(event) =>
-                              setKnowledgeDependencies((previous) =>
-                                previous.map((item) =>
-                                  item.resource_id === knowledgeBase.id
-                                    ? {
-                                        ...item,
-                                        revision_id: event.target.value || null,
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                            placeholder="Revision ID"
-                            className="type-compact h-8 min-w-0 rounded border px-2"
-                            aria-label={`${knowledgeBase.slug} revision ID`}
-                          />
-                        )}
-                      </div>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
+            <KnowledgeDependencySelector
+              knowledgeBases={knowledgeBases}
+              dependencies={knowledgeDependencies}
+              onChange={setKnowledgeDependencies}
+            />
           </div>
         </div>
       )}
