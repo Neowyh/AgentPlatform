@@ -41,6 +41,8 @@ class KnowledgeProvider(Protocol):
 
     async def list_dataset_documents(self, *, dataset_id: str) -> list[dict]: ...
 
+    async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict]: ...
+
 
 def stable_provider_error(exc: Exception) -> tuple[str, str]:
     """Map provider errors to a low-cardinality, non-sensitive user message."""
