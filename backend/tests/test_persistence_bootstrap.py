@@ -49,7 +49,7 @@ from deerflow.persistence.migrations._helpers import _normalize_default
 asyncio_test = pytest.mark.asyncio
 
 
-HEAD = "20260911_resource_dependency_kb_fields"
+HEAD = "20260913_knowledge_documents"
 BASELINE = "0001_baseline"
 
 

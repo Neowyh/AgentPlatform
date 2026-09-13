@@ -25,6 +25,7 @@ from starlette.background import BackgroundTask
 
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
+from app.agentplatform.knowledge.documents import KnowledgeDocumentService
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
 from app.agentplatform.resource_runtime import (
@@ -842,6 +843,37 @@ async def get_knowledge_binding(
             "bound": binding.provider_dataset_id is not None,
             "sync_status": binding.sync_status,
         }
+
+
+@router.get("/{resource_id}/documents")
+@_translate_resource_errors
+async def list_knowledge_documents(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        documents = await KnowledgeDocumentService(session, _resource_actor(current_user)).list_documents(resource_id)
+        return {"items": documents, "total": len(documents)}
+
+
+@router.post("/{resource_id}/documents", status_code=201)
+@_translate_resource_errors
+async def upload_knowledge_document(
+    resource_id: str,
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        document = await KnowledgeDocumentService(session, _resource_actor(current_user)).upload(resource_id, file)
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_document_uploaded",
+            "knowledge_document",
+            str(document["id"]),
+            {"resource_id": resource_id, "content_hash": document["content_hash"], "size": document["size"]},
+        )
+        return document
 
 
 @router.put("/{resource_id}/knowledge-draft")

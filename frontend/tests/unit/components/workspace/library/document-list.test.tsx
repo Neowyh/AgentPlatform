@@ -23,6 +23,11 @@ vi.mock("@/core/library", () => ({
     documents: mockDocuments,
     isLoading: false,
   }),
+  useUploadKnowledgeDocument: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: vi.fn(),
+  }),
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -43,19 +48,19 @@ afterEach(() => {
 
 describe("DocumentList", () => {
   test("displays list of documents", () => {
-    render(<DocumentList />);
+    render(<DocumentList knowledgeBaseId="kb-1" />);
     expect(screen.getByText("Document 1")).toBeInTheDocument();
     expect(screen.getByText("Document 2")).toBeInTheDocument();
   });
 
   test("displays document status", () => {
-    render(<DocumentList />);
+    render(<DocumentList knowledgeBaseId="kb-1" />);
     expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByText("processing")).toBeInTheDocument();
   });
 
   test("displays document IDs", () => {
-    render(<DocumentList />);
+    render(<DocumentList knowledgeBaseId="kb-1" />);
     expect(screen.getByText("doc-1")).toBeInTheDocument();
     expect(screen.getByText("doc-2")).toBeInTheDocument();
   });

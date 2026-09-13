@@ -7,7 +7,12 @@ vi.mock("@/core/config", () => ({
   getBackendBaseURL: () => "http://localhost:8000",
 }));
 
-import { createKnowledgeBase, listKnowledgeBases } from "@/core/library/api";
+import {
+  createKnowledgeBase,
+  listKnowledgeBases,
+  listKnowledgeDocuments,
+  uploadKnowledgeDocument,
+} from "@/core/library/api";
 
 function response(body: unknown, ok = true) {
   return { ok, json: vi.fn().mockResolvedValue(body) };
@@ -66,6 +71,38 @@ describe("KnowledgeBase API facade", () => {
           storage_kind: "database",
         }),
       }),
+    );
+  });
+
+  test("lists documents below the canonical KnowledgeBase", async () => {
+    mockFetch.mockResolvedValueOnce(response({ items: [] }));
+
+    await expect(listKnowledgeDocuments("kb/1")).resolves.toEqual([]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/resources/kb%2F1/documents",
+    );
+  });
+
+  test("uploads a document as multipart without exposing provider fields", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({
+        id: "doc-1",
+        resource_id: "kb-1",
+        name: "guide.pdf",
+        size: 10,
+        source: "upload",
+        status: "uploaded",
+      }),
+    );
+    const file = new File(["contents"], "guide.pdf", {
+      type: "application/pdf",
+    });
+
+    await uploadKnowledgeDocument("kb-1", file);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/resources/kb-1/documents",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
   });
 });

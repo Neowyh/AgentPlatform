@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
+
+import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+import app.agentplatform.audit_model  # noqa: F401
+import app.agentplatform.rbac_models  # noqa: F401
+import app.agentplatform.resource_models  # noqa: F401
+import app.agentplatform.visibility_models  # noqa: F401
+from app.agentplatform.knowledge.documents import DocumentValidationError, KnowledgeDocumentService
+from app.agentplatform.knowledge.models import KnowledgeDocument
+from app.agentplatform.resources.service import ResourceAction, ResourceActor
+from deerflow.persistence.base import Base
+
+
+@pytest_asyncio.fixture
+async def session(tmp_path) -> AsyncIterator[AsyncSession]:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'documents.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as value:
+        yield value
+    await engine.dispose()
+
+
+def _actor(user_id: str = "owner", permissions: set[ResourceAction] | None = None) -> ResourceActor:
+    return ResourceActor(
+        user_id=user_id,
+        department_id=None,
+        role="user",
+        permissions=frozenset(permissions or {ResourceAction.READ, ResourceAction.WRITE}),
+    )
+
+
+class FakeUpload:
+    def __init__(self, filename: str, content: bytes, content_type: str = "text/plain") -> None:
+        self.filename = filename
+        self.content_type = content_type
+        self._content = content
+        self.closed = False
+
+    async def read(self, size: int) -> bytes:
+        if not self._content:
+            return b""
+        chunk, self._content = self._content[:size], self._content[size:]
+        return chunk
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_upload_persists_hash_metadata_and_isolated_original(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.resources.service import ResourceService
+
+    service = ResourceService(session, _actor())
+    kb = await service.create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr(
+        "app.agentplatform.knowledge.documents.get_paths",
+        lambda: SimpleNamespace(base_dir=tmp_path),
+    )
+
+    upload = FakeUpload("guide.txt", b"hello knowledge")
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, upload)
+    await session.commit()
+
+    assert document["name"] == "guide.txt"
+    assert document["size"] == 15
+    assert document["source"] == "upload"
+    assert document["status"] == "uploaded"
+    assert "provider_document_id" not in document
+    row = await session.get(KnowledgeDocument, document["id"])
+    assert row is not None
+    assert (tmp_path / row.storage_key).read_bytes() == b"hello knowledge"
+    assert upload.closed is True
+    assert await session.get(KnowledgeBase, kb.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_unsafe_name_and_type_before_storage(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr(
+        "app.agentplatform.knowledge.documents.get_paths",
+        lambda: SimpleNamespace(base_dir=tmp_path),
+    )
+
+    with pytest.raises(DocumentValidationError):
+        await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("../escape.exe", b"x"))
+    assert not (tmp_path / "knowledge-documents").exists()
+
+
+@pytest.mark.asyncio
+async def test_non_owner_is_rejected_before_upload_side_effect(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceNotFound, ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr(
+        "app.agentplatform.knowledge.documents.get_paths",
+        lambda: SimpleNamespace(base_dir=tmp_path),
+    )
+
+    with pytest.raises(ResourceNotFound):
+        await KnowledgeDocumentService(session, _actor("other")).upload(kb.id, FakeUpload("guide.txt", b"x"))
+    assert not (tmp_path / "knowledge-documents").exists()

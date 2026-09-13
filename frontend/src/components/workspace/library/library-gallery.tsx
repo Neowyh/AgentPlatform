@@ -1,13 +1,20 @@
 "use client";
 
+import { useState } from "react";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
+import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
 import { KnowledgeBaseList } from "./knowledge-base-list";
 
 export function LibraryGallery() {
   const { t } = useI18n();
+  const { knowledgeBases } = useKnowledgeBases();
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] =
+    useState<string>();
+  const selectedId = selectedKnowledgeBaseId ?? knowledgeBases[0]?.id;
 
   return (
     <div className="workbench-collection-surface flex h-full flex-col gap-6 p-6">
@@ -51,11 +58,11 @@ export function LibraryGallery() {
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
-          <DocumentList />
+          <DocumentList knowledgeBaseId={selectedId} />
         </TabsContent>
 
         <TabsContent value="knowledge-bases" className="flex-1">
-          <KnowledgeBaseList />
+          <KnowledgeBaseList onSelect={setSelectedKnowledgeBaseId} />
         </TabsContent>
       </Tabs>
     </div>

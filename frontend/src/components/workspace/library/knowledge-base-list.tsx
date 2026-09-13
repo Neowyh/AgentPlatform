@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCreateKnowledgeBase, useKnowledgeBases } from "@/core/library";
 
-export function KnowledgeBaseList() {
+export function KnowledgeBaseList({
+  onSelect,
+}: {
+  onSelect?: (id: string) => void;
+}) {
   const { knowledgeBases, isLoading, error } = useKnowledgeBases();
   const createKnowledgeBase = useCreateKnowledgeBase();
   const [displayName, setDisplayName] = useState("");
@@ -70,7 +74,12 @@ export function KnowledgeBaseList() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {knowledgeBases.map((kb) => (
-            <div key={kb.id} className="rounded-lg border p-4">
+            <button
+              key={kb.id}
+              type="button"
+              onClick={() => onSelect?.(kb.id)}
+              className="w-full rounded-lg border p-4 text-left"
+            >
               <h3 className="type-section-title font-medium">
                 {kb.display_name}
               </h3>
@@ -80,7 +89,7 @@ export function KnowledgeBaseList() {
                   {kb.visibility}
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

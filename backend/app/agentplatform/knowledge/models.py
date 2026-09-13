@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -41,4 +41,32 @@ class KnowledgeBase(Base):
         CheckConstraint("provider_type <> ''", name="ck_knowledge_bases_provider_type"),
         UniqueConstraint("provider_type", "provider_dataset_id", name="uq_knowledge_bases_provider_binding"),
         Index("ix_knowledge_bases_provider_dataset", "provider_dataset_id"),
+    )
+
+
+class KnowledgeDocument(Base):
+    """A durable logical document and its platform-owned original file."""
+
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="upload")
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    provider_document_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="uploaded")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("resource_id", "content_hash", name="uq_knowledge_documents_resource_hash"),
+        CheckConstraint("source = 'upload'", name="ck_knowledge_documents_source"),
+        CheckConstraint("size_bytes >= 0", name="ck_knowledge_documents_size"),
+        Index("ix_knowledge_documents_resource_created", "resource_id", "created_at"),
     )
