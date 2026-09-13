@@ -142,3 +142,42 @@ async def test_revision_endpoints_enforce_governance(
         await resources.get_knowledge_revision(str(uuid.uuid4()), str(revision["id"]), current_user)
     assert scoped.value.status_code == 404
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_publish_endpoint_transitions_and_schedules_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import BackgroundTasks
+
+    engine, factory, current_user = await _make_env(tmp_path, monkeypatch)
+    calls: list[tuple] = []
+
+    async def _audit(actor_id, action, resource_type=None, resource_id=None, detail=None, ip_address=None) -> None:
+        calls.append((actor_id, action, resource_id))
+
+    monkeypatch.setattr(resources, "record_audit", _audit)
+    monkeypatch.setattr(resources, "configured_ragflow_provider", lambda: object())
+
+    created = await resources.create_resource(
+        resources.ResourceCreateRequest(type="knowledge_base", slug="publish", display_name="Publish", storage_kind="database"),
+        current_user,
+    )
+    kb_id = created["id"]
+    async with factory() as session:
+        kb = await session.get(Resource, kb_id)
+        _seed_ready_document(session, tmp_path, kb, "guide.txt", b"bytes")
+        await session.commit()
+    revision = await resources.create_knowledge_revision(kb_id, current_user)
+
+    background = BackgroundTasks()
+    payload = await resources.publish_knowledge_revision(kb_id, str(revision["id"]), background, current_user)
+    assert payload["status"] == "indexing"
+    assert len(background.tasks) == 1
+    assert calls[-1][1] == "knowledge_revision_publish_requested"
+
+    with pytest.raises(HTTPException) as duplicate:
+        await resources.publish_knowledge_revision(kb_id, str(revision["id"]), BackgroundTasks(), current_user)
+    assert duplicate.value.status_code == 409
+    await engine.dispose()

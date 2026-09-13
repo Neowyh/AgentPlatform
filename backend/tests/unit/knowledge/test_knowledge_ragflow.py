@@ -58,3 +58,35 @@ async def test_provider_reports_a_persisted_document_status() -> None:
     provider = RAGFlowKnowledgeProvider(ParsingClient())
 
     assert await provider.get_status(dataset_id="dataset-1", provider_document_id="provider-doc-1") == "ready"
+
+
+class DatasetCreatingClient:
+    async def create_dataset(self, *, name: str):
+        return "dataset-1"
+
+    async def list_dataset_documents(self, dataset_id: str):
+        return [{"id": "provider-doc-1", "name": "guide.txt"}]
+
+
+class DatasetRejectingClient:
+    async def create_dataset(self, *, name: str):
+        raise RAGFlowAPIError("quota exceeded", code=400)
+
+
+@pytest.mark.asyncio
+async def test_dataset_creation_is_exposed_through_the_provider_boundary() -> None:
+    provider = RAGFlowKnowledgeProvider(DatasetCreatingClient())
+
+    assert await provider.create_dataset(name="ideer-kb-abc12234-rev1-ef567890") == "dataset-1"
+    assert await provider.list_dataset_documents(dataset_id="dataset-1") == [{"id": "provider-doc-1", "name": "guide.txt"}]
+
+
+@pytest.mark.asyncio
+async def test_dataset_creation_failure_is_classified_without_provider_detail() -> None:
+    provider = RAGFlowKnowledgeProvider(DatasetRejectingClient())
+
+    with pytest.raises(KnowledgeProviderError) as error:
+        await provider.create_dataset(name="ideer-kb-abc12234-rev1-ef567890")
+
+    assert error.value.code == "dataset_failed"
+    assert "quota" not in str(error.value)

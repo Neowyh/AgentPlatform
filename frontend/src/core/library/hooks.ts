@@ -7,6 +7,7 @@ import {
   listKnowledgeBases,
   listKnowledgeDocuments,
   listKnowledgeRevisions,
+  publishKnowledgeRevision,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
@@ -80,6 +81,12 @@ export function useKnowledgeRevisions(resourceId: string | undefined) {
     queryKey: ["knowledge-revisions", resourceId],
     queryFn: () => listKnowledgeRevisions(resourceId!),
     enabled: Boolean(resourceId),
+    refetchInterval: (query) => {
+      const revisions = query.state.data;
+      return revisions?.some((revision) => revision.status === "indexing")
+        ? 2000
+        : false;
+    },
   });
   return { revisions: query.data ?? [], ...query };
 }
@@ -100,6 +107,18 @@ export function useCreateKnowledgeRevision(resourceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => createKnowledgeRevision(resourceId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-revisions", resourceId],
+      }),
+  });
+}
+
+export function usePublishKnowledgeRevision(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (revisionId: string) =>
+      publishKnowledgeRevision(resourceId, revisionId),
     onSuccess: () =>
       void queryClient.invalidateQueries({
         queryKey: ["knowledge-revisions", resourceId],

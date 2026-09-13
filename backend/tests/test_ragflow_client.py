@@ -255,3 +255,81 @@ async def test_list_datasets_rejects_unexpected_data_shape_in_english() -> None:
 
     with pytest.raises(RAGFlowProtocolError, match="invalid dataset list"):
         await client.list_datasets(dataset_id="dataset-1")
+
+
+@pytest.mark.anyio
+async def test_create_dataset_posts_name_and_returns_id() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/datasets"
+        assert json.loads(request.content) == {"name": "ideer-kb-abc12234-rev1-ef567890"}
+        return httpx.Response(200, json={"code": 0, "data": {"id": "dataset-9", "name": "ideer-kb-abc12234-rev1-ef567890"}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await client.create_dataset(name="ideer-kb-abc12234-rev1-ef567890") == "dataset-9"
+    assert len(requests) == 1
+
+
+@pytest.mark.anyio
+async def test_create_dataset_requires_a_dataset_id() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 0, "data": {"name": "no-id"}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(RAGFlowProtocolError, match="no dataset ID"):
+        await client.create_dataset(name="ideer-kb-abc12234-rev1-ef567890")
+
+
+@pytest.mark.anyio
+async def test_list_dataset_documents_fetches_every_page() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        page = int(request.url.params["page"])
+        if page == 1:
+            docs = [{"id": f"doc-{index}", "name": f"doc-{index}.txt"} for index in range(100)]
+        elif page == 2:
+            docs = [{"id": "doc-100", "name": "doc-100.txt"}]
+        else:
+            pytest.fail(f"unexpected page {page}")
+        return httpx.Response(200, json={"code": 0, "data": {"docs": docs, "total": 101}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    documents = await client.list_dataset_documents("dataset-1")
+
+    assert len(documents) == 101
+    assert documents[0] == {"id": "doc-0", "name": "doc-0.txt"}
+    assert [request.url.params["page"] for request in requests] == ["1", "2"]
+
+
+@pytest.mark.anyio
+async def test_list_dataset_documents_accepts_plain_list_shape() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 0, "data": [{"id": "doc-1", "name": "doc-1.txt"}]})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await client.list_dataset_documents("dataset-1") == [{"id": "doc-1", "name": "doc-1.txt"}]

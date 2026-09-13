@@ -11,6 +11,7 @@ export {
   createKnowledgeBase,
   createKnowledgeRevision,
   getKnowledgeRevision,
+  publishKnowledgeRevision,
   listKnowledgeBases,
   listKnowledgeDocuments,
   listKnowledgeRevisions,
@@ -22,6 +23,7 @@ export {
 export {
   useCreateKnowledgeBase,
   useCreateKnowledgeRevision,
+  usePublishKnowledgeRevision,
   useDocuments,
   useKnowledgeBases,
   useKnowledgeRevision,

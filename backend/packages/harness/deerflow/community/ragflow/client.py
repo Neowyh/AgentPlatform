@@ -200,6 +200,48 @@ class RAGFlowClient:
 
         raise RAGFlowProtocolError(f"RAGFlow dataset listing exceeded {_MAX_DATASET_PAGES} pages.")
 
+    async def create_dataset(self, *, name: str) -> str:
+        """Create an empty dataset and return its provider ID."""
+        payload = await self._request("POST", "/datasets", json={"name": name})
+        data = payload.get("data")
+        dataset_id = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(dataset_id, str) or not dataset_id:
+            raise RAGFlowProtocolError("RAGFlow returned no dataset ID.")
+        return dataset_id
+
+    async def list_dataset_documents(self, dataset_id: str) -> list[dict[str, Any]]:
+        """Enumerate every document page of one dataset."""
+        if not dataset_id.strip():
+            raise ValueError("dataset_id must not be empty")
+        documents: list[dict[str, Any]] = []
+        for page in range(1, _MAX_DATASET_PAGES + 1):
+            payload = await self._request(
+                "GET",
+                f"/datasets/{dataset_id}/documents",
+                params={"page": page, "page_size": _DATASET_PAGE_SIZE},
+            )
+            data = payload.get("data")
+            if isinstance(data, dict):
+                items = data.get("docs")
+                total = data.get("total")
+            elif isinstance(data, list):
+                items = data
+                total = len(data)
+            else:
+                raise RAGFlowProtocolError("RAGFlow returned an invalid document list.")
+            if not isinstance(items, list):
+                raise RAGFlowProtocolError("RAGFlow returned an invalid document list.")
+            documents.extend(item for item in items if isinstance(item, dict))
+            has_valid_total = isinstance(total, int) and not isinstance(total, bool) and total >= 0
+            if has_valid_total:
+                if len(documents) >= total:
+                    return documents
+                if not items:
+                    raise RAGFlowProtocolError("RAGFlow document listing ended before the reported total.")
+            elif len(items) < _DATASET_PAGE_SIZE:
+                return documents
+        raise RAGFlowProtocolError(f"RAGFlow document listing exceeded {_MAX_DATASET_PAGES} pages.")
+
     async def retrieve(
         self,
         query: str,

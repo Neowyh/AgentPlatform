@@ -7,6 +7,7 @@ import {
   useCreateKnowledgeRevision,
   useKnowledgeRevision,
   useKnowledgeRevisions,
+  usePublishKnowledgeRevision,
 } from "@/core/library";
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
@@ -29,6 +30,7 @@ export function RevisionList({
   const { revisions, isLoading, error } =
     useKnowledgeRevisions(knowledgeBaseId);
   const create = useCreateKnowledgeRevision(knowledgeBaseId ?? "");
+  const publish = usePublishKnowledgeRevision(knowledgeBaseId ?? "");
   const [expandedId, setExpandedId] = useState<string>();
 
   if (!knowledgeBaseId) {
@@ -71,6 +73,11 @@ export function RevisionList({
           ) : null}
         </div>
       ) : null}
+      {publish.error ? (
+        <div role="alert" className="text-destructive">
+          Unable to publish this revision.
+        </div>
+      ) : null}
       {revisions.length === 0 ? (
         <div className="text-muted-foreground">No revision candidates yet</div>
       ) : (
@@ -87,7 +94,9 @@ export function RevisionList({
                     "bg-yellow-100 text-yellow-800"
                   }`}
                 >
-                  {revision.status}
+                  {revision.status === "indexing" && canModify
+                    ? "publishing"
+                    : revision.status}
                 </span>
               </div>
               <p className="text-muted-foreground type-body">
@@ -100,17 +109,34 @@ export function RevisionList({
                 </div>
               ) : null}
               <div className="mt-2 flex items-center justify-between">
-                <button
-                  type="button"
-                  aria-expanded={expandedId === revision.id}
-                  onClick={() =>
-                    setExpandedId(
-                      expandedId === revision.id ? undefined : revision.id,
-                    )
-                  }
-                >
-                  {expandedId === revision.id ? "Hide details" : "View details"}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    aria-expanded={expandedId === revision.id}
+                    onClick={() =>
+                      setExpandedId(
+                        expandedId === revision.id ? undefined : revision.id,
+                      )
+                    }
+                  >
+                    {expandedId === revision.id
+                      ? "Hide details"
+                      : "View details"}
+                  </button>
+                  {canModify &&
+                  (revision.status === "draft" ||
+                    revision.status === "failed") ? (
+                    <button
+                      type="button"
+                      aria-label={`Publish v${revision.revision_no}`}
+                      disabled={publish.isPending}
+                      aria-busy={publish.isPending}
+                      onClick={() => void publish.mutateAsync(revision.id)}
+                    >
+                      {publish.isPending ? "Publishing..." : "Publish"}
+                    </button>
+                  ) : null}
+                </div>
                 <span className="text-muted-foreground type-body">
                   {revision.published_at ?? revision.created_at ?? ""}
                 </span>

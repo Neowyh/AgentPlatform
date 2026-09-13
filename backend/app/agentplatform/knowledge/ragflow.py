@@ -55,6 +55,26 @@ class RAGFlowKnowledgeProvider:
         except RAGFlowAPIError as exc:
             raise KnowledgeProviderError("delete_failed", provider_document_id=provider_document_id) from exc
 
+    async def create_dataset(self, *, name: str) -> str:
+        try:
+            return await self.client.create_dataset(name=name)
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable") from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response") from exc
+        except RAGFlowAPIError as exc:
+            raise KnowledgeProviderError("dataset_failed") from exc
+
+    async def list_dataset_documents(self, *, dataset_id: str) -> list[dict]:
+        try:
+            return await self.client.list_dataset_documents(dataset_id)
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable") from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response") from exc
+        except RAGFlowAPIError as exc:
+            raise KnowledgeProviderError("invalid_response") from exc
+
 
 def configured_ragflow_provider() -> RAGFlowKnowledgeProvider | None:
     settings, _ = ragflow_tools._settings_or_error()

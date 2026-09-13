@@ -49,6 +49,7 @@ const mockDetail = {
 };
 
 const createRevision = vi.fn();
+const publishRevision = vi.fn();
 
 let mockState: {
   revisions: typeof mockRevisions;
@@ -76,6 +77,11 @@ vi.mock("@/core/library", () => ({
     isPending: false,
     error: null,
     mutateAsync: createRevision,
+  }),
+  usePublishKnowledgeRevision: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: publishRevision,
   }),
 }));
 
@@ -154,6 +160,27 @@ describe("RevisionList", () => {
       screen.getByRole("button", { name: "Create revision candidate" }),
     );
     expect(createRevision).toHaveBeenCalledTimes(1);
+  });
+
+  test("draft revision offers a publish action for owners", async () => {
+    const user = userEvent.setup();
+    render(<RevisionList knowledgeBaseId="kb-1" canModify />);
+    await user.click(screen.getByRole("button", { name: "Publish v1" }));
+    expect(publishRevision).toHaveBeenCalledWith("rev-1");
+  });
+
+  test("published revision offers no publish action", () => {
+    render(<RevisionList knowledgeBaseId="kb-1" canModify />);
+    expect(
+      screen.queryByRole("button", { name: "Publish v2" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("publish is hidden for users who cannot modify", () => {
+    render(<RevisionList knowledgeBaseId="kb-1" />);
+    expect(
+      screen.queryByRole("button", { name: "Publish v1" }),
+    ).not.toBeInTheDocument();
   });
 
   test("expanding a revision loads its document manifest", async () => {

@@ -16,7 +16,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -27,7 +27,7 @@ from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageMan
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
 from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
-from app.agentplatform.knowledge.revisions import KnowledgeRevisionService
+from app.agentplatform.knowledge.revisions import KnowledgeRevisionService, execute_publish
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
 from app.agentplatform.resource_runtime import (
@@ -976,6 +976,41 @@ async def get_knowledge_revision(
 ) -> dict[str, Any]:
     async with _factory()() as session:
         return await KnowledgeRevisionService(session, _resource_actor(current_user)).get_revision(resource_id, revision_id)
+
+
+@router.post("/{resource_id}/knowledge-revisions/{revision_id}/publish")
+@_translate_resource_errors
+async def publish_knowledge_revision(
+    resource_id: str,
+    revision_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    provider = configured_ragflow_provider()
+    async with _factory()() as session:
+        revision = await KnowledgeRevisionService(session, _resource_actor(current_user)).publish_revision(
+            resource_id,
+            revision_id,
+            provider=provider,
+        )
+        await session.commit()
+    if provider is not None:
+        background_tasks.add_task(
+            execute_publish,
+            _factory(),
+            resource_id=resource_id,
+            revision_id=revision_id,
+            actor_id=str(current_user.id),
+            provider=provider,
+        )
+    await record_audit(
+        str(current_user.id),
+        "knowledge_revision_publish_requested",
+        "knowledge_revision",
+        revision_id,
+        {"resource_id": resource_id, "revision_no": revision["revision_no"]},
+    )
+    return revision
 
 
 @router.put("/{resource_id}/knowledge-draft")

@@ -37,6 +37,10 @@ class KnowledgeProvider(Protocol):
 
     async def delete_document(self, *, dataset_id: str, provider_document_id: str) -> None: ...
 
+    async def create_dataset(self, *, name: str) -> str: ...
+
+    async def list_dataset_documents(self, *, dataset_id: str) -> list[dict]: ...
+
 
 def stable_provider_error(exc: Exception) -> tuple[str, str]:
     """Map provider errors to a low-cardinality, non-sensitive user message."""
@@ -45,7 +49,10 @@ def stable_provider_error(exc: Exception) -> tuple[str, str]:
             "unavailable": "The knowledge provider is temporarily unavailable.",
             "parse_failed": "The provider could not parse this document.",
             "index_failed": "The provider could not index this document.",
+            "index_timeout": "The provider took too long to index this document.",
             "delete_failed": "The provider could not remove this document.",
+            "dataset_failed": "The provider could not create the published dataset.",
+            "verification_failed": "The published dataset does not match the revision manifest.",
             "invalid_response": "The knowledge provider returned an invalid response.",
         }
         return exc.code, messages.get(exc.code, "Document processing failed.")
