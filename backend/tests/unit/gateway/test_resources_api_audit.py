@@ -104,6 +104,31 @@ async def test_canonical_create_and_archive_record_audit(
 
 
 @pytest.mark.asyncio
+async def test_canonical_knowledge_base_create_uses_governed_safe_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, _factory, current_user = await _make_env(tmp_path, monkeypatch, UserRole.USER)
+
+    created = await resources.create_resource(
+        resources.ResourceCreateRequest(
+            type="knowledge_base",
+            slug="research",
+            display_name="Research",
+            storage_kind="database",
+        ),
+        current_user,
+    )
+
+    assert created["type"] == "knowledge_base"
+    assert created["owner_id"] == "owner"
+    assert created["visibility"] == "private"
+    assert "provider_dataset_id" not in created
+    assert "provider_type" not in created
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_canonical_create_duplicate_slug_returns_conflict(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
