@@ -1704,6 +1704,7 @@ export const zhCN: Translations = {
       pendingApplications: "待审批申请",
       totalResources: "资源总数",
       auditLogs: "审计日志",
+      knowledgeReconciliation: "知识对账",
       viewDetails: "点击查看详情",
       loading: "加载中...",
     },

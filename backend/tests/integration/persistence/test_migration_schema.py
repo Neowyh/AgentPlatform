@@ -35,7 +35,7 @@ from deerflow.persistence.migrations._chain_meta import (
 )
 from tests._migration_test_support import unified_alembic_config
 
-CURRENT_HEAD = "20260913_run_knowledge_snapshot"
+CURRENT_HEAD = "20260913_knowledge_revision_integrity"
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).

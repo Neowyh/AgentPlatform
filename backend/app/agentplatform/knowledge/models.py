@@ -102,6 +102,8 @@ class KnowledgeRevision(Base):
     publish_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    integrity_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    integrity_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -120,4 +122,35 @@ class KnowledgeRevision(Base):
             sqlite_where=text("status = 'indexing'"),
             postgresql_where=text("status = 'indexing'"),
         ),
+    )
+
+
+class KnowledgeRevisionCheck(Base):
+    """One read-only reconciliation observation for a KnowledgeBase (M4).
+
+    Findings are immutable history: reconciliation never rewrites manifests,
+    never deletes provider resources, and never replaces run snapshots.
+    """
+
+    __tablename__ = "knowledge_revision_checks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    trigger: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    findings_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    checked_by: Mapped[str | None] = mapped_column(ForeignKey("users_ext.id", ondelete="SET NULL"), nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("trigger in ('manual','scheduled')", name="ck_knowledge_revision_checks_trigger"),
+        Index("ix_knowledge_revision_checks_kb_checked", "knowledge_base_id", "checked_at"),
     )

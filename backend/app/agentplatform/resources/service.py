@@ -1301,7 +1301,7 @@ class ResourceService:
                 raise ResourceConflict("revision_id is required for pinned dependencies")
             revision = (
                 await self.session.execute(
-                    select(KnowledgeRevision.id).where(
+                    select(KnowledgeRevision).where(
                         KnowledgeRevision.id == revision_id,
                         KnowledgeRevision.knowledge_base_id == target.id,
                     )
@@ -1309,9 +1309,10 @@ class ResourceService:
             ).scalar_one_or_none()
             if revision is None:
                 raise ResourceConflict("revision_id does not belong to the KnowledgeBase")
-            status = (await self.session.execute(select(KnowledgeRevision.status).where(KnowledgeRevision.id == revision_id))).scalar_one_or_none()
-            if status != "published":
+            if revision.status != "published":
                 raise ResourceConflict("revision_id must reference a published Knowledge Revision")
+            if revision.integrity_status in {"drifted", "missing_provider_dataset"}:
+                raise ResourceConflict("revision_id is not usable: reconciliation flagged this revision as drifted")
         elif revision_id is not None:
             raise ResourceConflict("revision_id must be empty for live dependencies")
         if not explicit:
@@ -1397,6 +1398,8 @@ class ResourceService:
         revision = (await self.session.execute(query)).scalar_one_or_none()
         if revision is None or revision.status != "published":
             raise ResourceConflict(f"KnowledgeBase {resource_id} has no published revision to run against")
+        if revision.integrity_status in {"drifted", "missing_provider_dataset"}:
+            raise ResourceConflict(f"KnowledgeBase {resource_id} active revision is drifted; reconciliation flagged it as {revision.integrity_status}")
         return revision
 
     async def resolve_dependency_closure(self, root_resource_id: str) -> list[ResolvedResource]:

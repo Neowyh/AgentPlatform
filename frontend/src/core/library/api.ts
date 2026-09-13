@@ -59,6 +59,8 @@ export interface KnowledgeRevision {
   document_count: number;
   failure_code?: string | null;
   failure_message?: string | null;
+  integrity_status?: string | null;
+  integrity_checked_at?: string | null;
   created_at: string | null;
   published_at: string | null;
 }

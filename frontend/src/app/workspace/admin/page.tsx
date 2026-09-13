@@ -63,6 +63,13 @@ const statCards = [
     href: "/workspace/admin/audit-logs",
     color: "text-slate-500",
   },
+  {
+    key: "knowledge_reconciliation" as const,
+    labelKey: "knowledgeReconciliation",
+    icon: ScrollTextIcon,
+    href: "/workspace/admin/knowledge-reconciliation",
+    color: "text-emerald-500",
+  },
 ] as const;
 
 export default function AdminDashboardPage() {

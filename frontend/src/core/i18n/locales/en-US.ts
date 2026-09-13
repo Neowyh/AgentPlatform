@@ -1787,6 +1787,7 @@ export const enUS: Translations = {
       pendingApplications: "Pending Applications",
       totalResources: "Total Resources",
       auditLogs: "Audit Logs",
+      knowledgeReconciliation: "Knowledge Reconciliation",
       viewDetails: "Click to view details",
       loading: "Loading...",
     },

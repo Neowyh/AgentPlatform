@@ -26,6 +26,7 @@ from app.gateway.deps import langgraph_runtime
 from app.gateway.error_codes import ApiException
 from app.gateway.routers import (
     admin,
+    admin_knowledge,
     admin_skill_applications,
     artifacts,
     assistants_compat,
@@ -418,6 +419,32 @@ async def _reconcile_canonical_resource_storage() -> None:
         logger.warning("Canonical resource storage has recoverable orphans; no files were removed: %s", orphans)
 
 
+async def _knowledge_reconciliation_loop() -> None:
+    """Run read-only published-revision reconciliation on a fixed interval."""
+
+    from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
+    from app.agentplatform.knowledge.reconciliation import (
+        configured_interval_seconds,
+        run_reconciliation,
+    )
+    from deerflow.persistence.engine import get_session_factory
+
+    while True:
+        interval = configured_interval_seconds()
+        if interval <= 0:
+            await asyncio.sleep(60)
+            continue
+        await asyncio.sleep(interval)
+        provider = configured_ragflow_provider()
+        session_factory = get_session_factory()
+        if provider is None or session_factory is None:
+            continue
+        try:
+            await run_reconciliation(session_factory, provider=provider, trigger="scheduled")
+        except Exception:
+            logger.exception("Knowledge reconciliation pass failed (non-fatal)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -488,7 +515,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("No IM channels configured or channel service failed to start")
 
+        # Periodic published-revision reconciliation (read-only, ticket 05).
+        # Disabled unless knowledge.reconciliation_interval_seconds > 0.
+        reconciliation_task = asyncio.create_task(_knowledge_reconciliation_loop())
+
         yield
+
+        reconciliation_task.cancel()
+        try:
+            await reconciliation_task
+        except asyncio.CancelledError:
+            pass
 
         # Stop channel service on shutdown (bounded to prevent worker hang)
         try:
@@ -858,6 +895,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Audit Logs API is mounted at /api/admin/audit-logs
     app.include_router(audit_logs.router)
+    app.include_router(admin_knowledge.router)
 
     # Tools API is mounted at /api/tools
     app.include_router(tools.router)

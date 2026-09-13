@@ -70,6 +70,8 @@ def _revision_payload(revision: KnowledgeRevision, *, documents: list[dict] | No
         "document_count": revision.document_count,
         "failure_code": revision.failure_code,
         "failure_message": revision.failure_message,
+        "integrity_status": revision.integrity_status,
+        "integrity_checked_at": revision.integrity_checked_at.isoformat() if revision.integrity_checked_at else None,
         "created_at": revision.created_at.isoformat() if revision.created_at else None,
         "published_at": revision.published_at.isoformat() if revision.published_at else None,
     }

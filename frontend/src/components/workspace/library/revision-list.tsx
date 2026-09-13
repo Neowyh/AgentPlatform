@@ -103,6 +103,13 @@ export function RevisionList({
                 {revision.document_count} documents · manifest{" "}
                 {revision.manifest_hash.slice(0, 12)}
               </p>
+              {revision.integrity_status === "drifted" ||
+              revision.integrity_status === "missing_provider_dataset" ? (
+                <div role="alert" className="text-destructive type-body">
+                  Reconciliation flagged this revision as{" "}
+                  {revision.integrity_status}
+                </div>
+              ) : null}
               {revision.failure_message ? (
                 <div role="alert" className="text-destructive type-body">
                   {revision.failure_message}

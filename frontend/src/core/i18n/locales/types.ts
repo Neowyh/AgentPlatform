@@ -1424,6 +1424,7 @@ export interface Translations {
       pendingApplications: string;
       totalResources: string;
       auditLogs: string;
+      knowledgeReconciliation: string;
       viewDetails: string;
       loading: string;
     };
