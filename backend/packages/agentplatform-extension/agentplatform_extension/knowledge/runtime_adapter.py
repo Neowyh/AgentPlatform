@@ -42,19 +42,29 @@ class KnowledgeRuntimeAdapter:
             resolved = self.scope.resolve(logical_kb)
         except KeyError as exc:
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
+        document_ids = self.scope.document_ids_for(resolved)
         if _accepts_dataset_ids(self.search):
-            result = self.search(query, dataset_ids=[resolved])
+            if document_ids is not None and not _accepts_parameter(self.search, "document_ids"):
+                raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+            search_options = {"dataset_ids": [resolved]}
+            if document_ids is not None:
+                search_options["document_ids"] = list(document_ids)
+            result = self.search(query, **search_options)
         else:
-            result = _search_legacy_ragflow(self.search, query, resolved, document_ids=self.scope.document_ids_for(resolved))
+            result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
         return await result if inspect.isawaitable(result) else result
 
 
 def _accepts_dataset_ids(search: Callable[..., Any]) -> bool:
+    return _accepts_parameter(search, "dataset_ids")
+
+
+def _accepts_parameter(search: Callable[..., Any], name: str) -> bool:
     try:
         parameters = inspect.signature(search).parameters.values()
     except (TypeError, ValueError):
         return False
-    return any(parameter.name == "dataset_ids" or parameter.kind is parameter.VAR_KEYWORD for parameter in parameters)
+    return any(parameter.name == name or parameter.kind is parameter.VAR_KEYWORD for parameter in parameters)
 
 
 async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset_id: str, *, document_ids: tuple[str, ...] | None = None) -> Any:
@@ -122,7 +132,14 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
             if provider is None:
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
             try:
-                return provider(query, dataset_ids=[scope.resolve(knowledge_base)])
+                resolved = scope.resolve(knowledge_base)
+                document_ids = scope.document_ids_for(resolved)
+                if document_ids is not None and not _accepts_parameter(provider, "document_ids"):
+                    raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
+                search_options = {"dataset_ids": [resolved]}
+                if document_ids is not None:
+                    search_options["document_ids"] = list(document_ids)
+                return provider(query, **search_options)
             except (KeyError, TypeError) as exc:
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 

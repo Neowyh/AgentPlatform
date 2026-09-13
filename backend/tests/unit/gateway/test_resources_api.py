@@ -195,6 +195,7 @@ def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
     assert ("GET", "/api/resources/{resource_id}/visibility-impact") in routes
     assert ("GET", "/api/resources/{resource_id}/documents") in routes
     assert ("POST", "/api/resources/{resource_id}/documents") in routes
+    assert ("DELETE", "/api/resources/{resource_id}/documents/{document_id}") in routes
     assert ("PUT", "/api/resources/notifications/{notification_id}/read") in routes
     assert ("PUT", "/api/resources/notifications/read-all") in routes
 

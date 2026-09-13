@@ -16,7 +16,7 @@ import app.agentplatform.visibility_models  # noqa: F401
 from app.agentplatform.knowledge.documents import DocumentValidationError, KnowledgeDocumentService
 from app.agentplatform.knowledge.models import KnowledgeDocument
 from app.agentplatform.knowledge.provider import KnowledgeProviderError, ProviderIngestionResult
-from app.agentplatform.resources.service import ResourceAction, ResourceActor
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceNotFound, ResourcePermissionDenied
 from deerflow.persistence.base import Base
 
 
@@ -288,3 +288,30 @@ async def test_delete_failure_is_recoverable_and_sanitized(session, tmp_path, mo
     row = await session.get(KnowledgeDocument, document["id"])
     assert row is not None
     assert (tmp_path / row.storage_key).exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_requires_owner_and_matching_visible_knowledge_base(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    service = ResourceService(session, _actor())
+    owned = await service.create_resource(resource_type="knowledge_base", slug="owned", display_name="Owned", storage_kind="database")
+    other = await service.create_resource(resource_type="knowledge_base", slug="other", display_name="Other", storage_kind="database")
+    hidden = await service.create_resource(resource_type="knowledge_base", slug="hidden", display_name="Hidden", storage_kind="database")
+    await service.bind_knowledge_dataset(owned.id, provider_dataset_id="dataset-owned")
+    await service.bind_knowledge_dataset(other.id, provider_dataset_id="dataset-other")
+    await service.bind_knowledge_dataset(hidden.id, provider_dataset_id="dataset-hidden")
+    owned.visibility = "public"
+    hidden.visibility = "private"
+    hidden.owner_id = "another-owner"
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(owned.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+
+    with pytest.raises(ResourcePermissionDenied):
+        await KnowledgeDocumentService(session, _actor("different-owner"), FakeProvider()).delete(document["id"], resource_id=owned.id)
+    with pytest.raises(ResourceNotFound):
+        await KnowledgeDocumentService(session, _actor(), FakeProvider()).delete(document["id"], resource_id=other.id)
+    with pytest.raises(ResourceNotFound):
+        await KnowledgeDocumentService(session, _actor("different-owner"), FakeProvider()).delete(document["id"], resource_id=hidden.id)

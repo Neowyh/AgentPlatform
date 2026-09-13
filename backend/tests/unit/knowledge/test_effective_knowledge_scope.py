@@ -47,6 +47,33 @@ async def test_runtime_adapter_resolves_logical_selector_and_rejects_raw_ids() -
         await adapter.search_knowledge("find it", logical_kb="other")
 
 
+@pytest.mark.asyncio
+async def test_runtime_adapter_passes_ready_document_allowlist_to_async_provider() -> None:
+    calls: list[dict] = []
+
+    async def provider(query: str, *, dataset_ids: list[str], document_ids: list[str]) -> str:
+        calls.append({"query": query, "dataset_ids": dataset_ids, "document_ids": document_ids})
+        return "ok"
+
+    scope = KnowledgeScope.from_bindings({"docs": "opaque-dataset"}, ready_document_ids={"opaque-dataset": ["ready-1"]})
+    assert await KnowledgeRuntimeAdapter(scope, provider).search_knowledge("find it", logical_kb="docs") == "ok"
+    assert calls == [{"query": "find it", "dataset_ids": ["opaque-dataset"], "document_ids": ["ready-1"]}]
+
+
+@pytest.mark.asyncio
+async def test_runtime_adapter_rejects_provider_without_document_filtering() -> None:
+    calls: list[dict] = []
+
+    async def provider(query: str, *, dataset_ids: list[str]) -> str:
+        calls.append({"query": query, "dataset_ids": dataset_ids})
+        return "unsafe"
+
+    scope = KnowledgeScope.from_bindings({"docs": "opaque-dataset"}, ready_document_ids={"opaque-dataset": ["ready-1"]})
+    with pytest.raises(KnowledgeAccessDenied, match=KNOWLEDGE_ACCESS_DENIED):
+        await KnowledgeRuntimeAdapter(scope, provider).search_knowledge("find it", logical_kb="docs")
+    assert calls == []
+
+
 def test_delegation_can_only_narrow_scope() -> None:
     parent = KnowledgeRuntimeContext("run-1", KnowledgeScope.from_bindings({"a": "da", "b": "db"}))
     child = parent.for_delegation(KnowledgeScope.from_bindings({"b": "db"}))
@@ -80,6 +107,21 @@ async def test_adapted_tool_passes_only_resolved_dataset_to_provider() -> None:
         await adapted.ainvoke({"query": "find", "knowledge_base": "opaque"})
     with pytest.raises(Exception):
         await adapted.ainvoke({"query": "find", "knowledge_base": "docs", "dataset_id": "opaque"})
+
+
+def test_adapted_sync_tool_passes_ready_document_allowlist_to_provider() -> None:
+    calls: list[dict] = []
+
+    def provider(query: str, *, dataset_ids: list[str], document_ids: list[str]) -> str:
+        calls.append({"query": query, "dataset_ids": dataset_ids, "document_ids": document_ids})
+        return "ok"
+
+    tool = type("Tool", (), {"name": "knowledge_search", "func": staticmethod(provider), "description": "search"})()
+    scope = KnowledgeScope.from_bindings({"docs": "opaque"}, ready_document_ids={"opaque": ["ready-1"]})
+    adapted = adapt_knowledge_tools([tool], scope)[0]
+
+    assert adapted.invoke({"query": "find", "knowledge_base": "docs"}) == "ok"
+    assert calls == [{"query": "find", "dataset_ids": ["opaque"], "document_ids": ["ready-1"]}]
 
 
 def test_adapted_tool_exposes_logical_selector_schema_without_provider_id() -> None:
