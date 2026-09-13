@@ -135,22 +135,31 @@ class RAGFlowClient:
         return document_id
 
     async def parse_document(self, dataset_id: str, document_id: str) -> None:
-        await self._request("POST", f"/datasets/{dataset_id}/documents/{document_id}/parse")
+        # RAGFlow exposes parsing only as the batch endpoint; single-document
+        # parse paths 404 on current RAGFlow versions (found by real-provider
+        # acceptance, M4 ticket 06).
+        await self._request("POST", f"/datasets/{dataset_id}/documents/parse", json={"document_ids": [document_id]})
 
     async def get_document_status(self, dataset_id: str, document_id: str) -> str:
-        payload = await self._request("GET", f"/datasets/{dataset_id}/documents/{document_id}")
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            raise RAGFlowProtocolError("RAGFlow returned an invalid document status.")
-        value = str(data.get("run") or data.get("status") or "").upper()
-        if value in {"DONE", "READY", "SUCCESS", "3"}:
-            return "ready"
-        if value in {"FAIL", "FAILED", "ERROR", "4"}:
-            return "failed"
-        return "processing"
+        # RAGFlow v0.27+ has no reliable single-document GET (returns
+        # non-JSON); resolve the document through the list endpoint instead
+        # (real-provider acceptance, M4 ticket 06).
+        documents = await self.list_dataset_documents(dataset_id)
+        for document in documents:
+            if str(document.get("id")) == document_id:
+                value = str(document.get("run") or document.get("status") or "").upper()
+                if value in {"DONE", "READY", "SUCCESS", "3"}:
+                    return "ready"
+                if value in {"FAIL", "FAILED", "ERROR", "4"}:
+                    return "failed"
+                return "processing"
+        raise RAGFlowProtocolError("RAGFlow returned no matching document.")
 
     async def delete_document(self, dataset_id: str, document_id: str) -> None:
-        await self._request("DELETE", f"/datasets/{dataset_id}/documents", params={"ids": document_id})
+        # RAGFlow v0.27+ expects a JSON body on this DELETE endpoint; the
+        # legacy `ids` query-parameter form is rejected (real-provider
+        # acceptance, M4 ticket 06).
+        await self._request("DELETE", f"/datasets/{dataset_id}/documents", json={"ids": [document_id]})
 
     async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
         """Resolve one dataset ID, or enumerate every page when no ID is given."""

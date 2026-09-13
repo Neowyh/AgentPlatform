@@ -333,3 +333,91 @@ async def test_list_dataset_documents_accepts_plain_list_shape() -> None:
     )
 
     assert await client.list_dataset_documents("dataset-1") == [{"id": "doc-1", "name": "doc-1.txt"}]
+
+
+@pytest.mark.anyio
+async def test_parse_document_uses_the_batch_endpoint() -> None:
+    """RAGFlow v0.27+ has no single-document parse route; real-provider
+    acceptance (M4 ticket 06) caught the 404."""
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/datasets/dataset-1/documents/parse"
+        assert json.loads(request.content) == {"document_ids": ["doc-9"]}
+        return httpx.Response(200, json={"code": 0, "data": True})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    await client.parse_document("dataset-1", "doc-9")
+    assert len(requests) == 1
+
+
+@pytest.mark.anyio
+async def test_document_status_resolves_through_the_list_endpoint() -> None:
+    """RAGFlow v0.27+ single-document GET returns non-JSON; statuses come
+    from the list endpoint (real-provider acceptance, M4 ticket 06)."""
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path == "/api/v1/datasets/dataset-1/documents"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {"docs": [{"id": "doc-9", "run": "DONE"}], "total": 1},
+            },
+        )
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await client.get_document_status("dataset-1", "doc-9") == "ready"
+    assert len(requests) == 1
+
+
+@pytest.mark.anyio
+async def test_document_status_reports_missing_document_without_guessing() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 0, "data": {"docs": [], "total": 0}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(RAGFlowProtocolError, match="no matching document"):
+        await client.get_document_status("dataset-1", "doc-missing")
+
+
+@pytest.mark.anyio
+async def test_delete_document_sends_a_json_body() -> None:
+    """RAGFlow v0.27+ rejects the legacy query-parameter DELETE form
+    (real-provider acceptance, M4 ticket 06)."""
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.method == "DELETE"
+        assert request.url.path == "/api/v1/datasets/dataset-1/documents"
+        assert json.loads(request.content) == {"ids": ["doc-9"]}
+        return httpx.Response(200, json={"code": 0, "data": True})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    await client.delete_document("dataset-1", "doc-9")
+    assert len(requests) == 1
