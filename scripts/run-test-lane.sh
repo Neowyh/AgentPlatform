@@ -160,10 +160,10 @@ case "$LANE" in
     backend_pytest "external"
     ;;
   frontend-standard)
-    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run)
+    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --pool=forks --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose)
     ;;
   frontend-core)
-    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --coverage && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" check)
+    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --coverage --pool=forks --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" check)
     ;;
   frontend-smoke)
     (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" test:e2e:smoke)
