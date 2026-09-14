@@ -47,6 +47,20 @@ unauthorized device capability.
   on disk with incremental hashes and only a bounded preview is returned; a
   timeout, cancellation, or disconnect terminates the process group before a
   terminal receipt is produced.
+- Local secrets are stored only in the device OS secure store (Windows
+  Credential Manager first, behind a replaceable backend). Tasks and MCP
+  configs carry `local:<name>` references; the runtime resolves them on the
+  device and injects values into the local process environment only. Secret
+  slots reject literal values, so plaintext cannot enter a protocol field by
+  that route. A missing reference or an unavailable backend fails the task
+  with a stable code (`SECRET_REF_NOT_FOUND` / `SECRET_BACKEND_UNAVAILABLE`);
+  there is no plaintext fallback. Stream output, bounded previews, receipts,
+  and error messages are scrubbed against the resolved values, so Server DB,
+  gateway logs, tool args, LocalExecutionReceipts, and model-visible output
+  never contain secret plaintext. There is deliberately no model-callable
+  secrets capability: the only secret surface is the local CLI
+  (`secret-set` / `secret-rotate` / `secret-delete` / `secret-list`), and
+  listing exposes names only.
 - Only the harmless echo task and the bounded local file reads are part of the
   current gate. No system command or arbitrary shell execution is part of this
   ticket.
@@ -64,5 +78,6 @@ unauthorized device capability.
 | Task tampering | Signature verification and payload hash | `TASK_SIGNATURE_INVALID` / `TASK_HASH_MISMATCH` |
 | Cross-session delivery | Envelope session ID must equal active session | `SESSION_MISMATCH` |
 | Server overreach | Local policy and consent gate before execution | `LOCAL_POLICY_DENIED` |
+| Secret exfiltration | OS-store-only values, `local:` references on the wire, outbound redaction, literal-slot rejection | `SECRET_REF_NOT_FOUND` / `[REDACTED]` / `INVALID_TASK` |
 | Capability drift | Versioned capability registration and intersection at assembly | Capability omission / receipt |
 | Offline ambiguity | `expires_at` plus explicit `DEVICE_OFFLINE` state | Task terminal state |

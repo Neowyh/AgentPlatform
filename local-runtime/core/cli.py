@@ -6,9 +6,30 @@ import argparse
 import asyncio
 import base64
 import json
+import sys
 from pathlib import Path
 
 from .consent import ConsentStore
+from .secrets import (
+    InMemorySecretStore,
+    SecretStore,
+    SecretStoreError,
+    create_default_secret_store,
+    secret_ref,
+)
+
+SECRET_COMMANDS = {"secret-set", "secret-rotate", "secret-delete", "secret-list"}
+
+
+def _secret_backend_option() -> argparse.ArgumentParser:
+    backend = argparse.ArgumentParser(add_help=False)
+    backend.add_argument(
+        "--backend",
+        choices=("auto", "memory"),
+        default="auto",
+        help="secret store backend: the OS secure store or an in-memory store",
+    )
+    return backend
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,13 +57,75 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("capability")
         command.add_argument("request_hash")
         command.add_argument("--actor", default="local-user")
+    backend = _secret_backend_option()
+    secret_set = sub.add_parser(
+        "secret-set", parents=[backend], help="store a credential value"
+    )
+    secret_set.add_argument("name")
+    secret_set.add_argument(
+        "--value", help="credential value; read from stdin when omitted"
+    )
+    secret_rotate = sub.add_parser(
+        "secret-rotate", parents=[backend], help="replace an existing credential"
+    )
+    secret_rotate.add_argument("name")
+    secret_rotate.add_argument(
+        "--value", help="credential value; read from stdin when omitted"
+    )
+    secret_delete = sub.add_parser(
+        "secret-delete", parents=[backend], help="remove a stored credential"
+    )
+    secret_delete.add_argument("name")
+    sub.add_parser(
+        "secret-list", parents=[backend], help="list stored secret names (never values)"
+    )
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def _read_secret_value() -> str:
+    value = sys.stdin.readline().rstrip("\r\n")
+    if not value:
+        raise ValueError("a credential value must not be empty")
+    return value
+
+
+def _run_secret_command(args: argparse.Namespace, store: SecretStore | None) -> int:
+    try:
+        secret_store = store
+        if secret_store is None:
+            secret_store = (
+                InMemorySecretStore() if args.backend == "memory"
+                else create_default_secret_store()
+            )
+        if args.command == "secret-set":
+            value = args.value if args.value is not None else _read_secret_value()
+            secret_store.set(args.name, value)
+            print(secret_ref(args.name))
+        elif args.command == "secret-rotate":
+            secret_store.get(args.name)
+            value = args.value if args.value is not None else _read_secret_value()
+            secret_store.set(args.name, value)
+            print(secret_ref(args.name))
+        elif args.command == "secret-delete":
+            secret_store.delete(args.name)
+        elif args.command == "secret-list":
+            for name in secret_store.names():
+                print(name)
+        return 0
+    except SecretStoreError as exc:
+        print(f"error: {exc.code}: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"error: INVALID_SECRET: {exc}", file=sys.stderr)
+        return 1
+
+
+def main(argv: list[str] | None = None, *, store: SecretStore | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command in SECRET_COMMANDS:
+        return _run_secret_command(args, store)
     args.db.parent.mkdir(parents=True, exist_ok=True)
-    store = ConsentStore(db_path=args.db)
+    consent_store = ConsentStore(db_path=args.db)
     if args.command == "config-root":
         config_path = args.db.with_suffix(".json")
         config_path.write_text(
@@ -71,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(client.run())
         return 0
     if args.command in {"approve", "deny"}:
-        getattr(store, args.command)(
+        getattr(consent_store, args.command)(
             args.capability, args.request_hash, actor_id=args.actor
         )
         return 0

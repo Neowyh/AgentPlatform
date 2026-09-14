@@ -23,6 +23,7 @@ from .protocol import (
 )
 from .python import LocalPythonService, PythonResult
 from .receipts import LocalExecutionReceipt, content_hash
+from .secrets import SecretStoreError
 
 
 class LocalRuntimeClient:
@@ -300,6 +301,13 @@ class LocalRuntimeClient:
             )
             raise
         except FileAccessError as exc:
+            await self._send_error(
+                task_id, str(exc), exc.code, envelope.payload, operation
+            )
+            return
+        except SecretStoreError as exc:
+            # A secret reference or its backend failed: the task fails with a
+            # stable code; there is no plaintext fallback path.
             await self._send_error(
                 task_id, str(exc), exc.code, envelope.payload, operation
             )
