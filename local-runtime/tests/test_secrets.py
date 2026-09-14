@@ -106,6 +106,14 @@ def test_memory_store_rejects_empty_values_and_invalid_names() -> None:
             store.set(bad_name, "value")
 
 
+def test_store_rejects_values_shorter_than_the_redaction_floor() -> None:
+    # Every stored value must be scrubbed from output; a value below the
+    # redactor's floor would leak verbatim, so it is refused at write time.
+    store = InMemorySecretStore()
+    with pytest.raises(ValueError, match="at least 3"):
+        store.set("git.company", "ab")
+
+
 def test_memory_store_missing_secret_raises_typed_not_found() -> None:
     store = InMemorySecretStore()
     with pytest.raises(SecretNotFound) as excinfo:
@@ -286,6 +294,18 @@ def test_cli_set_reads_the_value_from_stdin_when_not_given(
     assert runtime_cli(["secret-set", "git.company"], store=cli_store) == 0
     assert cli_store.get("git.company") == TOKEN
     assert TOKEN not in capsys.readouterr().out
+
+
+def test_cli_set_stores_multi_line_credentials_from_stdin(
+    cli_store: InMemorySecretStore,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ssh_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\nmore material\n-----END OPENSSH PRIVATE KEY-----"
+    monkeypatch.setattr("sys.stdin", io.StringIO(f"{ssh_key}\n"))
+    assert runtime_cli(["secret-set", "ssh.projectA"], store=cli_store) == 0
+    assert cli_store.get("ssh.projectA") == ssh_key
+    assert "b3BlbnNzaC1rZXktdjEAAAAA" not in capsys.readouterr().out
 
 
 def test_cli_rejects_empty_secret_values(

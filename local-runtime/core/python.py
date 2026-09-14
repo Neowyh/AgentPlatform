@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -124,12 +124,9 @@ class _StreamingRedactor:
         r"(?i)(api[_-]?key|secret|token|password)(\s*[=:]\s*)[^\s,;]+"
     )
 
-    def __init__(self, literal_values: Iterable[str] = ()) -> None:
-        self._secrets = SecretRedactor(literal_values)
-        self._holdback = max(
-            128,
-            max((len(value) for value in literal_values if value), default=0),
-        )
+    def __init__(self, secrets: SecretRedactor) -> None:
+        self._secrets = secrets
+        self._holdback = max(128, secrets.longest)
         self._pending = ""
 
     def feed(self, text: str, *, final: bool = False) -> str:
@@ -366,6 +363,7 @@ class PythonExecutor:
             process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             process_options["start_new_session"] = True
+        secret_redactor = SecretRedactor(secret_values)
         started_at = datetime.now(UTC)
         with (
             tempfile.NamedTemporaryFile(
@@ -393,8 +391,8 @@ class PythonExecutor:
                 deadline = asyncio.get_running_loop().time() + timeout
                 output_offsets = {"stdout": 0, "stderr": 0}
                 redactors = {
-                    "stdout": _StreamingRedactor(secret_values),
-                    "stderr": _StreamingRedactor(secret_values),
+                    "stdout": _StreamingRedactor(secret_redactor),
+                    "stderr": _StreamingRedactor(secret_redactor),
                 }
                 output_window_started = asyncio.get_running_loop().time()
                 output_window_bytes = {"stdout": 0, "stderr": 0}
@@ -456,12 +454,8 @@ class PythonExecutor:
                         visible = tail[:available]
                         await on_output(stream, visible)
                         output_window_bytes[stream] += len(visible.encode("utf-8"))
-            stdout, stdout_hash = self._summarize_log(
-                stdout_file.name, SecretRedactor(secret_values)
-            )
-            stderr, stderr_hash = self._summarize_log(
-                stderr_file.name, SecretRedactor(secret_values)
-            )
+            stdout, stdout_hash = self._summarize_log(stdout_file.name, secret_redactor)
+            stderr, stderr_hash = self._summarize_log(stderr_file.name, secret_redactor)
             if job is not None:
                 job.close()
         finished_at = datetime.now(UTC)

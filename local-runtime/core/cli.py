@@ -93,7 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _read_secret_value() -> str:
-    value = sys.stdin.readline().rstrip("\r\n")
+    # Read to EOF so multi-line credentials such as SSH private keys work;
+    # interactive users finish with Ctrl-D.
+    value = sys.stdin.read().rstrip("\r\n")
     if not value:
         raise ValueError("a credential value must not be empty")
     return value

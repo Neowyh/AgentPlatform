@@ -49,8 +49,7 @@ def is_secret_ref(value: object) -> bool:
 
 
 def secret_ref(name: str) -> str:
-    if not is_valid_secret_name(name):
-        raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+    _validate_secret_name(name)
     return f"{SECRET_REF_PREFIX}{name}"
 
 
@@ -67,9 +66,22 @@ class SecretStore(Protocol):
     def names(self) -> tuple[str, ...]: ...
 
 
+def _validate_secret_name(name: str) -> str:
+    if not is_valid_secret_name(name):
+        raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+    return name
+
+
 def _validate_secret_value(value: str) -> str:
-    if not isinstance(value, str) or not value or "\x00" in value:
-        raise ValueError("secret values must be non-empty strings without NUL")
+    if (
+        not isinstance(value, str)
+        or len(value) < MIN_REDACT_LENGTH
+        or "\x00" in value
+    ):
+        raise ValueError(
+            "secret values must be strings of at least "
+            f"{MIN_REDACT_LENGTH} characters without NUL"
+        )
     return value
 
 
@@ -80,13 +92,11 @@ class InMemorySecretStore:
         self._values: dict[str, str] = {}
 
     def set(self, name: str, value: str) -> None:
-        if not is_valid_secret_name(name):
-            raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+        _validate_secret_name(name)
         self._values[name] = _validate_secret_value(value)
 
     def get(self, name: str) -> str:
-        if not is_valid_secret_name(name):
-            raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+        _validate_secret_name(name)
         try:
             return self._values[name]
         except KeyError:
@@ -95,8 +105,7 @@ class InMemorySecretStore:
             ) from None
 
     def delete(self, name: str) -> None:
-        if not is_valid_secret_name(name):
-            raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+        _validate_secret_name(name)
         if name not in self._values:
             raise SecretNotFound(
                 "SECRET_REF_NOT_FOUND", f"secret {name!r} is not stored on this device"
@@ -166,8 +175,7 @@ class WindowsCredentialStore:
         ]
 
     def _target(self, name: str) -> str:
-        if not is_valid_secret_name(name):
-            raise ValueError("secret names must use [A-Za-z0-9._-] and stay under 128 chars")
+        _validate_secret_name(name)
         return f"{self._TARGET_PREFIX}{name}"
 
     def set(self, name: str, value: str) -> None:
@@ -293,6 +301,7 @@ class SecretRedactor:
         self._pattern = (
             re.compile("|".join(re.escape(value) for value in known)) if known else None
         )
+        self.longest = len(known[0]) if known else 0
 
     def redact(self, text: str) -> str:
         if self._pattern is None:
