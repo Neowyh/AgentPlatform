@@ -34,6 +34,13 @@ class KnowledgeBase(Base):
     embedding_profile_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     active_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     sync_status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
+    initialization_status: Mapped[str] = mapped_column(String(16), nullable=False, default="initializing")
+    initialization_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    initialization_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    initialization_step: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    initialization_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    initialization_lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    initialization_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
@@ -52,6 +59,7 @@ class KnowledgeDocument(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id", ondelete="CASCADE"), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -63,12 +71,15 @@ class KnowledgeDocument(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ingestion_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    processing_step: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
     __table_args__ = (
-        UniqueConstraint("resource_id", "content_hash", name="uq_knowledge_documents_resource_hash"),
         CheckConstraint("source = 'upload'", name="ck_knowledge_documents_source"),
         CheckConstraint("size_bytes >= 0", name="ck_knowledge_documents_size"),
         Index("ix_knowledge_documents_resource_created", "resource_id", "created_at"),

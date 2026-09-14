@@ -167,6 +167,12 @@ async def _notify_each(
         except asyncio.CancelledError:
             if _host_is_cancelling():
                 raise
+            # A cross-loop dispatcher cancels this coroutine when the same
+            # shared budget expires.  Do not continue to later contributors
+            # after that cancellation; otherwise a starved observer can still
+            # run after the caller has already timed out.
+            if deadline is not None and loop.time() >= deadline:
+                return
             # The contributor raised it, so containing it keeps one broken
             # extension from skipping its successors — and, at the task-stop
             # site, from turning a run's cleanup into a deferred interrupt.

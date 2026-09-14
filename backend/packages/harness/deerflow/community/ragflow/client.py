@@ -134,15 +134,37 @@ class RAGFlowClient:
             raise RAGFlowProtocolError("RAGFlow returned no document ID.")
         return document_id
 
+    async def create_dataset(self, name: str, *, embedding_model: str | None = None) -> str:
+        body: dict[str, Any] = {"name": name}
+        if embedding_model:
+            body["embedding_model"] = embedding_model
+        payload = await self._request("POST", "/datasets", json=body)
+        data = payload.get("data")
+        dataset_id = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(dataset_id, str) or not dataset_id:
+            raise RAGFlowProtocolError("RAGFlow returned no dataset ID.")
+        return dataset_id
+
     async def parse_document(self, dataset_id: str, document_id: str) -> None:
-        await self._request("POST", f"/datasets/{dataset_id}/documents/{document_id}/parse")
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("document_id must not be empty")
+        await self._request(
+            "POST",
+            f"/datasets/{dataset_id}/chunks",
+            json={"document_ids": [document_id]},
+        )
 
     async def get_document_status(self, dataset_id: str, document_id: str) -> str:
-        payload = await self._request("GET", f"/datasets/{dataset_id}/documents/{document_id}")
+        payload = await self._request(
+            "GET",
+            f"/datasets/{dataset_id}/documents",
+            params={"id": document_id, "page": 1, "page_size": 1},
+        )
         data = payload.get("data")
-        if not isinstance(data, dict):
+        docs = data.get("docs") if isinstance(data, dict) else None
+        if not isinstance(docs, list) or len(docs) != 1 or not isinstance(docs[0], dict):
             raise RAGFlowProtocolError("RAGFlow returned an invalid document status.")
-        value = str(data.get("run") or data.get("status") or "").upper()
+        value = str(docs[0].get("run") or docs[0].get("status") or "").upper()
         if value in {"DONE", "READY", "SUCCESS", "3"}:
             return "ready"
         if value in {"FAIL", "FAILED", "ERROR", "4"}:
@@ -150,7 +172,13 @@ class RAGFlowClient:
         return "processing"
 
     async def delete_document(self, dataset_id: str, document_id: str) -> None:
-        await self._request("DELETE", f"/datasets/{dataset_id}/documents", params={"ids": document_id})
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("document_id must not be empty")
+        await self._request(
+            "DELETE",
+            f"/datasets/{dataset_id}/documents",
+            json={"ids": [document_id]},
+        )
 
     async def list_datasets(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
         """Resolve one dataset ID, or enumerate every page when no ID is given."""

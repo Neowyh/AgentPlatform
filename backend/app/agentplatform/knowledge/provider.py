@@ -22,6 +22,8 @@ class KnowledgeProviderError(Exception):
 
 
 class KnowledgeProvider(Protocol):
+    async def create_dataset(self, *, name: str, embedding_model: str | None = None) -> str: ...
+
     async def ingest(
         self,
         *,

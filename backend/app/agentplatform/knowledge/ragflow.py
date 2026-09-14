@@ -2,15 +2,46 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
 from deerflow.community.ragflow import tools as ragflow_tools
 from deerflow.community.ragflow.client import RAGFlowAPIError, RAGFlowClient, RAGFlowConnectionError, RAGFlowProtocolError
 
 from .provider import KnowledgeProviderError, ProviderIngestionResult
 
+logger = logging.getLogger(__name__)
+
+
+def _record_ingestion_metric(*, result: str, latency_ms: float, error_category: str | None = None) -> None:
+    fields: dict[str, object] = {
+        "operation": "knowledge_ingestion",
+        "result": result,
+        "latency_ms": round(latency_ms, 2),
+    }
+    if error_category is not None:
+        fields["error_category"] = error_category
+    logger.info("knowledge_metric %s", fields)
+
 
 class RAGFlowKnowledgeProvider:
     def __init__(self, client: RAGFlowClient) -> None:
         self.client = client
+
+    async def create_dataset(self, *, name: str, embedding_model: str | None = None) -> str:
+        try:
+            existing = [item for item in await self.client.list_datasets() if item.get("name") == name and isinstance(item.get("id"), str)]
+            if len(existing) == 1:
+                return str(existing[0]["id"])
+            if len(existing) > 1:
+                raise KnowledgeProviderError("invalid_response")
+            return await self.client.create_dataset(name, embedding_model=embedding_model)
+        except RAGFlowConnectionError as exc:
+            raise KnowledgeProviderError("unavailable") from exc
+        except RAGFlowProtocolError as exc:
+            raise KnowledgeProviderError("invalid_response") from exc
+        except RAGFlowAPIError as exc:
+            raise KnowledgeProviderError("index_failed") from exc
 
     async def ingest(
         self,
@@ -23,17 +54,26 @@ class RAGFlowKnowledgeProvider:
         rebuild: bool = False,
     ) -> ProviderIngestionResult:
         document_id = provider_document_id
+        started = time.monotonic()
         try:
             document_id = document_id or await self.client.upload_document(dataset_id, filename=filename, content=content, mime_type=mime_type)
             await self.client.parse_document(dataset_id, document_id)
-            return ProviderIngestionResult(document_id, "processing")
+            result = ProviderIngestionResult(document_id, "processing")
+            _record_ingestion_metric(result="accepted", latency_ms=(time.monotonic() - started) * 1000)
+            return result
         except RAGFlowConnectionError as exc:
+            _record_ingestion_metric(result="error", latency_ms=(time.monotonic() - started) * 1000, error_category="connection")
             raise KnowledgeProviderError("unavailable") from exc
         except RAGFlowProtocolError as exc:
+            _record_ingestion_metric(result="error", latency_ms=(time.monotonic() - started) * 1000, error_category="protocol")
             raise KnowledgeProviderError("invalid_response") from exc
         except RAGFlowAPIError as exc:
             code = "parse_failed" if "parse" in str(exc).lower() else "index_failed"
+            _record_ingestion_metric(result="error", latency_ms=(time.monotonic() - started) * 1000, error_category=code)
             raise KnowledgeProviderError(code, provider_document_id=document_id) from exc
+        except Exception:
+            _record_ingestion_metric(result="error", latency_ms=(time.monotonic() - started) * 1000, error_category="unexpected")
+            raise
 
     async def get_status(self, *, dataset_id: str, provider_document_id: str) -> str:
         try:
