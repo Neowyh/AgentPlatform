@@ -245,7 +245,13 @@ class LocalMCPService:
             self.supervisor.ensure_callable(capability)
         except MCPError as exc:
             return self._failure_execution(
-                capability, run_id, task_id, digest, exc, consent_decision=None
+                capability,
+                run_id,
+                task_id,
+                digest,
+                exc,
+                consent_decision=None,
+                message=self.supervisor.redactor_for(capability).redact(str(exc)),
             )
         granted = consent or self.consent.consume(capability, digest)
         decision = self.policy.authorize(capability, payload, consent=granted)
@@ -263,6 +269,7 @@ class LocalMCPService:
                 digest,
                 exc,
                 consent_decision="approved" if granted else None,
+                message=self.supervisor.redactor_for(capability).redact(str(exc)),
             )
         value = {
             "status": "failed" if result.is_error else "completed",
@@ -291,9 +298,14 @@ class LocalMCPService:
         exc: MCPError,
         *,
         consent_decision: str | None,
+        message: str | None = None,
     ) -> MCPExecution:
         status = "timed_out" if exc.code == "MCP_TIMEOUT" else "failed"
-        value = {"status": status, "error_code": exc.code, "message": str(exc)}
+        value = {
+            "status": status,
+            "error_code": exc.code,
+            "message": message if message is not None else str(exc),
+        }
         receipt = LocalExecutionReceipt(
             run_id=run_id,
             task_id=task_id,
@@ -432,6 +444,17 @@ class MCPSupervisor:
     def last_error(self, name: str) -> str | None:
         return self._record(name).last_error
 
+    def redactor_for(self, capability: str) -> SecretRedactor:
+        """Redactor over one server's resolved credentials; safe before start."""
+        try:
+            server, _ = split_capability(capability)
+            record = self._records[server]
+        except (MCPError, KeyError):
+            return SecretRedactor()
+        return SecretRedactor(
+            [*record.resolved_env.values(), *record.resolved_headers.values()]
+        )
+
     def capabilities(self) -> tuple[str, ...]:
         projected: list[str] = []
         for name in sorted(self._records):
@@ -464,15 +487,12 @@ class MCPSupervisor:
     ) -> MCPToolCallResult:
         record, tool_name = self.ensure_callable(capability)
         effective_timeout = timeout or record.spec.tool_timeout_seconds
-        redactor = SecretRedactor(
-            [*record.resolved_env.values(), *record.resolved_headers.values()]
-        )
         try:
             return _redact_result(
                 await call_tool(
                     record.connection, tool_name, dict(arguments), timeout=effective_timeout
                 ),
-                redactor,
+                self.redactor_for(capability),
             )
         except MCPError as exc:
             if exc.code == "SERVER_UNAVAILABLE" and record.spec.transport == "http":
@@ -634,15 +654,9 @@ def _redact_result(result: MCPToolCallResult, redactor: SecretRedactor) -> MCPTo
     """Scrub resolved credential values out of tool output before it travels."""
     if redactor.longest == 0:
         return result
-    content = tuple(
-        {key: _redact_value(item, redactor) for key, item in entry.items()}
-        for entry in result.content
-    )
+    content = tuple(_redact_value(entry, redactor) for entry in result.content)
     structured = (
-        {
-            key: _redact_value(item, redactor)
-            for key, item in result.structured_content.items()
-        }
+        _redact_value(result.structured_content, redactor)
         if result.structured_content is not None
         else None
     )

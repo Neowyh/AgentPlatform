@@ -19,18 +19,25 @@ class LocalTool:
     description: str
 
 
-def is_local_mcp_capability(name: str) -> bool:
-    """True for well-formed ``local.mcp.<server>.<tool>`` projection names."""
+def _split_mcp_capability(name: str) -> tuple[str, str] | None:
+    """Return ``(server, tool)`` for a well-formed projection name, else None."""
     if not isinstance(name, str) or not name.startswith(MCP_CAPABILITY_PREFIX):
-        return False
+        return None
     server, separator, tool = name[len(MCP_CAPABILITY_PREFIX) :].partition(".")
     if not separator or not server or not tool:
-        return False
-    return _MCP_SERVER_PATTERN.match(server) is not None and not any(character.isspace() for character in tool)
+        return None
+    if _MCP_SERVER_PATTERN.match(server) is None or any(character.isspace() for character in tool):
+        return None
+    return server, tool
+
+
+def is_local_mcp_capability(name: str) -> bool:
+    """True for well-formed ``local.mcp.<server>.<tool>`` projection names."""
+    return _split_mcp_capability(name) is not None
 
 
 def _mcp_tool(name: str) -> LocalTool:
-    server, _, tool = name[len(MCP_CAPABILITY_PREFIX) :].partition(".")
+    server, tool = _split_mcp_capability(name) or ("", "")
     return LocalTool(name, f"Call the {tool} tool on the local MCP server {server}.")
 
 
@@ -61,7 +68,7 @@ def assemble_local_tools(authorization: LocalAuthorization) -> tuple[LocalTool, 
     allows it, because the projection is drawn from the effective intersection.
     """
     static = tuple(tool for tool in LOCAL_TOOLS if authorization.allows(tool.name))
-    projected = tuple(_mcp_tool(name) for name in sorted(authorization.effective) if name.startswith(MCP_CAPABILITY_PREFIX))
+    projected = tuple(_mcp_tool(name) for name in sorted(authorization.effective) if is_local_mcp_capability(name))
     return static + projected
 
 

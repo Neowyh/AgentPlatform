@@ -24,6 +24,7 @@ from agentplatform_extension.local_runtime import (
     local_tool_names,
 )
 from agentplatform_extension.local_runtime.receipts import tool_receipt_from_local
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 GIT_STATUS = "local.mcp.git.status"
 FS_READ = "local.mcp.fs.read_file"
@@ -248,10 +249,75 @@ def test_run_snapshot_narrowing_covers_mcp_capabilities() -> None:
     from agentplatform_extension.local_runtime import RunAuthorizationSnapshot
 
     snapshot = RunAuthorizationSnapshot("run", "thread", "device", "policy-1", _authorization())
-    narrowed = LocalAuthorization(*(frozenset({GIT_STATUS}),) * 6, device_online=True)
+    narrowed = _authorization(GIT_STATUS)
     snapshot.validate(narrowed, device_id="device")
     with pytest.raises(PermissionError):
         snapshot.validate(_authorization(), device_id="other-device")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ("caller", "device", "policy", "workflow", "platform"))
+async def test_invocation_is_rejected_when_any_single_factor_denies(source: str) -> None:
+    full = _authorization()
+    denied = LocalAuthorization(
+        agent_capabilities=full.agent_capabilities - {GIT_STATUS} if source == "agent" else full.agent_capabilities,
+        caller_capabilities=full.caller_capabilities - {GIT_STATUS} if source == "caller" else full.caller_capabilities,
+        device_capabilities=full.device_capabilities - {GIT_STATUS} if source == "device" else full.device_capabilities,
+        local_policy_capabilities=full.local_policy_capabilities - {GIT_STATUS} if source == "policy" else full.local_policy_capabilities,
+        workflow_capabilities=full.workflow_capabilities - {GIT_STATUS} if source == "workflow" else full.workflow_capabilities,
+        platform_capabilities=full.platform_capabilities - {GIT_STATUS} if source == "platform" else full.platform_capabilities,
+        device_online=True,
+    )
+    route = RunDeviceRouter(DeviceRoute("device-secret"))
+
+    async def sender(*args):
+        raise AssertionError("denied MCP capability was routed")
+
+    executor = LocalToolExecutor(denied, route, sender)
+    with pytest.raises(PermissionError):
+        await executor.invoke(GIT_STATUS, {})
+    assert GIT_STATUS not in local_tool_names(denied)
+
+
+def test_broker_rejects_dispatch_after_the_server_is_withdrawn() -> None:
+    # A disabled or crashed server makes the device withdraw the capability via
+    # CAPABILITY_UPDATE; the broker must then refuse the dispatch outright.
+    import asyncio
+
+    from app.device_control.broker import DeviceBroker, DeviceConnection
+    from app.device_control.protocol import MessageType, sign_envelope
+
+    class FakeWebSocket:
+        async def send_text(self, data: str) -> None:
+            return None
+
+        async def close(self, code: int = 1000, reason: str = "") -> None:
+            return None
+
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-1", "session-1", "token", device_key.public_key(), FakeWebSocket())
+
+    async def scenario() -> None:
+        await broker.attach(connection)
+        connection.capabilities = frozenset({GIT_STATUS})
+        dispatched = await broker.send_task(device_id="device-1", operation=GIT_STATUS, path=None, run_id="run", tool_call_id="tool")
+        assert dispatched.status.value == "sent"
+
+        withdrawal = sign_envelope(
+            private_key=device_key,
+            message_type=MessageType.CAPABILITY_UPDATE,
+            device_id="device-1",
+            session_id="session-1",
+            payload={"capabilities": ["local.python"]},
+        )
+        await broker.receive(connection, withdrawal)
+
+        refused = await broker.send_task(device_id="device-1", operation=GIT_STATUS, path=None, run_id="run-2", tool_call_id="tool-2")
+        assert refused.status.value == "failed"
+        assert refused.error_code == "CAPABILITY_UNAVAILABLE"
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.asyncio

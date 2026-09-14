@@ -301,6 +301,7 @@ class SecretRedactor:
         self._pattern = (
             re.compile("|".join(re.escape(value) for value in known)) if known else None
         )
+        # known is sorted by length descending, so known[0] is the longest.
         self.longest = len(known[0]) if known else 0
 
     def redact(self, text: str) -> str:

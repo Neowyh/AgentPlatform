@@ -147,6 +147,38 @@ def test_missing_reference_fails_closed_without_plaintext_fallback() -> None:
     asyncio.run(execute_failure())
 
 
+def test_failure_messages_echoing_the_secret_are_scrubbed() -> None:
+    store = InMemorySecretStore()
+    store.set("api.company", TOKEN)
+
+    class FailingConnection(RecordingConnection):
+        async def request(self, method: str, params: Any, *, timeout: float) -> Any:
+            if method == "tools/call":
+                raise MCPError("SERVER_UNAVAILABLE", f"endpoint rejected token {TOKEN}")
+            return await super().request(method, params, timeout=timeout)
+
+    def factory(spec, *, env, headers, on_exit, on_tools_changed):
+        return FailingConnection()
+
+    supervisor = MCPSupervisor(
+        [_spec()], connection_factory=factory, secret_resolver=SecretResolver(store).name_lookup()
+    )
+
+    async def scenario() -> None:
+        await supervisor.start_all()
+        service = LocalMCPService(
+            supervisor,
+            policy=LocalPolicy(always_allow_capabilities=frozenset({CAPABILITY})),
+        )
+        execution = await service.execute(CAPABILITY, {"arguments": {}})
+        assert execution.value["status"] == "failed"
+        assert execution.value["error_code"] == "SERVER_UNAVAILABLE"
+        assert TOKEN not in execution.value["message"]
+        assert "[REDACTED]" in execution.value["message"]
+
+    asyncio.run(scenario())
+
+
 def test_tool_output_echoing_the_secret_is_scrubbed() -> None:
     store = InMemorySecretStore()
     store.set("api.company", TOKEN)
