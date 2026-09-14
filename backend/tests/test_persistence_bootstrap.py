@@ -49,7 +49,7 @@ from deerflow.persistence.migrations._helpers import _normalize_default
 asyncio_test = pytest.mark.asyncio
 
 
-HEAD = "20260913_knowledge_documents"
+HEAD = "20260914_visibility_knowledge_base"
 BASELINE = "0001_baseline"
 
 

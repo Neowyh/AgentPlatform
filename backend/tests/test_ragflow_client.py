@@ -167,6 +167,56 @@ async def test_retrieve_rejects_empty_dataset_ids_before_request() -> None:
 
 
 @pytest.mark.anyio
+async def test_parse_uses_chunks_endpoint_with_document_ids() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url == httpx.URL("http://ragflow.test/api/v1/datasets/dataset-1/chunks")
+        assert json.loads(request.content) == {"document_ids": ["document-1"]}
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+    await client.parse_document("dataset-1", "document-1")
+
+
+@pytest.mark.anyio
+async def test_delete_sends_nonempty_ids_json_array() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url == httpx.URL("http://ragflow.test/api/v1/datasets/dataset-1/documents")
+        assert json.loads(request.content) == {"ids": ["document-1"]}
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+    await client.delete_document("dataset-1", "document-1")
+
+    with pytest.raises(ValueError, match="document_id must not be empty"):
+        await client.delete_document("dataset-1", "")
+
+
+@pytest.mark.anyio
+async def test_document_status_uses_id_filtered_documents_list() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url == httpx.URL("http://ragflow.test/api/v1/datasets/dataset-1/documents?id=document-1&page=1&page_size=1")
+        return httpx.Response(200, json={"code": 0, "data": {"docs": [{"id": "document-1", "run": "DONE"}]}})
+
+    client = RAGFlowClient(
+        base_url="http://ragflow.test",
+        api_key="ragflow-secret",
+        transport=httpx.MockTransport(handler),
+    )
+    assert await client.get_document_status("dataset-1", "document-1") == "ready"
+
+
+@pytest.mark.anyio
 async def test_nonzero_api_code_is_normalized_and_redacts_api_key() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
