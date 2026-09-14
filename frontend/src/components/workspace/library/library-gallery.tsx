@@ -23,7 +23,17 @@ export function LibraryGallery() {
           <h1 className="type-page-title font-bold">{t.library.title}</h1>
           <p className="text-muted-foreground">{t.library.description}</p>
         </div>
-        <button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2">
+        <button
+          type="button"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2"
+          onClick={() =>
+            document
+              .querySelector<HTMLInputElement>(
+                'input[data-knowledge-upload="true"]',
+              )
+              ?.click()
+          }
+        >
           {t.library.upload}
         </button>
       </div>

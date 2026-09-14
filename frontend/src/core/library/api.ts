@@ -9,6 +9,24 @@ export interface KnowledgeBase {
   display_name: string;
   visibility: "private" | "department" | "public";
   can_modify: boolean;
+  knowledge_initialization_status?: "initializing" | "ready" | "failed";
+  knowledge_initialization_error?: string | null;
+  knowledge_document_count?: number;
+}
+
+export async function initializeKnowledgeBase(
+  resourceId: string,
+): Promise<{ resource_id: string; status: string; error?: string | null }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge/initialize`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to initialize KnowledgeBase");
+  return (await res.json()) as {
+    resource_id: string;
+    status: string;
+    error?: string | null;
+  };
 }
 
 export interface KnowledgeDocument {
@@ -124,5 +142,22 @@ export async function deleteKnowledgeDocument(
     { method: "DELETE" },
   );
   if (!res.ok) await extractError(res, "Failed to delete document");
+  return (await res.json()) as KnowledgeDocument;
+}
+
+export async function editKnowledgeDocument(
+  resourceId: string,
+  documentId: string,
+  update: { title?: string; metadata?: Record<string, unknown> },
+): Promise<KnowledgeDocument> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/documents/${encodeURIComponent(documentId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to edit document");
   return (await res.json()) as KnowledgeDocument;
 }

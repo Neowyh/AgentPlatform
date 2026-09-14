@@ -48,7 +48,11 @@ export default defineConfig({
     env: {
       SKIP_ENV_VALIDATION: "1",
       IDEER_INTERNAL_GATEWAY_BASE_URL: gatewayUrl,
+      // Next rewrites read the DeerFlow-prefixed name at build time while
+      // server-side auth helpers use the IDEER-prefixed name.
+      DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: gatewayUrl,
       IDEER_TRUSTED_ORIGINS: baseURL,
+      DEER_FLOW_TRUSTED_ORIGINS: baseURL,
       IDEER_NEXT_DIST_DIR: `.next-e2e-${runId}`,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",

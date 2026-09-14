@@ -3,8 +3,27 @@ import { useQuery } from "@tanstack/react-query";
 import {
   fetchBrowserControlEnabled,
   fetchMcpTasksEnabled,
+  fetchKnowledgeCapability,
   fetchSubagentBatchesCapability,
 } from "./api";
+
+export function useKnowledgeCapability() {
+  const { data, isPending, error } = useQuery({
+    queryKey: ["features", "knowledge"],
+    queryFn: fetchKnowledgeCapability,
+    staleTime: 5000,
+    retry: false,
+  });
+  return {
+    enabled: data?.enabled ?? false,
+    providerAvailable: data?.providerAvailable ?? false,
+    workerRunning: data?.workerRunning ?? false,
+    maxFileSize: data?.maxFileSize ?? 0,
+    supportedExtensions: data?.supportedExtensions ?? [],
+    isLoading: isPending,
+    error,
+  };
+}
 
 export function useBrowserControlEnabled() {
   const { data, isPending } = useQuery({
