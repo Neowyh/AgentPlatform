@@ -134,7 +134,20 @@ class RAGFlowClient:
             raise RAGFlowProtocolError("RAGFlow returned no document ID.")
         return document_id
 
+    async def create_dataset(self, name: str, *, embedding_model: str | None = None) -> str:
+        body: dict[str, Any] = {"name": name}
+        if embedding_model:
+            body["embedding_model"] = embedding_model
+        payload = await self._request("POST", "/datasets", json=body)
+        data = payload.get("data")
+        dataset_id = data.get("id") if isinstance(data, dict) else None
+        if not isinstance(dataset_id, str) or not dataset_id:
+            raise RAGFlowProtocolError("RAGFlow returned no dataset ID.")
+        return dataset_id
+
     async def parse_document(self, dataset_id: str, document_id: str) -> None:
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("document_id must not be empty")
         # RAGFlow exposes parsing only as the batch endpoint; single-document
         # parse paths 404 on current RAGFlow versions (found by real-provider
         # acceptance, M4 ticket 06).
@@ -156,6 +169,8 @@ class RAGFlowClient:
         raise RAGFlowProtocolError("RAGFlow returned no matching document.")
 
     async def delete_document(self, dataset_id: str, document_id: str) -> None:
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("document_id must not be empty")
         # RAGFlow v0.27+ expects a JSON body on this DELETE endpoint; the
         # legacy `ids` query-parameter form is rejected (real-provider
         # acceptance, M4 ticket 06).
@@ -208,15 +223,6 @@ class RAGFlowClient:
                 return datasets
 
         raise RAGFlowProtocolError(f"RAGFlow dataset listing exceeded {_MAX_DATASET_PAGES} pages.")
-
-    async def create_dataset(self, *, name: str) -> str:
-        """Create an empty dataset and return its provider ID."""
-        payload = await self._request("POST", "/datasets", json={"name": name})
-        data = payload.get("data")
-        dataset_id = data.get("id") if isinstance(data, dict) else None
-        if not isinstance(dataset_id, str) or not dataset_id:
-            raise RAGFlowProtocolError("RAGFlow returned no dataset ID.")
-        return dataset_id
 
     async def list_dataset_documents(self, dataset_id: str) -> list[dict[str, Any]]:
         """Enumerate every document page of one dataset."""

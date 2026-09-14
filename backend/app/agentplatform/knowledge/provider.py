@@ -22,6 +22,8 @@ class KnowledgeProviderError(Exception):
 
 
 class KnowledgeProvider(Protocol):
+    async def create_dataset(self, *, name: str, embedding_model: str | None = None) -> str: ...
+
     async def ingest(
         self,
         *,
@@ -36,8 +38,6 @@ class KnowledgeProvider(Protocol):
     async def get_status(self, *, dataset_id: str, provider_document_id: str) -> str: ...
 
     async def delete_document(self, *, dataset_id: str, provider_document_id: str) -> None: ...
-
-    async def create_dataset(self, *, name: str) -> str: ...
 
     async def list_dataset_documents(self, *, dataset_id: str) -> list[dict]: ...
 

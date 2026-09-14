@@ -18,7 +18,10 @@ import { mockLangGraphAPI, type MockAPIOptions } from "../utils/mock-api";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3001";
+const BASE_URL =
+  process.env.BASE_URL ??
+  process.env.PLAYWRIGHT_BASE_URL ??
+  "http://localhost:3000";
 const SCREENSHOT_DIR =
   process.env.SCREENSHOT_DIR ??
   path.resolve(__dirname, "../../../playwright-artifacts/qa/screenshots");

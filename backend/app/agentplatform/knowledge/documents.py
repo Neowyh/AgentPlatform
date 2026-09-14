@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import mimetypes
 import os
 import uuid
@@ -12,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agentplatform.knowledge.models import KnowledgeDocument
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument
 from app.agentplatform.knowledge.provider import KnowledgeProvider, KnowledgeProviderError, stable_provider_error
 from app.agentplatform.resource_models import Resource
 from app.agentplatform.resources.service import ResourceActor, ResourceNotFound, ResourceService
@@ -22,6 +23,8 @@ from deerflow.uploads.manager import normalize_filename
 
 SUPPORTED_EXTENSIONS = {".csv", ".doc", ".docx", ".json", ".md", ".pdf", ".ppt", ".pptx", ".txt", ".xls", ".xlsx"}
 DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024
+MAX_TITLE_LENGTH = 255
+MAX_METADATA_BYTES = 16 * 1024
 
 
 class DocumentValidationError(ValueError):
@@ -58,7 +61,8 @@ def _document_payload(document: KnowledgeDocument, *, can_modify: bool | None = 
     payload: dict[str, object] = {
         "id": document.id,
         "resource_id": document.resource_id,
-        "name": document.original_filename,
+        "name": document.title or document.original_filename,
+        "original_filename": document.original_filename,
         "size": document.size_bytes,
         "mime_type": document.mime_type,
         "content_hash": document.content_hash,
@@ -82,6 +86,25 @@ class KnowledgeDocumentService:
         self.resource_service = ResourceService(session, actor)
         self.provider = provider
 
+    async def request_initialization(self, resource_id: str) -> dict[str, object]:
+        resource = await self._knowledge_base(resource_id, modify=True)
+        binding = await self.session.get(KnowledgeBase, resource.id)
+        if binding is None:
+            raise ResourceNotFound(f"KnowledgeBase binding {resource_id} not found")
+        if binding.provider_dataset_id:
+            binding.initialization_status = "ready"
+        elif binding.initialization_status != "initializing":
+            binding.initialization_status = "initializing"
+            binding.initialization_error = None
+            binding.initialization_step = "pending"
+            binding.initialization_next_attempt_at = None
+        await self.session.flush()
+        return {
+            "resource_id": resource.id,
+            "status": binding.initialization_status,
+            "error": binding.initialization_error,
+        }
+
     async def _knowledge_base(self, resource_id: str, *, modify: bool = False) -> Resource:
         resource = await self.resource_service.get_visible(resource_id)
         if resource.type != "knowledge_base":
@@ -92,10 +115,15 @@ class KnowledgeDocumentService:
 
     async def list_documents(self, resource_id: str) -> list[dict[str, object]]:
         resource = await self._knowledge_base(resource_id)
-        rows = await self.session.execute(select(KnowledgeDocument).where(KnowledgeDocument.resource_id == resource_id).order_by(KnowledgeDocument.created_at, KnowledgeDocument.id))
+        rows = await self.session.execute(
+            select(KnowledgeDocument)
+            .where(
+                KnowledgeDocument.resource_id == resource_id,
+                KnowledgeDocument.status != "deleted",
+            )
+            .order_by(KnowledgeDocument.created_at, KnowledgeDocument.id)
+        )
         documents = list(rows.scalars())
-        for document in documents:
-            await self._refresh(document)
         can_modify = resource.owner_id == self.resource_service.actor.user_id
         return [_document_payload(item, can_modify=can_modify) for item in documents]
 
@@ -145,6 +173,7 @@ class KnowledgeDocumentService:
                 select(KnowledgeDocument).where(
                     KnowledgeDocument.resource_id == resource_id,
                     KnowledgeDocument.content_hash == content_hash,
+                    KnowledgeDocument.status != "deleted",
                 )
             )
             if duplicate is not None:
@@ -199,7 +228,8 @@ class KnowledgeDocumentService:
                 rebuild=rebuild,
             )
             document.provider_document_id = result.provider_document_id or document.provider_document_id
-            document.status = result.status if result.status in {"processing", "ready"} else "ready"
+            # Never promote an unrecognized provider state to a searchable READY state.
+            document.status = result.status if result.status in {"processing", "ready"} else "processing"
         except Exception as exc:  # provider boundary: persist a recoverable state
             provider_document_id = getattr(exc, "provider_document_id", None)
             if isinstance(provider_document_id, str) and provider_document_id:
@@ -211,6 +241,26 @@ class KnowledgeDocumentService:
 
     async def retry(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
         return await self.process(document_id, resource_id=resource_id)
+
+    async def request_retry(self, document_id: str, *, resource_id: str | None = None, rebuild: bool = False) -> dict[str, object]:
+        document = await self._document(document_id, resource_id=resource_id, modify=True)
+        if document.status == "deleted":
+            raise ResourceNotFound(f"Knowledge document {document_id} not found")
+        document.status = "rebuild_requested" if rebuild else "uploaded"
+        document.failure_code = None
+        document.failure_message = None
+        await self.session.flush()
+        return _document_payload(document)
+
+    async def request_delete(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
+        document = await self._document(document_id, resource_id=resource_id, modify=True)
+        if document.status == "deleted":
+            return _document_payload(document)
+        document.status = "deleting"
+        document.failure_code = None
+        document.failure_message = None
+        await self.session.flush()
+        return _document_payload(document)
 
     async def _refresh(self, document: KnowledgeDocument) -> None:
         if self.provider is None or document.status != "processing" or not document.provider_document_id:
@@ -235,6 +285,13 @@ class KnowledgeDocumentService:
             document.failure_code, document.failure_message = stable_provider_error(exc)
             document.status = "failed"
         await self.session.flush()
+
+    async def sync_status(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
+        """Reconcile a provider-backed document without starting ingestion."""
+        document = await self._document(document_id, resource_id=resource_id, modify=False)
+        await self._refresh(document)
+        await self.session.flush()
+        return _document_payload(document)
 
     async def rebuild_index(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
         return await self.process(document_id, resource_id=resource_id, rebuild=True)
@@ -262,6 +319,42 @@ class KnowledgeDocumentService:
         except Exception as exc:  # provider/storage boundary: retain a recovery record
             document.status = "delete_failed"
             document.failure_code, document.failure_message = stable_provider_error(exc)
+        await self.session.flush()
+        return _document_payload(document)
+
+    async def get_document(self, document_id: str, *, resource_id: str | None = None) -> dict[str, object]:
+        document = await self._document(document_id, resource_id=resource_id, modify=False)
+        if document.status == "deleted":
+            raise ResourceNotFound(f"Knowledge document {document_id} not found")
+        resource = await self._knowledge_base(document.resource_id)
+        return _document_payload(document, can_modify=resource.owner_id == self.resource_service.actor.user_id)
+
+    async def update_document(
+        self,
+        document_id: str,
+        *,
+        resource_id: str | None = None,
+        title: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        document = await self._document(document_id, resource_id=resource_id, modify=True)
+        if title is not None:
+            title = title.strip()
+            if not title or len(title) > MAX_TITLE_LENGTH:
+                raise DocumentValidationError("Title must be between 1 and 255 characters")
+            document.title = title
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise DocumentValidationError("Metadata must be a JSON object")
+            if any(str(key).startswith("_") for key in metadata):
+                raise DocumentValidationError("Metadata contains a reserved field")
+            try:
+                encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+            except (TypeError, ValueError) as exc:
+                raise DocumentValidationError("Metadata must be JSON serializable") from exc
+            if len(encoded.encode("utf-8")) > MAX_METADATA_BYTES:
+                raise DocumentValidationError("Metadata exceeds the maximum size")
+            document.metadata_json = metadata
         await self.session.flush()
         return _document_payload(document)
 

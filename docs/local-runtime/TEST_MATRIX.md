@@ -51,3 +51,8 @@ The implementation lane is the backend standard lane plus the local-runtime
 tests. Before handoff, run `bash scripts/run-test-lane.sh pr-standard`; this
 ticket changes authentication, persistence, and a new control-plane boundary.
 The protected high-risk path should select Real E2E in CI.
+
+本地直接运行 Local Runtime 测试时，工作目录必须是 `local-runtime/`，并显式加入
+模块路径：`cd local-runtime && PYTHONPATH=. python3 -m pytest tests -q`。从仓库根目录
+调用隔离环境的 pytest 会因为未安装 pytest 或无法导入 `core` 而产生误报；这属于
+测试入口问题，不代表 Local Runtime 实现失败。

@@ -75,6 +75,9 @@ class FakeProvider:
         if self.fail:
             raise KnowledgeProviderError("unavailable", "internal provider detail")
 
+    async def get_status(self, **kwargs):
+        return self.status
+
 
 @pytest.mark.asyncio
 async def test_upload_persists_hash_metadata_and_isolated_original(session, tmp_path, monkeypatch) -> None:
@@ -107,6 +110,46 @@ async def test_upload_persists_hash_metadata_and_isolated_original(session, tmp_
     await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.id == document["id"]))
     await session.rollback()
     assert storage_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_initialization_request_reuses_in_flight_intent(session) -> None:
+    from app.agentplatform.knowledge.models import KnowledgeBase
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(
+        resource_type="knowledge_base",
+        slug="init-idempotent",
+        display_name="Init idempotent",
+        storage_kind="database",
+    )
+    await session.commit()
+    service = KnowledgeDocumentService(session, _actor())
+
+    first = await service.request_initialization(kb.id)
+    second = await service.request_initialization(kb.id)
+    binding = await session.get(KnowledgeBase, kb.id)
+
+    assert first == second == {"resource_id": kb.id, "status": "initializing", "error": None}
+    assert binding is not None
+    assert binding.initialization_attempt == 0
+
+
+@pytest.mark.asyncio
+async def test_deleted_document_does_not_block_same_content_reupload(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    service = KnowledgeDocumentService(session, _actor(), FakeProvider(status="processing"))
+    first = await service.upload(kb.id, FakeUpload("guide.txt", b"same"))
+    await session.commit()
+    deleted = await KnowledgeDocumentService(session, _actor(), FakeProvider()).delete(first["id"], resource_id=kb.id)
+    assert deleted["status"] == "deleted"
+    await session.commit()
+    second = await service.upload(kb.id, FakeUpload("guide.txt", b"same"))
+    assert second["id"] != first["id"]
 
 
 @pytest.mark.asyncio
@@ -240,6 +283,59 @@ async def test_reprocessing_a_processing_document_does_not_start_another_provide
     assert first["status"] == "processing"
     assert second["status"] == "processing"
     assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_ingestion_status_stays_processing(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await ResourceService(session, _actor()).bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    document = await KnowledgeDocumentService(session, _actor()).upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+
+    result = await KnowledgeDocumentService(session, _actor(), FakeProvider(status="mystery")).process(document["id"], resource_id=kb.id)
+
+    assert result["status"] == "processing"
+
+
+@pytest.mark.asyncio
+async def test_processing_document_status_can_be_reconciled(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await ResourceService(session, _actor()).bind_knowledge_dataset(kb.id, provider_dataset_id="dataset-1")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    service = KnowledgeDocumentService(session, _actor(), FakeProvider(status="processing"))
+    document = await service.upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+    await service.process(document["id"], resource_id=kb.id)
+    service.provider.status = "ready"
+
+    synced = await service.sync_status(document["id"], resource_id=kb.id)
+
+    assert synced["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_owner_can_edit_title_and_metadata_but_reserved_metadata_is_rejected(session, tmp_path, monkeypatch) -> None:
+    from app.agentplatform.resources.service import ResourceService
+
+    kb = await ResourceService(session, _actor()).create_resource(resource_type="knowledge_base", slug="docs", display_name="Docs", storage_kind="database")
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.documents.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    service = KnowledgeDocumentService(session, _actor())
+    document = await service.upload(kb.id, FakeUpload("guide.txt", b"hello"))
+    await session.commit()
+
+    edited = await service.update_document(document["id"], resource_id=kb.id, title="Guide", metadata={"topic": "knowledge"})
+    assert edited["name"] == "Guide"
+    assert edited["metadata"] == {"topic": "knowledge"}
+    with pytest.raises(DocumentValidationError, match="reserved"):
+        await service.update_document(document["id"], resource_id=kb.id, metadata={"_provider": "x"})
 
 
 @pytest.mark.asyncio

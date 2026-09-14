@@ -11,6 +11,21 @@ export interface FeaturesResponse {
     worker_running?: boolean;
     max_running?: number;
   };
+  knowledge?: {
+    enabled: boolean;
+    provider_available: boolean;
+    worker_running: boolean;
+    max_file_size: number;
+    supported_extensions: string[];
+  };
+}
+
+export interface KnowledgeCapability {
+  enabled: boolean;
+  providerAvailable: boolean;
+  workerRunning: boolean;
+  maxFileSize: number;
+  supportedExtensions: string[];
 }
 
 export interface SubagentBatchesCapability {
@@ -29,6 +44,17 @@ export async function fetchFeatures(): Promise<FeaturesResponse> {
 
 export async function fetchAgentsApiEnabled(): Promise<boolean> {
   return (await fetchFeatures()).agents_api.enabled;
+}
+
+export async function fetchKnowledgeCapability(): Promise<KnowledgeCapability> {
+  const feature = (await fetchFeatures()).knowledge;
+  return {
+    enabled: feature?.enabled ?? false,
+    providerAvailable: feature?.provider_available ?? false,
+    workerRunning: feature?.worker_running ?? false,
+    maxFileSize: feature?.max_file_size ?? 0,
+    supportedExtensions: feature?.supported_extensions ?? [],
+  };
 }
 
 export async function fetchBrowserControlEnabled(): Promise<boolean> {

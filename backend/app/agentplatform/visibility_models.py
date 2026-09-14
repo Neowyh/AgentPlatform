@@ -43,7 +43,7 @@ class VisibilityApplication(Base):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (
-        CheckConstraint("resource_type IN ('tool', 'skill', 'workflow', 'agent')", name="ck_visibility_app_resource_type"),
+        CheckConstraint("resource_type IN ('tool', 'skill', 'workflow', 'agent', 'knowledge_base')", name="ck_visibility_app_resource_type"),
         CheckConstraint("version >= 1", name="ck_visibility_app_version_positive"),
         CheckConstraint("requested_version IS NULL OR requested_version >= 1", name="ck_visibility_app_requested_version"),
         Index("ix_visibility_app_status", "status"),

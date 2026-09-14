@@ -475,6 +475,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
+        from app.agentplatform.knowledge.worker import KnowledgeWorker
+
+        knowledge_worker = KnowledgeWorker()
+        knowledge_worker.start()
+        app.state.knowledge_worker_available = True
+        try:
+            from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
+
+            app.state.knowledge_provider_available = configured_ragflow_provider() is not None
+        except Exception:
+            app.state.knowledge_provider_available = False
 
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
@@ -542,6 +553,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
         except Exception:
             logger.exception("Failed to stop channel service")
+        await knowledge_worker.stop()
+        app.state.knowledge_worker_available = False
 
     logger.info("Shutting down API Gateway")
 

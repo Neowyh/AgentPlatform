@@ -45,6 +45,14 @@ class SubagentBatchesFeature(BaseModel):
     max_running: int = Field(..., description="Native subagent execution slots in this Gateway process")
 
 
+class KnowledgeFeature(BaseModel):
+    enabled: bool = True
+    provider_available: bool
+    worker_running: bool
+    max_file_size: int
+    supported_extensions: list[str]
+
+
 class FeaturesResponse(BaseModel):
     """Frontend-facing feature availability flags."""
 
@@ -52,11 +60,13 @@ class FeaturesResponse(BaseModel):
     browser_control: BrowserControlFeature
     mcp_tasks: McpTasksFeature
     subagent_batches: SubagentBatchesFeature
+    knowledge: KnowledgeFeature | None = None
 
 
 @router.get(
     "/features",
     response_model=FeaturesResponse,
+    response_model_exclude_none=True,
     summary="List Feature Flags",
     description="Report which optional features are available, so the frontend can gate UI before issuing requests.",
 )
@@ -64,6 +74,14 @@ async def list_features(request: Request, config: AppConfig = Depends(get_config
     """Return availability of optional frontend features."""
     browser = browser_capability(config)
     subagent_batch_worker_running = bool(getattr(request.app.state, "subagent_batches_available", False))
+    uploads = getattr(config, "uploads", None)
+    configured_limit = getattr(uploads, "max_file_size", None)
+    if isinstance(uploads, dict):
+        configured_limit = uploads.get("max_file_size", configured_limit)
+    try:
+        max_file_size = int(configured_limit) if configured_limit else 50 * 1024 * 1024
+    except (TypeError, ValueError):
+        max_file_size = 50 * 1024 * 1024
     return FeaturesResponse(
         agents_api=AgentsApiFeature(enabled=config.agents_api.enabled),
         browser_control=BrowserControlFeature(enabled=browser.available),
@@ -79,5 +97,15 @@ async def list_features(request: Request, config: AppConfig = Depends(get_config
             repository_available=getattr(request.app.state, "subagent_batch_repo", None) is not None,
             worker_running=subagent_batch_worker_running,
             max_running=configured_subagent_max_running(),
+        ),
+        knowledge=(
+            KnowledgeFeature(
+                provider_available=bool(getattr(request.app.state, "knowledge_provider_available", False)),
+                worker_running=bool(getattr(request.app.state, "knowledge_worker_available", False)),
+                max_file_size=max_file_size,
+                supported_extensions=["csv", "doc", "docx", "json", "md", "pdf", "ppt", "pptx", "txt", "xls", "xlsx"],
+            )
+            if hasattr(request.app.state, "knowledge_worker_available")
+            else None
         ),
     )

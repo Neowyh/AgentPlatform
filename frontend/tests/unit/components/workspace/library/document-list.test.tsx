@@ -27,6 +27,9 @@ vi.mock("@/core/library", () => ({
     documents: mockDocuments,
     isLoading: false,
   }),
+  useKnowledgeBases: () => ({
+    knowledgeBases: [{ id: "kb-1", can_modify: true }],
+  }),
   useUploadKnowledgeDocument: () => ({
     isPending: false,
     error: null,
@@ -38,6 +41,19 @@ vi.mock("@/core/library", () => ({
     isPending: false,
     error: null,
     mutateAsync: deleteDocument,
+  }),
+  useEditKnowledgeDocument: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+}));
+
+vi.mock("@/core/features", () => ({
+  useKnowledgeCapability: () => ({
+    enabled: true,
+    providerAvailable: true,
+    workerRunning: true,
+    isLoading: false,
   }),
 }));
 

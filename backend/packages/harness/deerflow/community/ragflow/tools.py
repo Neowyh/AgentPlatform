@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +24,28 @@ _warned: set[str] = set()
 _RAGFLOW_UUID_PATTERN = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{32}|[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})(?![0-9A-Fa-f])")
 _MAX_PARALLEL_RETRIEVAL_GROUPS = 4
 _NO_RELEVANT_CONTENT = "No relevant content found."
+
+
+def _record_retrieval_metric(*, result: str, latency_ms: float, error_category: str | None = None) -> None:
+    """Emit low-cardinality retrieval telemetry without query or identity data."""
+    fields: dict[str, object] = {
+        "operation": "knowledge_retrieval",
+        "result": result,
+        "latency_ms": round(latency_ms, 2),
+    }
+    if error_category is not None:
+        fields["error_category"] = error_category
+    logger.info("knowledge_metric %s", fields)
+
+
+def _retrieval_error_category(exc: Exception) -> str:
+    if isinstance(exc, RAGFlowConnectionError):
+        return "connection"
+    if isinstance(exc, RAGFlowProtocolError):
+        return "protocol"
+    if isinstance(exc, RAGFlowAPIError):
+        return "provider_api"
+    return "unexpected"
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,15 +378,19 @@ async def knowledge_search(query: str) -> str:
         return error or "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
 
     client = _build_client(settings)
+    started = time.monotonic()
     try:
         datasets, resolution_error = await _resolve_datasets(client, settings)
         if resolution_error is not None:
+            _record_retrieval_metric(result="error", latency_ms=(time.monotonic() - started) * 1000, error_category="scope_resolution")
             return resolution_error
         if not datasets:  # Defensive; both resolution paths return a non-empty scope.
+            _record_retrieval_metric(result="zero_hit", latency_ms=(time.monotonic() - started) * 1000)
             return "Error: No RAGFlow datasets could be resolved; check knowledge_search in config.yaml."
 
         groups = _group_searchable_datasets(datasets)
         if not groups:
+            _record_retrieval_metric(result="zero_hit", latency_ms=(time.monotonic() - started) * 1000)
             return _NO_RELEVANT_CONTENT
 
         result = await _retrieve_dataset_groups(client, settings, query, groups)
@@ -376,8 +403,18 @@ async def knowledge_search(query: str) -> str:
         )
         # API-key redaction remains mandatory on success. UUID redaction is
         # deliberately error-only so valid checksums and trace IDs survive.
-        return _redact_api_key(formatted, _api_key(settings))
+        output = _redact_api_key(formatted, _api_key(settings))
+        _record_retrieval_metric(
+            result="zero_hit" if output == _NO_RELEVANT_CONTENT else "success",
+            latency_ms=(time.monotonic() - started) * 1000,
+        )
+        return output
     except Exception as exc:
+        _record_retrieval_metric(
+            result="error",
+            latency_ms=(time.monotonic() - started) * 1000,
+            error_category=_retrieval_error_category(exc),
+        )
         return _tool_error(exc, settings)
 
 

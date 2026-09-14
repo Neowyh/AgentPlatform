@@ -55,6 +55,16 @@ visual、a11y 和 real E2E 必须由各自专项 lane 显式选择。
   Operation not permitted`，将该次结果标为环境受限，保留错误与命令，并在
   允许本地 socket 的环境重新运行同一 lane。不要修改产品代码或测试来绕过
   该环境限制。
+- `frontend-visual` 的 Chromium 预检若报告 `Target page, context or
+  browser has been closed`，应检查浏览器 stderr 是否包含
+  `sandbox_host_linux.cc ... Operation not permitted`。这表示执行沙箱阻止
+  了 Chromium host process；即使追加 `--no-sandbox` 也可能失败。应改用
+  允许 Chromium 子进程和 loopback bind 的宿主机、CI runner 或 Playwright
+  容器安全配置，并复跑同一预检命令：
+  `python3 scripts/test_preflight.py frontend-visual`。
+- 只有同时看到 `Chromium launch: ready`、`local socket bind` 和
+  `lane=frontend-visual status=ready` 才能开始视觉测试；环境探针失败时
+  不得更新截图基线。
 - 不得将挂起、超时或尚未输出最终汇总的测试称为通过。交接时记录命令、已
   运行时间和最后一个可见测试；状态为 `incomplete`。
 

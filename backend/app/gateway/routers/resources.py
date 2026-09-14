@@ -245,6 +245,11 @@ class KnowledgeDraftRequest(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class KnowledgeDocumentUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    metadata: dict[str, Any] | None = None
+
+
 def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
     """Remove data written before a Run was persisted."""
     shutil.rmtree(get_paths().thread_dir(run_id, user_id=user_id) / "user-data", ignore_errors=True)
@@ -548,6 +553,27 @@ async def list_resources(
         favorites = await _favorite_ids(session, str(current_user.id), [item.id for item in page.items])
         storage = ResourceStorage(get_paths().base_dir)
         descriptions = await asyncio.to_thread(lambda: {item.id: _skill_description(item, storage) for item in page.items})
+        knowledge_ids = [item.id for item in page.items if item.type == "knowledge_base"]
+        knowledge_status: dict[str, dict[str, Any]] = {}
+        if knowledge_ids:
+            bindings = list((await session.execute(select(knowledge_models.KnowledgeBase).where(knowledge_models.KnowledgeBase.resource_id.in_(knowledge_ids)))).scalars())
+            counts = dict(
+                (
+                    await session.execute(
+                        select(knowledge_models.KnowledgeDocument.resource_id, func.count())
+                        .where(knowledge_models.KnowledgeDocument.resource_id.in_(knowledge_ids), knowledge_models.KnowledgeDocument.status != "deleted")
+                        .group_by(knowledge_models.KnowledgeDocument.resource_id)
+                    )
+                ).all()
+            )
+            knowledge_status = {
+                item.resource_id: {
+                    "knowledge_initialization_status": item.initialization_status,
+                    "knowledge_initialization_error": item.initialization_error,
+                    "knowledge_document_count": int(counts.get(item.resource_id, 0)),
+                }
+                for item in bindings
+            }
         return {
             "items": [
                 {
@@ -557,6 +583,7 @@ async def list_resources(
                         is_favorited=item.id in favorites,
                     ),
                     "description": descriptions.get(item.id),
+                    **knowledge_status.get(item.id, {}),
                 }
                 for item in page.items
             ],
@@ -838,7 +865,16 @@ async def create_resource(
             resource.id,
             {"slug": resource.slug, "visibility": resource.visibility},
         )
-        return _resource_payload(resource, current_user=current_user)
+        payload = _resource_payload(resource, current_user=current_user)
+        if resource.type == "knowledge_base":
+            binding = await session.get(knowledge_models.KnowledgeBase, resource.id)
+            if binding is not None:
+                payload.update(
+                    knowledge_initialization_status=binding.initialization_status,
+                    knowledge_initialization_error=binding.initialization_error,
+                    knowledge_document_count=0,
+                )
+        return payload
 
 
 @router.get("/{resource_id}/knowledge")
@@ -854,6 +890,8 @@ async def get_knowledge_binding(
             "provider_type": binding.provider_type,
             "bound": binding.provider_dataset_id is not None,
             "sync_status": binding.sync_status,
+            "initialization_status": binding.initialization_status,
+            "initialization_error": binding.initialization_error,
         }
 
 
@@ -880,14 +918,50 @@ async def upload_knowledge_document(
         service = KnowledgeDocumentService(session, _resource_actor(current_user))
         document = await service.upload(resource_id, file)
         await session.commit()
-        document = await KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider()).process(str(document["id"]), resource_id=resource_id)
-        await session.commit()
         await record_audit(
             str(current_user.id),
             "knowledge_document_uploaded",
             "knowledge_document",
             str(document["id"]),
             {"resource_id": resource_id, "content_hash": document["content_hash"], "size": document["size"]},
+        )
+        return document
+
+
+@router.get("/{resource_id}/documents/{document_id}")
+@_translate_resource_errors
+async def get_knowledge_document(
+    resource_id: str,
+    document_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeDocumentService(session, _resource_actor(current_user)).get_document(document_id, resource_id=resource_id)
+
+
+@router.patch("/{resource_id}/documents/{document_id}")
+@_translate_resource_errors
+async def update_knowledge_document(
+    resource_id: str,
+    document_id: str,
+    body: KnowledgeDocumentUpdateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        service = KnowledgeDocumentService(session, _resource_actor(current_user))
+        document = await service.update_document(
+            document_id,
+            resource_id=resource_id,
+            title=body.title,
+            metadata=body.metadata,
+        )
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_document_updated",
+            "knowledge_document",
+            document_id,
+            {"resource_id": resource_id, "changed_title": body.title is not None, "changed_metadata": body.metadata is not None},
         )
         return document
 
@@ -900,9 +974,16 @@ async def retry_knowledge_document(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        service = KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider())
-        document = await service.retry(document_id, resource_id=resource_id)
+        service = KnowledgeDocumentService(session, _resource_actor(current_user))
+        document = await service.request_retry(document_id, resource_id=resource_id)
         await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_document_retry_requested",
+            "knowledge_document",
+            document_id,
+            {"resource_id": resource_id},
+        )
         return document
 
 
@@ -914,9 +995,16 @@ async def rebuild_knowledge_document_index(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        service = KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider())
-        document = await service.rebuild_index(document_id, resource_id=resource_id)
+        service = KnowledgeDocumentService(session, _resource_actor(current_user))
+        document = await service.request_retry(document_id, resource_id=resource_id, rebuild=True)
         await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_document_rebuild_requested",
+            "knowledge_document",
+            document_id,
+            {"resource_id": resource_id},
+        )
         return document
 
 
@@ -928,10 +1016,10 @@ async def delete_knowledge_document(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        service = KnowledgeDocumentService(session, _resource_actor(current_user), configured_ragflow_provider())
-        document = await service.delete(document_id, resource_id=resource_id)
+        service = KnowledgeDocumentService(session, _resource_actor(current_user))
+        document = await service.request_delete(document_id, resource_id=resource_id)
         await session.commit()
-        action = "knowledge_document_deleted" if document["status"] == "deleted" else "knowledge_document_delete_failed"
+        action = "knowledge_document_delete_requested"
         await record_audit(
             str(current_user.id),
             action,
@@ -1046,6 +1134,25 @@ async def save_knowledge_draft(
         }
 
 
+@router.post("/{resource_id}/knowledge/initialize", status_code=202)
+@_translate_resource_errors
+async def initialize_knowledge(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        result = await KnowledgeDocumentService(session, _resource_actor(current_user)).request_initialization(resource_id)
+        await session.commit()
+        await record_audit(
+            str(current_user.id),
+            "knowledge_initialization_requested",
+            "knowledge_base",
+            resource_id,
+            {"status": result["status"]},
+        )
+        return result
+
+
 @router.post("/{resource_id}/knowledge", status_code=200)
 @_translate_resource_errors
 async def bind_knowledge_dataset(
@@ -1125,7 +1232,7 @@ async def get_resource(
         resource = await service.get_visible(resource_id)
         dependency_rows = await service.list_dependencies(resource_id)
         favorites = await _favorite_ids(session, str(current_user.id), [resource.id])
-        return {
+        payload = {
             **_resource_payload(
                 resource,
                 current_user=current_user,
@@ -1150,6 +1257,23 @@ async def get_resource(
                 for dependency, target in dependency_rows
             ],
         }
+        if resource.type == "knowledge_base":
+            binding = await session.get(knowledge_models.KnowledgeBase, resource.id)
+            if binding is not None:
+                count = await session.scalar(
+                    select(func.count())
+                    .select_from(knowledge_models.KnowledgeDocument)
+                    .where(
+                        knowledge_models.KnowledgeDocument.resource_id == resource.id,
+                        knowledge_models.KnowledgeDocument.status != "deleted",
+                    )
+                )
+                payload.update(
+                    knowledge_initialization_status=binding.initialization_status,
+                    knowledge_initialization_error=binding.initialization_error,
+                    knowledge_document_count=int(count or 0),
+                )
+        return payload
 
 
 @router.get("/{resource_id}/dependencies")

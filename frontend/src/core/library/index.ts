@@ -12,6 +12,7 @@ export {
   createKnowledgeRevision,
   getKnowledgeRevision,
   publishKnowledgeRevision,
+  initializeKnowledgeBase,
   listKnowledgeBases,
   listKnowledgeDocuments,
   listKnowledgeRevisions,
@@ -19,6 +20,7 @@ export {
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
   deleteKnowledgeDocument,
+  editKnowledgeDocument,
 } from "./api";
 export {
   useCreateKnowledgeBase,
@@ -32,4 +34,5 @@ export {
   useRetryKnowledgeDocument,
   useRebuildKnowledgeDocumentIndex,
   useDeleteKnowledgeDocument,
+  useEditKnowledgeDocument,
 } from "./hooks";

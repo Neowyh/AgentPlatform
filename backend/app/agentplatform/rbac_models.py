@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, false, func
 from sqlalchemy.orm import relationship
 
 from deerflow.persistence.base import Base
@@ -49,7 +49,7 @@ class UserModel(Base):
     username = Column(String, unique=True, nullable=False)
     role = Column(String, default=UserRole.USER, server_default=UserRole.USER, nullable=False)
     department_id = Column(String, ForeignKey("departments.id"), nullable=True)
-    disabled = Column(Boolean, default=False, server_default=text("0"), nullable=False)
+    disabled = Column(Boolean, default=False, server_default=false(), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     last_login = Column(DateTime, nullable=True)
 

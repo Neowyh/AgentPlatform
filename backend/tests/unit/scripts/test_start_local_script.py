@@ -17,6 +17,9 @@ def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
     proc_env.pop("REQUIRED_ENV_VARS", None)
     proc_env.pop("CONFIG_FILE", None)
     proc_env.pop("START_TARGET", None)
+    # The repository test process may load the developer's ignored .env;
+    # keep each case's required-env assertion independent of that secret.
+    proc_env.pop("DEEPSEEK_API_KEY", None)
     if env:
         proc_env.update(env)
     return subprocess.run(
