@@ -71,6 +71,8 @@ class LocalRuntimeClient:
         self.file_service = file_service
         self.python_service = python_service
         self.mcp_service = mcp_service
+        if self.mcp_service is not None:
+            self.mcp_service.on_capabilities_changed = self._on_mcp_capabilities_changed
         self.connection: ClientConnection | None = None
         self._last_sent_capabilities: tuple[str, ...] | None = None
         self._pending_consents: dict[str, ConsentRequest] = {}
@@ -136,15 +138,20 @@ class LocalRuntimeClient:
             json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         )
 
+    async def _on_mcp_capabilities_changed(self) -> None:
+        """Republish capabilities when a server reports a tool-set change."""
+        if self.connection is None or self.session_id is None:
+            return
+        current = self._current_capabilities()
+        if current != self._last_sent_capabilities:
+            await self.send_capability_update()
+
     async def refresh_mcp_capabilities(self) -> None:
         """Re-enumerate tools from enabled servers; republish when the set changed."""
         if self.mcp_service is None:
             return
         await self.mcp_service.supervisor.refresh_all()
-        current = self._current_capabilities()
-        if current != self._last_sent_capabilities:
-            self._last_sent_capabilities = current
-            await self.send_capability_update()
+        await self._on_mcp_capabilities_changed()
 
     async def run(self) -> None:
         """Receive signed tasks and return ACK/progress/result envelopes."""

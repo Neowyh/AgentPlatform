@@ -16,11 +16,12 @@ import os
 import re
 import socket
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+from urllib.parse import urlsplit
 
 from .consent import ConsentStore, request_hash
 from .policy import LocalPolicy, PolicyDecision
@@ -206,10 +207,22 @@ class LocalMCPService:
         *,
         policy: LocalPolicy | None = None,
         consent: ConsentStore | None = None,
+        on_capabilities_changed: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.supervisor = supervisor
         self.policy = policy or LocalPolicy()
         self.consent = consent or ConsentStore()
+        self.on_capabilities_changed = on_capabilities_changed
+        supervisor.on_change = self._on_supervisor_change
+
+    async def _on_supervisor_change(self) -> None:
+        if self.on_capabilities_changed is not None:
+            await self.on_capabilities_changed()
+
+    async def refresh(self) -> None:
+        """Re-enumerate tools and surface the change to the registered hook."""
+        await self.supervisor.refresh_all()
+        await self._on_supervisor_change()
 
     async def execute(
         self,
@@ -343,9 +356,11 @@ class MCPSupervisor:
         connection_factory: Callable[..., Any] | None = None,
         network_policy: MCPNetworkPolicy | None = None,
         secret_resolver: Callable[[str], str | None] | None = None,
+        on_change: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.network_policy = network_policy or MCPNetworkPolicy()
         self.secret_resolver = secret_resolver
+        self.on_change = on_change
         self._connection_factory = connection_factory or self._default_connection
         self._records: dict[str, _ServerRecord] = {}
         for spec in specs:
@@ -423,31 +438,38 @@ class MCPSupervisor:
             projected.extend(record.spec.capability_prefix + tool.name for tool in record.tools)
         return tuple(projected)
 
-    def ensure_callable(self, capability: str) -> None:
-        """Raise a structured error unless ``capability`` can be executed now.
+    def ensure_callable(self, capability: str) -> tuple[_ServerRecord, str]:
+        """Validate ``capability`` and return its record and tool name.
 
         Checked before the consent round trip so the user is never asked to
-        approve a tool that does not exist.
+        approve a tool that does not exist. The network policy is re-applied
+        for HTTP servers on every call, closing the DNS-rebinding window
+        between start and call.
         """
         server_name, tool_name = split_capability(capability)
         record = self._record(server_name)
         if record.state is not MCPServerState.RUNNING or record.connection is None:
             raise MCPError("SERVER_UNAVAILABLE", "the MCP server is not running")
+        if record.spec.transport == "http":
+            self.network_policy.validate_url(str(record.spec.url))
         if tool_name not in record.tool_names():
             raise MCPError("TOOL_NOT_FOUND", "the MCP tool is not available")
+        return record, tool_name
 
     async def call_tool(
         self, capability: str, arguments: Mapping[str, Any], *, timeout: float | None = None
     ) -> MCPToolCallResult:
-        server_name, tool_name = split_capability(capability)
-        record = self._record(server_name)
-        self.ensure_callable(capability)
+        record, tool_name = self.ensure_callable(capability)
         effective_timeout = timeout or record.spec.tool_timeout_seconds
         try:
             return await call_tool(
                 record.connection, tool_name, dict(arguments), timeout=effective_timeout
             )
-        except MCPError:
+        except MCPError as exc:
+            if exc.code == "SERVER_UNAVAILABLE" and record.spec.transport == "http":
+                # A dead HTTP endpoint goes through the same restart budget
+                # as a crashed stdio process instead of staying RUNNING.
+                self._handle_exit(record.spec.name)
             raise
         except asyncio.CancelledError:
             raise
@@ -555,9 +577,14 @@ class MCPSupervisor:
             return
 
     def _schedule_refresh(self, name: str) -> None:
-        task = asyncio.create_task(self.refresh_tools(name))
+        task = asyncio.create_task(self._refresh_and_notify(name))
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+
+    async def _refresh_and_notify(self, name: str) -> None:
+        await self.refresh_tools(name)
+        if self.on_change is not None:
+            await self.on_change()
 
     def _resolve_placeholders(self, values: Mapping[str, str]) -> dict[str, str]:
         resolved: dict[str, str] = {}
@@ -640,7 +667,9 @@ class StdioMCPConnection:
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
             )
         except OSError as exc:
-            raise MCPError("SERVER_START_FAILED", str(exc)) from exc
+            # The OS error text embeds the absolute command path; only the
+            # stable code and a generic message may cross the boundary.
+            raise MCPError("SERVER_START_FAILED", "the MCP server command failed to start") from exc
         assert self.process is not None and self.process.stdout and self.process.stderr and self.process.stdin
         self._stderr_task = asyncio.create_task(self._drain_stderr())
         self._reader_task = asyncio.create_task(self._read_messages())
@@ -665,7 +694,7 @@ class StdioMCPConnection:
                 )
                 self.process.stdin.flush()
             return await asyncio.wait_for(future, timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(message["id"], None)
             raise MCPError("MCP_TIMEOUT", f"{method} timed out") from None
         except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -824,7 +853,7 @@ class HTTPMCPConnection:
             status, content_type, payload = await asyncio.wait_for(
                 self._post(body), timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise MCPError("MCP_TIMEOUT", f"{method} timed out") from None
         except (OSError, ValueError) as exc:
             raise MCPError("SERVER_UNAVAILABLE", "the MCP HTTP endpoint failed") from exc
@@ -848,7 +877,7 @@ class HTTPMCPConnection:
         body = {"jsonrpc": "2.0", "method": method, "params": dict(params or {})}
         try:
             await asyncio.wait_for(self._post(body), timeout=10)
-        except (MCPError, asyncio.TimeoutError, OSError):
+        except (TimeoutError, MCPError, OSError):
             pass
 
     async def close(self) -> None:
@@ -908,13 +937,13 @@ class HTTPMCPConnection:
 
 
 def _parse_http_url(url: str) -> tuple[str, str, int, str] | None:
-    from urllib.parse import urlsplit
-
     try:
         parts = urlsplit(url)
     except ValueError:
         return None
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
+    # The HTTP client is plaintext by design: localhost MCP endpoints are
+    # plain HTTP, so https URLs would silently downgrade if accepted here.
+    if parts.scheme != "http" or not parts.hostname:
         return None
     default_port = 443 if parts.scheme == "https" else 80
     return (

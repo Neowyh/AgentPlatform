@@ -6,27 +6,26 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from core.consent import ConsentExchange, ConsentStore
 from core.mcp import (
     HTTPMCPConnection,
+    LocalMCPService,
     MCPError,
-    MCPSpec,
     MCPNetworkPolicy,
+    MCPSpec,
     MCPSupervisor,
-    MCPTool,
     MCPToolCallResult,
     StdioMCPConnection,
     call_tool,
     initialize,
     list_tools,
+    load_mcp_specs,
     parse_mcp_config,
 )
-from core.mcp import LocalMCPService
 from core.policy import LocalPolicy, PolicyDecision
 from core.protocol import MessageType, public_key_text, sign_envelope, verify_envelope
 from core.transport import LocalRuntimeClient
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 FIXTURE_SERVER = Path(__file__).parent / "fixtures" / "filesystem_mcp_server.py"
 
@@ -301,6 +300,7 @@ class FakeMCPConnection:
         self.pending: dict[int, asyncio.Future] = {}
         self.tool_results: dict[str, MCPToolCallResult] = {}
         self.refresh_fails = False
+        self.fail_unavailable = False
         self._next_id = 0
 
     async def start(self) -> None:
@@ -320,6 +320,8 @@ class FakeMCPConnection:
             return {"tools": [{"name": name} for name in self.tools]}
         if method == "tools/call":
             self.calls.append((params.get("name"), params.get("arguments")))
+            if self.fail_unavailable:
+                raise MCPError("SERVER_UNAVAILABLE", "the MCP HTTP endpoint failed")
             if params.get("name") in self.hang_tools:
                 future: asyncio.Future = asyncio.get_running_loop().create_future()
                 self.pending[request_id] = future
@@ -839,7 +841,6 @@ def test_unknown_mcp_server_task_yields_structured_error_and_runtime_survives() 
 
 def test_client_republishes_capabilities_after_tool_set_change() -> None:
     supervisor, connections = make_running_supervisor()
-    server_key = Ed25519PrivateKey.generate()
     client = _client_with_mcp(supervisor)
     client.connection = FakeConnection()
 
@@ -854,3 +855,110 @@ def test_client_republishes_capabilities_after_tool_set_change() -> None:
     assert "local.mcp.fs.renamed_tool" not in first["payload"]["capabilities"]
     assert "local.mcp.fs.renamed_tool" in second["payload"]["capabilities"]
     assert "local.mcp.fs.write_file" not in second["payload"]["capabilities"]
+
+
+def test_https_urls_are_rejected_because_the_client_is_plaintext_http() -> None:
+    with pytest.raises(MCPError) as invalid:
+        MCPNetworkPolicy().validate_url("https://127.0.0.1:8443/mcp")
+    assert invalid.value.code == "INVALID_URL"
+    with pytest.raises(MCPError):
+        HTTPMCPConnection("https://127.0.0.1:8443/mcp")
+
+
+def test_http_endpoint_connection_failure_enters_the_restart_budget() -> None:
+    def factory(spec, *, env, headers, on_exit, on_tools_changed):
+        connection = FakeMCPConnection()
+        connection.on_exit = on_exit
+        connection.on_tools_changed = on_tools_changed
+        connections.setdefault(spec.name, []).append(connection)
+        return connection
+
+    connections: dict[str, list[FakeMCPConnection]] = {}
+    supervisor = MCPSupervisor(
+        [MCPSpec(name="web", transport="http", url="http://127.0.0.1:9/mcp", max_restarts=1, restart_backoff_seconds=0, tool_timeout_seconds=5)],
+        connection_factory=factory,
+    )
+
+    async def scenario() -> None:
+        await supervisor.start_all()
+        connections["web"][0].fail_unavailable = True
+        with pytest.raises(MCPError):
+            await supervisor.call_tool("local.mcp.web.read_file", {})
+        await wait_for_state(supervisor, "web", "running")
+        assert len(connections["web"]) == 2
+        connections["web"][1].fail_unavailable = True
+        with pytest.raises(MCPError):
+            await supervisor.call_tool("local.mcp.web.read_file", {})
+        await wait_for_state(supervisor, "web", "failed")
+        assert supervisor.capabilities() == ()
+
+    asyncio.run(scenario())
+
+
+def test_network_policy_is_revalidated_on_every_http_call() -> None:
+    connections: dict[str, list[FakeMCPConnection]] = {}
+
+    def factory(spec, *, env, headers, on_exit, on_tools_changed):
+        connection = FakeMCPConnection()
+        connection.on_exit = on_exit
+        connection.on_tools_changed = on_tools_changed
+        connections.setdefault(spec.name, []).append(connection)
+        return connection
+
+    supervisor = MCPSupervisor(
+        [MCPSpec(name="web", transport="http", url="http://10.1.2.3:9/mcp", tool_timeout_seconds=5)],
+        connection_factory=factory,
+        network_policy=MCPNetworkPolicy(approved_hosts=frozenset({"10.0.0.0/8"})),
+    )
+
+    async def scenario() -> None:
+        await supervisor.start_all()
+        supervisor.network_policy = MCPNetworkPolicy()
+        with pytest.raises(MCPError) as denied:
+            await supervisor.call_tool("local.mcp.web.read_file", {})
+        assert denied.value.code == "NETWORK_DENIED"
+
+    asyncio.run(scenario())
+
+
+def test_tool_set_change_is_republished_automatically() -> None:
+    supervisor, connections = make_running_supervisor()
+    client = _client_with_mcp(supervisor)
+    client.connection = FakeConnection()
+
+    async def scenario() -> None:
+        await client.send_capability_update()
+        connections["fs"][0].tools = ("read_file", "renamed_tool")
+        connections["fs"][0].on_tools_changed()
+        await asyncio.sleep(0.1)
+
+    asyncio.run(scenario())
+    first = json.loads(client.connection.sent[0])
+    republished = json.loads(client.connection.sent[1])
+    assert "local.mcp.fs.renamed_tool" not in first["payload"]["capabilities"]
+    assert "local.mcp.fs.renamed_tool" in republished["payload"]["capabilities"]
+    assert republished["type"] == MessageType.CAPABILITY_UPDATE
+
+
+def test_start_failure_message_never_carries_the_command_path(tmp_path: Path) -> None:
+    supervisor = MCPSupervisor(
+        [MCPSpec(name="gone", transport="stdio", command=(str(tmp_path / "no-such-binary"),))]
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(MCPError) as failed:
+            await supervisor.start("gone")
+        assert failed.value.code == "SERVER_START_FAILED"
+        assert str(tmp_path) not in str(failed.value)
+
+    asyncio.run(scenario())
+
+
+def test_load_mcp_specs_reads_a_config_file(tmp_path: Path) -> None:
+    config = tmp_path / "local-mcp.json"
+    config.write_text(
+        json.dumps({"servers": [{"name": "fs", "transport": "stdio", "command": ["mcp-server-fs"]}]}),
+        encoding="utf-8",
+    )
+    specs = load_mcp_specs(config)
+    assert [spec.name for spec in specs] == ["fs"]
