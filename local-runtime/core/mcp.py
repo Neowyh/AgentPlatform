@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 from .consent import ConsentStore, request_hash
 from .policy import LocalPolicy, PolicyDecision
 from .receipts import LocalExecutionReceipt, content_hash
+from .secrets import SecretRedactor
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 CLIENT_INFO = {"name": "ideer-local-runtime", "version": "0.1.0"}
@@ -332,6 +333,8 @@ class _ServerRecord:
     enabled: bool
     connection: Any = None
     tools: tuple[MCPTool, ...] = ()
+    resolved_env: dict[str, str] = field(default_factory=dict)
+    resolved_headers: dict[str, str] = field(default_factory=dict)
     restarts: int = 0
     last_error: str | None = None
     stopping: bool = False
@@ -461,9 +464,15 @@ class MCPSupervisor:
     ) -> MCPToolCallResult:
         record, tool_name = self.ensure_callable(capability)
         effective_timeout = timeout or record.spec.tool_timeout_seconds
+        redactor = SecretRedactor(
+            [*record.resolved_env.values(), *record.resolved_headers.values()]
+        )
         try:
-            return await call_tool(
-                record.connection, tool_name, dict(arguments), timeout=effective_timeout
+            return _redact_result(
+                await call_tool(
+                    record.connection, tool_name, dict(arguments), timeout=effective_timeout
+                ),
+                redactor,
             )
         except MCPError as exc:
             if exc.code == "SERVER_UNAVAILABLE" and record.spec.transport == "http":
@@ -509,6 +518,8 @@ class MCPSupervisor:
         try:
             env = self._resolve_placeholders(record.spec.env)
             headers = self._resolve_placeholders(record.spec.headers)
+            record.resolved_env = env
+            record.resolved_headers = headers
             if record.spec.transport == "http":
                 self.network_policy.validate_url(str(record.spec.url))
             connection = self._connection_factory(
@@ -607,6 +618,35 @@ class MCPSupervisor:
         if record is None:
             raise MCPError("SERVER_UNKNOWN", "the MCP server is not configured")
         return record
+
+
+def _redact_value(value: Any, redactor: SecretRedactor) -> Any:
+    if isinstance(value, str):
+        return redactor.redact(value)
+    if isinstance(value, dict):
+        return {key: _redact_value(item, redactor) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_redact_value(item, redactor) for item in value)
+    return value
+
+
+def _redact_result(result: MCPToolCallResult, redactor: SecretRedactor) -> MCPToolCallResult:
+    """Scrub resolved credential values out of tool output before it travels."""
+    if redactor.longest == 0:
+        return result
+    content = tuple(
+        {key: _redact_value(item, redactor) for key, item in entry.items()}
+        for entry in result.content
+    )
+    structured = (
+        {
+            key: _redact_value(item, redactor)
+            for key, item in result.structured_content.items()
+        }
+        if result.structured_content is not None
+        else None
+    )
+    return MCPToolCallResult(content, result.is_error, structured)
 
 
 @dataclass(frozen=True)

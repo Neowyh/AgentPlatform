@@ -31,6 +31,8 @@ Paths and symbols below are implemented on the M7 branch.
 | Secret redaction gate | `local-runtime/core/python.py`, `local-runtime/core/secrets.py` | `_StreamingRedactor`, `SecretRedactor` | Stream output, bounded previews, and receipts are scrubbed against resolved values; split-across-chunk values are held back until safe to emit |
 | Local administration CLI | `local-runtime/core/cli.py` | `ideer-local-runtime` | Configure logical root, set capability policy, list pending/audited decisions, approve or deny by hash, and write/rotate/delete/list local secrets |
 | Local artifact staging | `local-runtime/core/artifacts.py` | `FileArtifactUploader`, `SingleUseUploadGrant` | Durable hash-addressed handles with bounded, idempotent, traversal-safe writes and run/task/thread-bound one-time grants |
+| Local MCP host | `local-runtime/core/mcp.py` | `MCPSupervisor`, `LocalMCPService` | stdio/localhost MCP lifecycle, fault isolation, `local.mcp.<server>.<tool>` projection, and result redaction against resolved credentials |
+| MCP model-side projection | `backend/packages/agentplatform-extension/agentplatform_extension/local_runtime/tools.py` | `assemble_local_tools`, `is_local_mcp_capability`, `LocalToolExecutor` | Projected MCP tools pass the same six-factor trim, frozen-route dispatch, and receipt chain as the static local tools |
 | Local Runtime protocol | `local-runtime/core/protocol.py` | envelope signing and verification | Wire-compatible signed messages |
 | Test helpers | `backend/tests/conftest.py`, `backend/tests/_gateway_e2e_env.py`, `backend/tests/_router_auth_helpers.py` | database, app, and authenticated-client fixtures | Device and protocol test setup |
 

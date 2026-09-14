@@ -18,3 +18,7 @@ no new harness patch is required.
 M9 local secrets (OS store, `local:` references, redaction gate) also remains
 inside `local-runtime/` plus its tests; the broker protocol is unchanged and no
 harness patch is required.
+
+M9 `local.mcp.*` model-side integration lives in `local-runtime/core/mcp.py`,
+the `agentplatform-extension` local_runtime tools, and their tests; the harness
+package is untouched and no harness patch is required.

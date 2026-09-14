@@ -76,6 +76,18 @@ Device can never be accidentally covered as a Resource.
 | No model-callable secrets capability | `local-runtime/tests/test_secrets.py` | `local.secrets.*` operations are rejected as unsupported |
 | Secret CLI surface | `local-runtime/tests/test_secrets.py` | Write/rotate/delete/list work; listing prints names only and no command output contains the value |
 
+## Local MCP integration tests
+
+| Scenario | Test file | Required assertion |
+| --- | --- | --- |
+| `local.mcp.*` projection under the six factors | `backend/tests/test_local_runtime_mcp_integration.py` | Projected tools appear in `assemble_local_tools`/`local_tool_names` only when the device announced them and every factor allows; offline projects nothing |
+| Disabled/crashed server withdrawal | `backend/tests/test_local_runtime_mcp_integration.py` | Withdrawing the capability name from `device_capabilities` removes the tool from the model list; re-announcing restores it |
+| Frozen-route dispatch and receipt recording | `backend/tests/test_local_runtime_mcp_integration.py` | `LocalToolExecutor.invoke` routes `local.mcp.*` through the frozen route, records the receipt (server/tool name, result hash), and never exposes the device id |
+| Structured MCP failure semantics | `backend/tests/test_local_runtime_mcp_integration.py` | `MCP_TIMEOUT`, `SERVER_CRASHED`, `TOOL_NOT_FOUND`, and `SECRET_UNAVAILABLE` return distinguishable structured values with their receipts; no fake success |
+| Shared caller and Sub-Agent boundaries | `backend/tests/test_local_runtime_mcp_integration.py` | `child_authorization` and `RunAuthorizationSnapshot` narrowing apply to MCP capabilities |
+| Authorization matrix (MCP items) | `backend/tests/test_local_runtime_mcp_integration.py` | Unauthorized caller / offline device / policy deny / withdrawn server: tool invisible and invocation rejected before routing |
+| MCP secret reference composition | `local-runtime/tests/test_mcp_secrets.py` | `SecretResolver` feeds the supervisor seam; references resolve into the server process env only; missing references fail closed; tool output echoing a resolved value is redacted |
+
 ## Required lanes
 
 The implementation lane is the backend standard lane plus the local-runtime

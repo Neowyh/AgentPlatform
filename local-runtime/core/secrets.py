@@ -12,7 +12,7 @@ from __future__ import annotations
 import ctypes
 import re
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Protocol, runtime_checkable
 
 SECRET_REF_PREFIX = "local:"
@@ -344,6 +344,22 @@ class SecretResolver:
         if not is_secret_ref(ref):
             raise ValueError(f"{ref!r} is not a local: secret reference")
         return self.store.get(ref[len(SECRET_REF_PREFIX) :])
+
+    def name_lookup(self) -> Callable[[str], str | None]:
+        """Adapter for seams that ask by bare secret name.
+
+        Consumers such as the MCP supervisor receive ``Callable[[name],
+        value-or-None]``; a missing reference or an unavailable backend maps
+        to ``None`` so the caller applies its own fail-closed semantics.
+        """
+
+        def lookup(name: str) -> str | None:
+            try:
+                return self.store.get(name)
+            except SecretStoreError:
+                return None
+
+        return lookup
 
     def resolve_environment(self, env: Mapping[str, str]) -> ResolvedSecrets:
         """Resolve an `{env name: secret ref}` mapping; any failure aborts all."""
