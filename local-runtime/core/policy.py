@@ -44,6 +44,10 @@ class LocalPolicy:
             return RiskLevel.LEVEL_1
         if capability in {"local.files.write", "local.python", "local.artifacts.upload", "custom.modify"}:
             return RiskLevel.LEVEL_1
+        # Projected MCP tools stay user-visible: consent is required unless the
+        # local policy explicitly moves a server or tool to another level.
+        if capability.startswith("local.mcp."):
+            return RiskLevel.LEVEL_1
         return RiskLevel.LEVEL_2
 
     def authorize(

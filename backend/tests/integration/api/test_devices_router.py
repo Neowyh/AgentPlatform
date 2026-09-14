@@ -274,3 +274,146 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(dev
     finally:
         server.should_exit = True
         await asyncio.wait_for(server_task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(device_factory, tmp_path: Path) -> None:
+    """M9 gate: a configured stdio MCP server is reached only via Server task → Local Runtime → local MCP."""
+    sys.path.insert(0, str(Path(__file__).parents[4] / "local-runtime"))
+    from core.mcp import LocalMCPService, MCPSpec, MCPSupervisor
+    from core.policy import LocalPolicy
+    from core.transport import LocalRuntimeClient as RuntimeClient
+
+    fixture_server = Path(__file__).parents[4] / "local-runtime" / "tests" / "fixtures" / "filesystem_mcp_server.py"
+    (tmp_path / "hello.txt").write_text("mcp over the broker", encoding="utf-8")
+
+    app = FastAPI()
+    app.include_router(devices.router)
+    owner = UserModel(id="owner", username="owner@example.com", role="user")
+    app.dependency_overrides[get_current_rbac_user] = lambda: owner
+    broker = get_device_broker()
+    broker.connections.clear()
+    broker.tasks.clear()
+    device_key = Ed25519PrivateKey.generate()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
+    server_task = asyncio.create_task(server.serve())
+    supervisor = MCPSupervisor(
+        [
+            MCPSpec(
+                name="fs",
+                transport="stdio",
+                command=(sys.executable, str(fixture_server)),
+                env={"MCP_ROOT": str(tmp_path)},
+                tool_timeout_seconds=10,
+                start_timeout_seconds=10,
+            )
+        ]
+    )
+    try:
+        for _ in range(100):
+            if server.started and server.servers:
+                break
+            await asyncio.sleep(0.01)
+        assert server.started and server.servers
+        port = server.servers[0].sockets[0].getsockname()[1]
+        await supervisor.start_all()
+
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            pairing = (await client.post("/api/devices/pairing")).json()
+            registered = (
+                await client.post(
+                    "/api/devices/register",
+                    json={
+                        "pairing_code": pairing["code"],
+                        "name": "MCP runtime",
+                        "public_key": public_key_text(device_key.public_key()),
+                        "protocol_version": "1",
+                        "runtime_version": "0.1.0",
+                        "capabilities": ["echo"],
+                    },
+                )
+            ).json()
+            device = registered["device"]
+            assert (await client.post(f"/api/devices/pairing/{pairing['pairing_id']}/confirm", json={"code": pairing["code"]})).status_code == 200
+            completed = (
+                await client.post(
+                    "/api/devices/register/complete",
+                    json={
+                        "device_id": device["id"],
+                        "public_key": public_key_text(device_key.public_key()),
+                        "claim_token": registered["claim_token"],
+                    },
+                )
+            ).json()
+            runtime = RuntimeClient(
+                server_url=f"ws://127.0.0.1:{port}/api/devices/ws",
+                device_id=device["id"],
+                session_token=completed["session_token"],
+                session_id=completed["session_id"],
+                private_key=device_key,
+                mcp_service=LocalMCPService(
+                    supervisor,
+                    policy=LocalPolicy(),
+                ),
+            )
+            runtime_task = asyncio.create_task(runtime.run())
+            for _ in range(100):
+                if device["id"] in broker.connections:
+                    break
+                await asyncio.sleep(0.01)
+            if runtime_task.done():
+                runtime_task.result()
+            assert device["id"] in broker.connections
+
+            for _ in range(100):
+                capabilities = (await client.get(f"/api/devices/{device['id']}")).json()["capabilities"]
+                if "local.mcp.fs.read_file" in capabilities:
+                    break
+                await asyncio.sleep(0.01)
+            assert "local.mcp.fs.read_file" in capabilities
+
+            dispatched = await client.post(
+                f"/api/devices/{device['id']}/tasks/local",
+                json={
+                    "run_id": "mcp-run",
+                    "tool_call_id": "mcp-tool-call",
+                    "operation": "local.mcp.fs.read_file",
+                    "payload": {"arguments": {"path": "hello.txt"}},
+                },
+            )
+            assert dispatched.status_code == 200
+            task_id = dispatched.json()["task_id"]
+
+            status = (await client.get(f"/api/devices/tasks/{task_id}")).json()
+            for _ in range(300):
+                status = (await client.get(f"/api/devices/tasks/{task_id}")).json()
+                if status["status"] == "consent_required":
+                    break
+                await asyncio.sleep(0.01)
+            assert status["status"] == "consent_required"
+
+            decided = await client.post(
+                f"/api/devices/tasks/{task_id}/consent",
+                json={"approved": True, "actor_id": "owner@example.com"},
+            )
+            assert decided.status_code == 200
+
+            for _ in range(300):
+                status = (await client.get(f"/api/devices/tasks/{task_id}")).json()
+                if status["status"] in {"completed", "failed", "timed_out"}:
+                    break
+                await asyncio.sleep(0.01)
+            assert status["status"] == "completed", status
+            receipt = status["receipt"]
+            assert receipt["capability"] == "local.mcp.fs.read_file"
+            assert receipt["status"] == "completed"
+            assert receipt["consent_decision"] == "approved"
+            assert status["result"]["content"][0]["text"] == "mcp over the broker"
+            assert status["result"]["status"] == "completed"
+
+            runtime.connection and await runtime.connection.close()
+            await asyncio.wait_for(runtime_task, timeout=1)
+    finally:
+        await supervisor.stop_all()
+        server.should_exit = True
+        await asyncio.wait_for(server_task, timeout=5)

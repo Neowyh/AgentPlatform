@@ -13,6 +13,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from .consent import ConsentExchange, ConsentRequest
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError
+from .mcp import LocalMCPService, MCPExecution
 from .policy import LocalPolicy, PolicyDecision
 from .protocol import (
     MessageType,
@@ -45,6 +46,7 @@ class LocalRuntimeClient:
         policy: LocalPolicy | None = None,
         file_service: LocalFileService | None = None,
         python_service: LocalPythonService | None = None,
+        mcp_service: LocalMCPService | None = None,
     ) -> None:
         self.server_url = server_url
         self.device_id = device_id
@@ -68,7 +70,9 @@ class LocalRuntimeClient:
         self.policy = policy or LocalPolicy()
         self.file_service = file_service
         self.python_service = python_service
+        self.mcp_service = mcp_service
         self.connection: ClientConnection | None = None
+        self._last_sent_capabilities: tuple[str, ...] | None = None
         self._pending_consents: dict[str, ConsentRequest] = {}
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._cancelled_tasks: set[str] = set()
@@ -78,10 +82,23 @@ class LocalRuntimeClient:
         self.connection = await connect(self.server_url)
         return self.connection
 
+    def _current_capabilities(self) -> tuple[str, ...]:
+        """Static capabilities plus the live ``local.mcp.*`` projection."""
+        if self.mcp_service is None:
+            return tuple(self.capabilities)
+        merged = list(self.capabilities)
+        merged.extend(
+            name
+            for name in self.mcp_service.supervisor.capabilities()
+            if name not in merged
+        )
+        return tuple(merged)
+
     async def send_hello(self) -> None:
         if self.connection is None:
             raise RuntimeError("connect() must be called before send_hello()")
         self.session_id = self.session_id or new_session_id()
+        self._last_sent_capabilities = self._current_capabilities()
         hello = sign_envelope(
             private_key=self.private_key,
             message_type=MessageType.HELLO,
@@ -92,7 +109,7 @@ class LocalRuntimeClient:
                 "public_key": public_key_text(self.private_key),
                 "protocol_version": self.protocol_version,
                 "runtime_version": self.runtime_version,
-                "capabilities": list(self.capabilities),
+                "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
             },
         )
@@ -104,19 +121,30 @@ class LocalRuntimeClient:
         """Publish the current device capability set to the server registry."""
         if self.connection is None or self.session_id is None:
             raise RuntimeError("connect and send_hello must be called first")
+        self._last_sent_capabilities = self._current_capabilities()
         message = sign_envelope(
             private_key=self.private_key,
             message_type=MessageType.CAPABILITY_UPDATE,
             device_id=self.device_id,
             session_id=self.session_id,
             payload={
-                "capabilities": list(self.capabilities),
+                "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
             },
         )
         await self.connection.send(
             json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         )
+
+    async def refresh_mcp_capabilities(self) -> None:
+        """Re-enumerate tools from enabled servers; republish when the set changed."""
+        if self.mcp_service is None:
+            return
+        await self.mcp_service.supervisor.refresh_all()
+        current = self._current_capabilities()
+        if current != self._last_sent_capabilities:
+            self._last_sent_capabilities = current
+            await self.send_capability_update()
 
     async def run(self) -> None:
         """Receive signed tasks and return ACK/progress/result envelopes."""
@@ -287,6 +315,32 @@ class LocalRuntimeClient:
                         "local Python execution did not produce a receipt"
                     )
                 receipt = replace(receipt, task_id=task_id)
+            elif operation.startswith("local.mcp."):
+                if self.mcp_service is None:
+                    raise RuntimeError("mcp_service is required for local MCP tasks")
+                execution = await self.mcp_service.execute(
+                    operation, dict(envelope.payload)
+                )
+                if execution is PolicyDecision.CONSENT_REQUIRED:
+                    request = ConsentExchange(
+                        self.mcp_service.consent
+                    ).create_request(operation, dict(envelope.payload))
+                    self._pending_consents[task_id] = request
+                    await self._send_consent_required(envelope, request)
+                    return
+                if not isinstance(execution, MCPExecution):
+                    await self._send_error(
+                        task_id,
+                        execution.value,
+                        "LOCAL_POLICY_DENIED",
+                        envelope.payload,
+                        operation,
+                        policy_decision=execution.value,
+                        status="denied",
+                    )
+                    return
+                result = execution.value
+                receipt = replace(execution.receipt, task_id=task_id)
             else:
                 raise ValueError("unsupported operation")
         except asyncio.CancelledError:
@@ -418,7 +472,9 @@ class LocalRuntimeClient:
                 status="denied",
             )
             return
-        if request.capability == "local.python":
+        if request.capability.startswith("local.mcp."):
+            service = self.mcp_service
+        elif request.capability == "local.python":
             service = self.python_service
         else:
             service = self.file_service
@@ -472,7 +528,19 @@ class LocalRuntimeClient:
 
     async def _execute_consented_inner(self, envelope: Any, request: ConsentRequest) -> None:
         task_id = envelope.task_id or ""
-        if request.capability == "local.python":
+        if request.capability.startswith("local.mcp."):
+            execution = await self.mcp_service.execute(
+                request.capability, request.payload, consent=True
+            )
+            if not isinstance(execution, MCPExecution):
+                decision = execution
+                value = None
+                receipt = None
+            else:
+                decision = PolicyDecision.ALLOW
+                value = execution.value
+                receipt = replace(execution.receipt, task_id=task_id)
+        elif request.capability == "local.python":
             python_result = await self.python_service.execute(
                 request.payload,
                 consent=True,
