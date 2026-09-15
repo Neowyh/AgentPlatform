@@ -157,6 +157,10 @@ function EvidenceCitationLink({
             setItem(found);
             return;
           }
+          if (receipt.result_status === "access_restricted") {
+            setError("This knowledge evidence is restricted.");
+            return;
+          }
         }
         setError("This knowledge evidence is unavailable.");
       })

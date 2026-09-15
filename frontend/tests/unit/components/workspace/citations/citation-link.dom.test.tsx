@@ -76,4 +76,27 @@ describe("Evidence citation interaction", () => {
       await screen.findByText("This knowledge evidence is unavailable."),
     ).toBeTruthy();
   });
+
+  it("shows a generic restricted state without rendering receipt metadata", async () => {
+    const user = userEvent.setup();
+    rs.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        receipts: [{ result_status: "access_restricted", items: [] }],
+      }),
+    } as Response);
+
+    render(
+      <CitationLink href="evidence://rr_private_i1" runId="run-1">
+        Restricted evidence
+      </CitationLink>,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Open Restricted evidence" }),
+    );
+    expect(
+      await screen.findByText("This knowledge evidence is restricted."),
+    ).toBeTruthy();
+  });
 });
