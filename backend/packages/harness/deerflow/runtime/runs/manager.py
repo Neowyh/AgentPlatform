@@ -973,6 +973,15 @@ class RunManager:
             )
         return persisted
 
+    async def persist_current_record(self, run_id: str) -> bool:
+        """Persist the complete in-memory run record, including metadata."""
+        async with self._lock:
+            record = self._runs.get(run_id)
+            if record is None:
+                logger.warning("persist_current_record called for unknown run %s", run_id)
+                return False
+        return await self._persist_to_store(record)
+
     async def set_status_if_not_cancelled(
         self,
         run_id: str,

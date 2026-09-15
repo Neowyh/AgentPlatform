@@ -82,12 +82,14 @@ class RunEvidenceBinding:
     runtime_assembly_fingerprint: str | None = None
     trace_id: str | None = None
     tool_receipts: tuple[Mapping[str, Any], ...] = ()
+    retrieval_receipts: tuple[Mapping[str, Any], ...] = ()
     subagent_verification: tuple[Mapping[str, Any], ...] = ()
     artifact_receipts: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshots", tuple(self.snapshots))
         object.__setattr__(self, "tool_receipts", tuple(dict(item) for item in self.tool_receipts))
+        object.__setattr__(self, "retrieval_receipts", tuple(dict(item) for item in self.retrieval_receipts))
         object.__setattr__(self, "subagent_verification", tuple(dict(item) for item in self.subagent_verification))
         object.__setattr__(self, "artifact_receipts", tuple(dict(item) for item in self.artifact_receipts))
 
@@ -105,6 +107,7 @@ class RunEvidenceBinding:
             "trace_id": self.trace_id,
             "policy_revision": self.authorization.policy_revision,
             "tool_receipts": list(self.tool_receipts),
+            "retrieval_receipts": list(self.retrieval_receipts),
             "subagent_verification": list(self.subagent_verification),
             "artifact_receipts": list(self.artifact_receipts),
         }
@@ -149,6 +152,26 @@ def record_tool_receipt(receipt: Mapping[str, Any]) -> None:
     """Record a runtime-stamped tool receipt in the active Run envelope."""
 
     _append_evidence_item("tool_receipts", receipt)
+    if receipt.get("tool_name") == "knowledge_search":
+        binding = current_run_evidence()
+        if binding is not None:
+            values = list(binding.retrieval_receipts)
+            for index in range(len(values) - 1, -1, -1):
+                item = values[index]
+                if item.get("parent_tool_receipt_id") is None:
+                    values[index] = {
+                        **item,
+                        "tool_call_id": receipt.get("tool_call_id"),
+                        "parent_tool_receipt_id": receipt.get("tool_call_id"),
+                    }
+                    _run_evidence_binding.set(replace(binding, retrieval_receipts=tuple(values)))
+                    break
+
+
+def record_retrieval_receipt(receipt: Mapping[str, Any]) -> None:
+    """Record a retrieval receipt only inside the active run evidence binding."""
+
+    _append_evidence_item("retrieval_receipts", receipt)
 
 
 def record_local_execution_receipt(receipt: Mapping[str, Any], *, tool_call_id: str | None = None) -> None:
@@ -219,6 +242,7 @@ class EvidenceLifecycleContributor:
                     envelope,
                     outcome=outcome,
                     tool_receipts=binding.tool_receipts if binding is not None else envelope.tool_receipts,
+                    retrieval_receipts=binding.retrieval_receipts if binding is not None else envelope.retrieval_receipts,
                     subagent_verification=binding.subagent_verification if binding is not None else envelope.subagent_verification,
                     artifact_receipts=binding.artifact_receipts if binding is not None else envelope.artifact_receipts,
                 )
@@ -253,6 +277,7 @@ def build_run_evidence_envelope(
     trace_id: str | None = None,
     policy_revision: str | None = None,
     tool_receipts: Sequence[Mapping[str, Any]] = (),
+    retrieval_receipts: Sequence[Mapping[str, Any]] = (),
     subagent_verification: Sequence[Mapping[str, Any]] = (),
     artifact_receipts: Sequence[Mapping[str, Any]] = (),
 ) -> RunEvidenceEnvelope:
@@ -269,6 +294,7 @@ def build_run_evidence_envelope(
         authorization_context=authorization.as_mapping(),
         policy_revision=policy_revision or authorization.policy_revision,
         tool_receipts=tuple(dict(item) for item in tool_receipts),
+        retrieval_receipts=tuple(dict(item) for item in retrieval_receipts),
         subagent_verification=tuple(dict(item) for item in subagent_verification),
         artifact_receipts=tuple(dict(item) for item in artifact_receipts),
     )

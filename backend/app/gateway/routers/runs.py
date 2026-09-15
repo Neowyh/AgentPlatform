@@ -145,6 +145,34 @@ async def run_messages(
     return {"data": data, "has_more": has_more}
 
 
+@router.get("/{run_id}/evidence")
+@require_permission("runs", "read")
+async def run_evidence(
+    run_id: str,
+    request: Request,
+    receipt_id: str | None = Query(default=None, max_length=64),
+) -> dict:
+    """Return archived, caller-safe retrieval evidence for an owned Run."""
+    run = await _resolve_run(run_id, request)
+    metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
+    evidence = metadata.get("run_evidence") if isinstance(metadata.get("run_evidence"), dict) else {}
+    receipts = evidence.get("retrieval_receipts") if isinstance(evidence.get("retrieval_receipts"), list) else []
+    receipts = [item for item in receipts if isinstance(item, dict) and item.get("receipt_kind") == "retrieval"]
+    knowledge_scope = evidence.get("knowledge_scope") if isinstance(evidence.get("knowledge_scope"), dict) else {}
+    bindings = knowledge_scope.get("bindings") if isinstance(knowledge_scope.get("bindings"), dict) else None
+    if bindings is not None:
+        receipts = [item for item in receipts if item.get("logical_knowledge_base") in bindings]
+    if receipt_id is not None:
+        receipts = [item for item in receipts if item.get("receipt_id") == receipt_id]
+    has_more = len(receipts) > 50
+    return {
+        "run_id": run_id,
+        "thread_id": run["thread_id"],
+        "receipts": receipts[:50],
+        "has_more": has_more,
+    }
+
+
 @router.get("/{run_id}/feedback")
 @require_permission("runs", "read")
 async def run_feedback(run_id: str, request: Request) -> list[dict]:

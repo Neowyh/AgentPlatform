@@ -161,6 +161,7 @@ async def prepare_canonical_agent_run(
             bindings = {}
             ready_document_ids: dict[str, list[str]] = {}
             retrieval_profiles: dict[str, dict[str, object]] = {}
+            revision_metadata: dict[str, dict[str, object]] = {}
             for item in closure:
                 revision = item.knowledge_revision
                 if revision is None or not revision.provider_dataset_id:
@@ -171,6 +172,27 @@ async def prepare_canonical_agent_run(
                 retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
                 if isinstance(retrieval, dict):
                     retrieval_profiles[revision.provider_dataset_id] = dict(retrieval)
+                revision_metadata[revision.provider_dataset_id] = {
+                    "knowledge_base_id": item.resource.id,
+                    "revision_id": revision.id,
+                    "revision_no": revision.revision_no,
+                    "manifest_hash": revision.manifest_hash,
+                    "configuration_source": "frozen_run_revision",
+                    "documents": {
+                        str(provider_document_id): {
+                            "logical_document_id": str(document_id),
+                            "display_name": next(
+                                (entry.get("filename") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and str(entry.get("document_id")) == str(document_id)),
+                                None,
+                            ),
+                            "content_hash": next(
+                                (entry.get("content_hash") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and str(entry.get("document_id")) == str(document_id)),
+                                None,
+                            ),
+                        }
+                        for document_id, provider_document_id in (revision.provider_doc_map_json or {}).items()
+                    },
+                }
             run_context = diagnostic_context or {}
             tool_config = None
             try:
@@ -208,6 +230,7 @@ async def prepare_canonical_agent_run(
                 knowledge_scope,
                 ready_document_ids={dataset: ready_document_ids[dataset] for dataset in knowledge_scope.values()},
                 retrieval_profiles={dataset: retrieval_profiles[dataset] for dataset in knowledge_scope.values() if dataset in retrieval_profiles},
+                revision_metadata={dataset: revision_metadata[dataset] for dataset in knowledge_scope.values() if dataset in revision_metadata},
             ),
         )
     except ResourceNotFound as exc:

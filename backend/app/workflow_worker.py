@@ -74,6 +74,7 @@ def _workflow_run_evidence_context(run: Any):
         ),
         runtime_assembly_fingerprint=evidence.get("runtime_assembly_fingerprint"),
         trace_id=evidence.get("trace_id"),
+        retrieval_receipts=tuple(evidence.get("retrieval_receipts", ())),
     )
     with bind_run_evidence(binding):
         yield

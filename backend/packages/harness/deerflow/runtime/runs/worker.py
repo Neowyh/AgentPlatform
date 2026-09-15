@@ -1535,6 +1535,17 @@ async def run_agent(
                 except Exception:
                     logger.warning("Run completion hook failed for %s (non-fatal)", run_id, exc_info=True)
 
+            try:
+                from agentplatform_extension.evidence import current_run_evidence
+
+                binding = current_run_evidence()
+                if binding is not None:
+                    evidence = {**binding.as_mapping(), "archive_status": "archived"}
+                    record.metadata = {**(record.metadata or {}), "run_evidence": evidence}
+                    if not await run_manager.persist_current_record(run_id):
+                        record.metadata["run_evidence"] = {**evidence, "archive_status": "failed"}
+            except ImportError:
+                pass
             if task_info is not None and task_store is not None:
                 # Keep the finalizing barrier held until stop observers finish, so
                 # a same-thread replacement cannot overlap this task's lifecycle.

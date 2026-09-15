@@ -85,6 +85,7 @@ class RunEvidenceEnvelope:
     authorization_context: Mapping[str, Any] = field(default_factory=dict)
     policy_revision: str | None = None
     tool_receipts: Sequence[Mapping[str, Any]] = ()
+    retrieval_receipts: Sequence[Mapping[str, Any]] = ()
     subagent_verification: Sequence[Mapping[str, Any]] = ()
     artifact_receipts: Sequence[Mapping[str, Any]] = ()
 

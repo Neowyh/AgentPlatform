@@ -21,6 +21,7 @@ from agentplatform_extension.evidence import (
     build_run_evidence_envelope,
     current_run_evidence,
     record_local_execution_receipt,
+    record_retrieval_receipt,
     record_subagent_verification,
     record_tool_receipt,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "current_run_evidence",
     "record_subagent_verification",
     "record_tool_receipt",
+    "record_retrieval_receipt",
     "record_local_execution_receipt",
     "install",
 ]
