@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import uuid
 from pathlib import Path
@@ -18,6 +19,7 @@ from agentplatform_extension.knowledge.runtime_adapter import KnowledgeRuntimeAd
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 from deerflow.community.ragflow import tools as ragflow_tools
+from tests.gate7_acceptance import validate_gate7_matrix, validate_gate7_source_chain
 
 pytestmark = pytest.mark.live
 
@@ -43,6 +45,26 @@ async def _wait_for(predicate, *, timeout: float = 180) -> None:
         if asyncio.get_running_loop().time() >= deadline:
             raise AssertionError("Timed out waiting for the Gate 7 RAGFlow state")
         await asyncio.sleep(2)
+
+
+@pytest.mark.live
+def test_gate7_real_run_artifacts_prove_source_chain_and_matrix() -> None:
+    source_chain_path = os.environ.get("RAGFLOW_GATE7_SOURCE_CHAIN_JSON")
+    matrix_path = os.environ.get("RAGFLOW_GATE7_MATRIX_JSON")
+    run_id = os.environ.get("RAGFLOW_GATE7_RUN_ID")
+    expected_snippet = os.environ.get("RAGFLOW_GATE7_EXPECTED_SNIPPET")
+    if not all((source_chain_path, matrix_path, run_id, expected_snippet)):
+        pytest.skip("Set RAGFLOW_GATE7_SOURCE_CHAIN_JSON, RAGFLOW_GATE7_MATRIX_JSON, RAGFLOW_GATE7_RUN_ID, and RAGFLOW_GATE7_EXPECTED_SNIPPET")
+
+    source_chain = json.loads(Path(source_chain_path).read_text(encoding="utf-8"))
+    matrix = json.loads(Path(matrix_path).read_text(encoding="utf-8"))
+    assert isinstance(source_chain, dict)
+    assert isinstance(matrix, dict)
+    validate_gate7_source_chain(source_chain, expected_run_id=run_id)
+    validate_gate7_matrix(matrix)
+    chunk = source_chain["chunk"]
+    assert isinstance(chunk, dict)
+    assert expected_snippet in str(chunk.get("content", ""))
 
 
 @pytest.mark.asyncio

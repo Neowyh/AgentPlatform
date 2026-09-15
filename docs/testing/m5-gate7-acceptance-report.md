@@ -3,7 +3,7 @@
 > status: partial — live provider and browser execution require the isolated
 > RAGFlow/model harness described below.
 >
-> candidate: `feature/m5-retrieval-evidence` at `03884c0c`
+> candidate: `feature/m5-retrieval-evidence` at the reviewed commit (`HEAD`)
 > date: 2026-09-15 (Asia/Shanghai)
 
 This is the formal acceptance record for
@@ -20,6 +20,18 @@ and archived receipt:
 ```bash
 cd backend
 DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=<isolated-dataset-id> \
+  uv run pytest tests/test_knowledge_gate7_live.py -q -s
+```
+
+The same command also validates the real-run artifacts. Export the run ID,
+the JSON artifact for the persisted source chain, the JSON matrix artifact,
+and the exact archived snippet:
+
+```bash
+RAGFLOW_GATE7_RUN_ID=<run-id> \
+RAGFLOW_GATE7_SOURCE_CHAIN_JSON=<source-chain.json> \
+RAGFLOW_GATE7_MATRIX_JSON=<gate7-matrix.json> \
+RAGFLOW_GATE7_EXPECTED_SNIPPET=<exact-snippet> \
   uv run pytest tests/test_knowledge_gate7_live.py -q -s
 ```
 
@@ -46,10 +58,13 @@ model, browser, or credentials is recorded as `unexecuted`, never as pass.
 | Check | Source | Result | Time / duration / exit | Notes |
 | --- | --- | --- | --- | --- |
 | Provider → adapter → archived receipt | `test_knowledge_gate7_live.py` | unexecuted | 2026-09-15 / — / — | No isolated RAGFlow dataset was supplied in this workspace. |
+| Persisted Run → Tool Call → KB → Revision → Document → Chunk | `test_gate7_acceptance_artifacts.py` plus real-run artifact validation | unexecuted | 2026-09-15 / — / — | Requires a real run artifact and exact snippet; the validator rejects missing hops. |
+| Required real Agent/Workflow/Sub-Agent and browser matrix | `test_gate7_acceptance_artifacts.py` plus matrix artifact validation | unexecuted | 2026-09-15 / — / — | Requires all matrix rows with a passing result and evidence artifact. |
+| Acceptance artifact validators | `tests/unit/knowledge/test_gate7_acceptance_artifacts.py` | passed | 2026-09-15 / focused 5s / 0 | 3 passed; live artifact validation was skipped without isolated artifacts. |
 | Browser click, exact snippet, keyboard focus restore | `knowledge-evidence-gate7.spec.ts` | unexecuted | 2026-09-15 / — / — | No real E2E manifest or seeded Gate 7 run was supplied. |
 | Focused backend M5 contracts | `tests/test_knowledge_gate7_live.py`, `tests/unit/knowledge/test_retrieval_receipts.py`, `tests/unit/gateway/test_run_evidence.py` | passed | 2026-09-15 / focused 6s / 0 | 15 passed; Gate 7 live case was correctly unexecuted without provider credentials. |
 | Focused frontend citation/evidence contracts | citation and receipt-card unit tests | passed | 2026-09-15 / 2s / 0 | 2 files, 14 passed. |
-| `backend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 937s / 0 | 25,926 passed, 147 skipped; 818 warnings. |
+| `backend-standard` child | `bash scripts/run-test-lane.sh backend-standard` | passed | 2026-09-15 / 1,012s / 0 | 25,929 passed, 147 skipped; 820 warnings. |
 | `frontend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 308s / 0 | 10,064 passed; Rstest 758/758. |
 | `frontend-smoke` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 120s / 0 | 29 passed. |
 | `pr-standard` parent | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 1,366s / 0 | `TEST_LANE_DURATION lane=pr-standard seconds=1366 status=0`. |
