@@ -11,10 +11,12 @@ import logging
 import uuid
 from collections.abc import Mapping
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 
-from app.gateway.authz import require_permission
+from app.agentplatform.resource_models import Resource
+from app.gateway.authz import check_resource_access, get_optional_rbac_user, require_permission
 from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.pagination import trim_run_message_page
 from app.gateway.routers.thread_runs import RunCreateRequest
@@ -23,6 +25,70 @@ from deerflow.runtime import serialize_channel_values
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
+
+
+def _restricted_receipt(receipt: dict) -> dict:
+    """Return a generic denial without exposing the resource identity."""
+    return {
+        "receipt_id": receipt.get("receipt_id"),
+        "receipt_kind": "retrieval",
+        "result_status": "access_restricted",
+        "returned_count": 0,
+        "truncated": False,
+        "items": [],
+    }
+
+
+async def _readable_knowledge_base_ids(current_user, knowledge_base_ids: set[str]) -> set[str] | None:
+    """Resolve current read access without contacting a knowledge provider.
+
+    ``None`` means that the request has no RBAC user (auth-disabled/test mode),
+    so the legacy endpoint behavior should be retained.
+    """
+    if current_user is None:
+        return None
+    from deerflow.persistence.engine import get_session_factory
+
+    if not knowledge_base_ids:
+        return set()
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return set()
+    try:
+        async with session_factory() as session:
+            resources = (
+                await session.execute(
+                    select(Resource).where(
+                        Resource.id.in_(knowledge_base_ids),
+                        Resource.type == "knowledge_base",
+                        Resource.lifecycle_status == "active",
+                    )
+                )
+            ).scalars()
+            return {
+                resource.id
+                for resource in resources
+                if check_resource_access(
+                    current_user,
+                    resource.owner_id,
+                    resource.scope_department_id,
+                    resource.visibility,
+                )
+            }
+    except Exception:
+        logger.exception("Failed to authorize historical retrieval evidence")
+        return set()
+
+
+async def _authorize_receipts(receipts: list[dict], current_user) -> list[dict]:
+    """Apply current KB visibility while retaining only frozen receipt fields."""
+    if current_user is None:
+        return receipts
+    knowledge_base_ids = {str(receipt["knowledge_base_id"]) for receipt in receipts if receipt.get("knowledge_base_id")}
+    readable_ids = await _readable_knowledge_base_ids(current_user, knowledge_base_ids)
+    if readable_ids is None:
+        return receipts
+    return [receipt if str(receipt.get("knowledge_base_id")) in readable_ids else _restricted_receipt(receipt) for receipt in receipts]
 
 
 def _resolve_thread_id(body: RunCreateRequest) -> str:
@@ -151,6 +217,7 @@ async def run_evidence(
     run_id: str,
     request: Request,
     receipt_id: str | None = Query(default=None, max_length=64),
+    current_user=Depends(get_optional_rbac_user),
 ) -> dict:
     """Return archived, caller-safe retrieval evidence for an owned Run."""
     run = await _resolve_run(run_id, request)
@@ -164,6 +231,7 @@ async def run_evidence(
         receipts = [item for item in receipts if item.get("logical_knowledge_base") in bindings]
     if receipt_id is not None:
         receipts = [item for item in receipts if item.get("receipt_id") == receipt_id]
+    receipts = await _authorize_receipts(receipts, current_user)
     has_more = len(receipts) > 50
     return {
         "run_id": run_id,
