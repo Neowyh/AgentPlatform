@@ -13,6 +13,8 @@ from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo,
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _KNOWLEDGE_CITATION_RE = re.compile(r"\[citation:[^\]]+\]\(evidence://([A-Za-z0-9_-]+)\)")
+_FENCED_CODE_RE = re.compile(r"(^|\n)(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n\2[^\n]*(?=\n|$)|[\s\S]*$)", re.MULTILINE)
+_INLINE_CODE_RE = re.compile(r"(`+)[\s\S]*?\1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +183,7 @@ def record_retrieval_citations(text: str) -> None:
     binding = current_run_evidence()
     if binding is None:
         return
-    cited_ids = set(_KNOWLEDGE_CITATION_RE.findall(text))
+    cited_ids = set(_KNOWLEDGE_CITATION_RE.findall(_mask_code(text)))
     if not cited_ids:
         return
     receipts = list(binding.retrieval_receipts)
@@ -196,6 +198,14 @@ def record_retrieval_citations(text: str) -> None:
             changed = True
     if changed:
         _run_evidence_binding.set(replace(binding, retrieval_receipts=tuple(receipts)))
+
+
+def _mask_code(text: str) -> str:
+    def mask(match: re.Match[str]) -> str:
+        return match.group(1) + re.sub(r"[^\n]", " ", match.group(0)[len(match.group(1)) :])
+
+    fenced = _FENCED_CODE_RE.sub(mask, text)
+    return _INLINE_CODE_RE.sub(lambda match: re.sub(r"[^\n]", " ", match.group(0)), fenced)
 
 
 def record_local_execution_receipt(receipt: Mapping[str, Any], *, tool_call_id: str | None = None) -> None:

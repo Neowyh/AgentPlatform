@@ -1,6 +1,6 @@
 import { ExternalLinkIcon } from "lucide-react";
 import { isValidElement, type ComponentProps, type ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -127,6 +127,7 @@ function EvidenceCitationLink({
   const [open, setOpen] = useState(false);
   const [item, setItem] = useState<EvidenceItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open || !runId || !evidenceId) return;
@@ -170,6 +171,7 @@ function EvidenceCitationLink({
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -185,7 +187,15 @@ function EvidenceCitationLink({
         {label}
         <ExternalLinkIcon className="ml-1 size-3" />
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) {
+            requestAnimationFrame(() => triggerRef.current?.focus());
+          }
+        }}
+      >
         <DialogContent data-testid="evidence-panel">
           <DialogHeader>
             <DialogTitle>{item?.display_name ?? label}</DialogTitle>

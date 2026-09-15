@@ -63,6 +63,32 @@ async def test_authorized_search_records_bounded_receipt_from_real_result() -> N
 
 
 @pytest.mark.anyio
+async def test_structured_search_delivers_evidence_id_and_citation_to_model() -> None:
+    async def provider(query: str, *, dataset_ids: list[str]) -> dict:
+        return {
+            "chunks": [
+                {
+                    "document_id": "provider-doc-1",
+                    "document_keyword": "Policies.pdf",
+                    "content": "Policy fragment",
+                    "similarity": 0.91,
+                    "page": 4,
+                }
+            ]
+        }
+
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
+    with bind_run_evidence(binding):
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
+        receipt = current_run_evidence().retrieval_receipts[0]
+
+    evidence_id = receipt["items"][0]["evidence_id"]
+    delivered = result["chunks"][0]
+    assert delivered["evidence_id"] == evidence_id
+    assert delivered["citation"] == f"[citation:Policies.pdf — Page 4](evidence://{evidence_id})"
+
+
+@pytest.mark.anyio
 async def test_authorized_search_delivers_archived_item_citation_to_model() -> None:
     async def provider(query: str, *, dataset_ids: list[str]) -> str:
         return "[1] Policies.pdf (score 0.91)\nPolicy fragment"
@@ -75,6 +101,20 @@ async def test_authorized_search_delivers_archived_item_citation_to_model() -> N
     evidence_id = receipt["items"][0]["evidence_id"]
     assert f"evidence://{evidence_id}" in result
     assert receipt["items"][0]["citation_label"] == "Policies.pdf"
+
+
+@pytest.mark.anyio
+async def test_provider_label_is_safe_inside_model_facing_markdown() -> None:
+    async def provider(query: str, *, dataset_ids: list[str]) -> str:
+        return "[1] Policies.pdf](https://evil.example)\nPolicy fragment"
+
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
+    with bind_run_evidence(binding):
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
+
+    citations = result.split("Knowledge citations", 1)[1]
+    assert "\\]" in citations
+    assert "](https://evil.example)" not in citations
 
 
 @pytest.mark.anyio
@@ -92,6 +132,22 @@ async def test_only_archived_citations_are_recorded() -> None:
         recorded = current_run_evidence().retrieval_receipts[0]
 
     assert recorded["cited_item_ids"] == [evidence_id]
+
+
+@pytest.mark.anyio
+async def test_code_block_evidence_link_is_not_recorded_as_citation() -> None:
+    async def provider(query: str, *, dataset_ids: list[str]) -> str:
+        return "[1] Policies.pdf\nPolicy fragment"
+
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
+    with bind_run_evidence(binding):
+        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
+        receipt = current_run_evidence().retrieval_receipts[0]
+        evidence_id = receipt["items"][0]["evidence_id"]
+        record_retrieval_citations(f"```md\n[citation:Example](evidence://{evidence_id})\n```")
+        recorded = current_run_evidence().retrieval_receipts[0]
+
+    assert "cited_item_ids" not in recorded
 
 
 @pytest.mark.anyio

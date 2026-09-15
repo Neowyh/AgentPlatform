@@ -160,9 +160,7 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         return self._inject(request, ledger), rendered_receipts
 
     @staticmethod
-    def _stamp_citing_ledger(result: ModelCallResult, receipts: list[ToolReceipt] | None) -> ModelCallResult:
-        if receipts is None:
-            return result
+    def _record_citations(result: ModelCallResult) -> None:
         if isinstance(result, AIMessage):
             messages = [result]
         else:
@@ -178,6 +176,20 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
                 record_retrieval_citations(content)
             except ImportError:
                 pass
+
+    @staticmethod
+    def _stamp_citing_ledger(result: ModelCallResult, receipts: list[ToolReceipt] | None) -> ModelCallResult:
+        ToolReceiptMiddleware._record_citations(result)
+        if receipts is None:
+            return result
+        if isinstance(result, AIMessage):
+            messages = [result]
+        else:
+            response = getattr(result, "model_response", result)
+            messages = getattr(response, "result", [])
+        for message in messages:
+            if not isinstance(message, AIMessage):
+                continue
             kwargs = dict(message.additional_kwargs or {})
             # Runtime-owned and always overwritten so provider output cannot
             # forge the ledger against which its citations will be checked.

@@ -85,19 +85,46 @@ def _citation_label(item: dict[str, object]) -> str:
     return label
 
 
+def _markdown_label(label: str) -> str:
+    return label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("(", "\\(").replace(")", "\\)").replace("\n", " ")
+
+
 def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
     """Add opaque, run-local citation links without changing provider content."""
-    if not isinstance(result, str):
-        return result
     items = receipt.get("items")
     if not isinstance(items, list) or not items:
+        return result
+    if isinstance(result, dict) and isinstance(result.get("chunks"), list):
+        delivered = dict(result)
+        chunks = []
+        item_index = 0
+        for chunk in result["chunks"]:
+            if not isinstance(chunk, dict) or item_index >= len(items):
+                chunks.append(chunk)
+                continue
+            item = items[item_index]
+            if not isinstance(item, dict) or not item.get("evidence_id"):
+                chunks.append(chunk)
+                item_index += 1
+                continue
+            evidence_id = item["evidence_id"]
+            annotated = dict(chunk)
+            label = _markdown_label(_citation_label(item))
+            annotated["evidence_id"] = evidence_id
+            annotated["citation_label"] = label
+            annotated["citation"] = f"[citation:{label}](evidence://{evidence_id})"
+            chunks.append(annotated)
+            item_index += 1
+        delivered["chunks"] = chunks
+        return delivered
+    if not isinstance(result, str):
         return result
     links = []
     for item in items:
         if not isinstance(item, dict) or not item.get("evidence_id"):
             continue
         evidence_id = item["evidence_id"]
-        links.append(f"- [citation:{_citation_label(item)}](evidence://{evidence_id})")
+        links.append(f"- [citation:{_markdown_label(_citation_label(item))}](evidence://{evidence_id})")
     if not links:
         return result
     return result.rstrip() + "\n\nKnowledge citations (copy the exact link when citing):\n" + "\n".join(links)
