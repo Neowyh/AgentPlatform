@@ -70,6 +70,19 @@ vi.mock("@/core/i18n/hooks", () => ({
         backToWorkflows: "Back",
       },
       common: { loading: "Loading...", cancel: "Cancel" },
+      library: {
+        dependencySelector: {
+          loadError:
+            "Knowledge dependencies could not be loaded. Reload before saving.",
+          live: "LIVE",
+          pinned: "PINNED",
+          selectRevision: "Select published revision",
+          revisionsUnavailable: "Revisions unavailable",
+          noPublishedRevisions: "No published revisions available",
+          modeAria: (slug: string) => `${slug} dependency mode`,
+          revisionAria: (slug: string) => `${slug} published revision`,
+        },
+      },
     },
   }),
 }));
@@ -86,6 +99,13 @@ vi.mock("@/core/workflows", () => ({
 
 vi.mock("@/core/workflows/validate", () => ({
   validateYaml: (...args: any[]) => mockValidateYaml(...args),
+}));
+
+vi.mock("@/core/library", () => ({
+  usePublishedKnowledgeRevisions: () => ({
+    publishedRevisions: {},
+    isError: false,
+  }),
 }));
 
 vi.mock("@/core/resources/api", () => resourceMocks);

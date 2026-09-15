@@ -12,6 +12,7 @@ class KnowledgeScope:
 
     bindings: tuple[tuple[str, str], ...] = ()
     ready_document_ids: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    retrieval_profiles: tuple[tuple[str, tuple[tuple[str, object], ...]], ...] = ()
 
     @classmethod
     def from_bindings(
@@ -19,12 +20,14 @@ class KnowledgeScope:
         bindings: Mapping[str, str] | Iterable[tuple[str, str]],
         *,
         ready_document_ids: Mapping[str, Iterable[str]] | None = None,
+        retrieval_profiles: Mapping[str, Mapping[str, object]] | None = None,
     ) -> KnowledgeScope:
         values = dict(bindings)
         if any(not logical.strip() or not dataset.strip() for logical, dataset in values.items()):
             raise ValueError("knowledge scope selectors and dataset bindings must not be empty")
         documents = tuple(sorted((str(dataset), tuple(sorted({str(document_id) for document_id in ids}))) for dataset, ids in (ready_document_ids or {}).items()))
-        return cls(tuple(sorted((str(logical), str(dataset)) for logical, dataset in values.items())), documents)
+        profiles = tuple(sorted((str(dataset), tuple(sorted((str(key), value) for key, value in profile.items()))) for dataset, profile in (retrieval_profiles or {}).items()))
+        return cls(tuple(sorted((str(logical), str(dataset)) for logical, dataset in values.items())), documents, profiles)
 
     @property
     def logical_selectors(self) -> frozenset[str]:
@@ -46,6 +49,12 @@ class KnowledgeScope:
                 return document_ids
         return None
 
+    def retrieval_profile_for(self, dataset_id: str) -> dict[str, object]:
+        for dataset, profile in self.retrieval_profiles:
+            if dataset == dataset_id:
+                return dict(profile)
+        return {}
+
     def intersect(self, other: KnowledgeScope) -> KnowledgeScope:
         allowed = other.dataset_allowlist | other.logical_selectors
         bindings = tuple((logical, dataset) for logical, dataset in self.bindings if logical in allowed or dataset in allowed)
@@ -53,10 +62,17 @@ class KnowledgeScope:
         return KnowledgeScope.from_bindings(
             bindings,
             ready_document_ids={dataset: ids for dataset, ids in self.ready_document_ids if dataset in datasets},
+            retrieval_profiles={dataset: dict(profile) for dataset, profile in self.retrieval_profiles if dataset in datasets},
         )
 
     def as_mapping(self) -> dict[str, object]:
-        return {"logical_selectors": sorted(self.logical_selectors), "dataset_allowlist": sorted(self.dataset_allowlist), "bindings": dict(self.bindings)}
+        return {
+            "logical_selectors": sorted(self.logical_selectors),
+            "dataset_allowlist": sorted(self.dataset_allowlist),
+            "bindings": dict(self.bindings),
+            "ready_document_ids": {dataset: list(ids) for dataset, ids in self.ready_document_ids},
+            "retrieval_profiles": {dataset: dict(profile) for dataset, profile in self.retrieval_profiles},
+        }
 
     def model_mapping(self) -> dict[str, object]:
         """Return the selector-only projection safe to expose to the model."""

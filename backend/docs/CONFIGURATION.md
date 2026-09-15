@@ -17,6 +17,19 @@ Run `make config-upgrade` to merge new fields into your config.
 
 ## Configuration Sections
 
+### Knowledge revisions
+
+```yaml
+knowledge:
+  publish_eval_required: false
+  reconciliation_interval_seconds: 0
+```
+
+`publish_eval_required` enables the revision publishing evidence gate. The
+M4 gate remains disabled by default until an evaluation engine provides
+matching evidence. `reconciliation_interval_seconds` enables scheduled
+provider reconciliation; `0` disables the scheduler.
+
 ### Models
 
 Configure the LLM models available to the agent:

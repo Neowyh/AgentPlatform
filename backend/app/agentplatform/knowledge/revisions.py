@@ -17,13 +17,16 @@ import hashlib
 import json
 import os
 import uuid
-from datetime import UTC, datetime
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.knowledge.eval_gate import eval_required, load_eval_evidence
+from app.agentplatform.knowledge.integrity import INTEGRITY_UNVERIFIED
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeRevision
 from app.agentplatform.knowledge.provider import KnowledgeProvider, KnowledgeProviderError, stable_provider_error
 from app.agentplatform.resource_models import Resource
@@ -31,6 +34,27 @@ from app.agentplatform.resources.service import ResourceActor, ResourceConflict,
 from deerflow.config.paths import get_paths
 
 MAX_PUBLISH_ATTEMPTS = 3
+PUBLISH_LEASE_SECONDS = 300
+
+# Provider datasets the platform creates follow this prefix; reconciliation
+# uses it to recognise platform-created orphan datasets (shared constant so
+# a rename cannot silently break orphan detection).
+PUBLISHED_DATASET_NAME_PREFIX = "ideer-kb-"
+
+# Revision ids whose background build this process may still be running.
+# Guards the in-process duplicate-publish race; a process restart empties
+# the set, which is exactly what makes a stuck ``indexing`` revision
+# resumable (ticket 02 recoverable-failure discipline).
+_ACTIVE_PUBLISHES: set[str] = set()
+_PUBLISH_OWNER = uuid.uuid4().hex
+
+
+def _lease_is_valid(until: datetime | None) -> bool:
+    if until is None:
+        return False
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=UTC)
+    return until > datetime.now(UTC)
 
 
 class KnowledgeRevisionValidationError(ValueError):
@@ -74,13 +98,14 @@ def _revision_payload(revision: KnowledgeRevision, *, documents: list[dict] | No
         "integrity_checked_at": revision.integrity_checked_at.isoformat() if revision.integrity_checked_at else None,
         "created_at": revision.created_at.isoformat() if revision.created_at else None,
         "published_at": revision.published_at.isoformat() if revision.published_at else None,
+        "publish_execution_token": revision.publish_execution_token,
     }
     if documents is not None:
         payload["documents"] = documents
     return payload
 
 
-def _copy_atomic(source, destination) -> None:
+def _copy_atomic(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.parent / f".copy-{uuid.uuid4().hex}.part"
     try:
@@ -120,6 +145,12 @@ class KnowledgeRevisionService:
 
         revision_id = str(uuid.uuid4())
         entries: list[dict[str, object]] = []
+        knowledge_base = await self.session.get(KnowledgeBase, resource_id)
+        profiles = {
+            "retrieval": dict(knowledge_base.retrieval_profile_json or {}) if knowledge_base else {},
+            "embedding": dict(knowledge_base.embedding_profile_json or {}) if knowledge_base else {},
+            "ingestion": dict(knowledge_base.ingestion_profile_json or {}) if knowledge_base else {},
+        }
         created_paths = []
         try:
             for document in ready_documents:
@@ -133,6 +164,7 @@ class KnowledgeRevisionService:
                 path.unlink(missing_ok=True)
             raise
         entries.sort(key=lambda entry: str(entry["document_id"]))
+        entries[0]["knowledge_profiles"] = profiles
         highest = await self.session.scalar(select(func.max(KnowledgeRevision.revision_no)).where(KnowledgeRevision.knowledge_base_id == resource_id))
         revision = KnowledgeRevision(
             id=revision_id,
@@ -168,13 +200,19 @@ class KnowledgeRevisionService:
         return revision
 
     def _verify_frozen_content(self, revision: KnowledgeRevision) -> None:
-        """Integrity gate: frozen files must exist and re-hash to the manifest."""
+        """Integrity gate: every frozen file must exist and its bytes must
+        hash to the manifest's per-document content hash, and the manifest
+        entries must still hash to the revision manifest hash."""
 
         base_dir = get_paths().base_dir
         for entry in revision.manifest_json or []:
             key = revision_document_key(revision.id, str(entry["document_id"]), str(entry["filename"]))
-            if not (base_dir / key).is_file():
+            frozen = base_dir / key
+            if not frozen.is_file():
                 raise ResourceConflict(f"Frozen revision content is missing or corrupted: {entry['filename']}")
+            digest = hashlib.sha256(frozen.read_bytes()).hexdigest()
+            if digest != str(entry.get("content_hash")):
+                raise ResourceConflict(f"Frozen revision content is corrupted: {entry['filename']}")
         if canonical_manifest_hash(list(revision.manifest_json or [])) != revision.manifest_hash:
             raise ResourceConflict("Frozen revision content no longer matches the manifest hash")
 
@@ -183,18 +221,34 @@ class KnowledgeRevisionService:
         resource_id: str,
         revision_id: str,
         *,
-        provider: KnowledgeProvider | None = None,
+        provider: KnowledgeProvider,
     ) -> dict[str, object]:
         """Gate and transition a candidate into the ``indexing`` build state.
 
         Pointer switching happens in :func:`execute_publish` only after the
         provider dataset is built and verified; this phase never touches it.
+        A revision already in ``indexing`` is a 409 while this process is
+        still building it; after a process restart (build executor gone) the
+        same call resumes the build instead, without consuming an attempt.
         """
 
         await self._knowledge_base(resource_id, modify=True)
         revision = await self._owned_revision(resource_id, revision_id)
         if revision.status == "indexing":
-            raise ResourceConflict("This revision is already publishing")
+            if revision_id in _ACTIVE_PUBLISHES:
+                raise ResourceConflict("This revision is already publishing")
+            if _lease_is_valid(revision.publish_lease_until) and revision.publish_lease_owner != _PUBLISH_OWNER:
+                raise ResourceConflict("This revision is already publishing")
+            # Executor lost (process restart): the build state on disk and at
+            # the provider is durable, so re-verify integrity and resume.
+            self._verify_frozen_content(revision)
+            if not (_lease_is_valid(revision.publish_lease_until) and revision.publish_lease_owner == _PUBLISH_OWNER):
+                revision.publish_lease_owner = _PUBLISH_OWNER
+                revision.publish_execution_token = uuid.uuid4().hex
+                revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
+                await self.session.flush()
+            _ACTIVE_PUBLISHES.add(revision_id)
+            return _revision_payload(revision)
         if revision.status != "draft" and revision.status != "failed":
             raise ResourceConflict(f"Revision {revision_id} is not publishable (status={revision.status})")
         if revision.publish_attempt >= MAX_PUBLISH_ATTEMPTS:
@@ -202,13 +256,14 @@ class KnowledgeRevisionService:
         self._verify_frozen_content(revision)
         if eval_required() and load_eval_evidence(resource_id, revision.manifest_hash) is None:
             raise ResourceConflict("Publishing requires evaluation evidence matching this revision")
-        if provider is None:
-            raise ResourceConflict("No knowledge provider is configured for publishing")
 
         revision.status = "indexing"
         revision.publish_attempt += 1
         revision.failure_code = None
         revision.failure_message = None
+        revision.publish_lease_owner = _PUBLISH_OWNER
+        revision.publish_execution_token = uuid.uuid4().hex
+        revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
         try:
             await self.session.flush()
         except IntegrityError as exc:
@@ -216,11 +271,12 @@ class KnowledgeRevisionService:
             # per KnowledgeBase, so a concurrent publish loses here.
             await self.session.rollback()
             raise ResourceConflict("Another revision of this KnowledgeBase is already publishing") from exc
+        _ACTIVE_PUBLISHES.add(revision_id)
         return _revision_payload(revision)
 
 
 def _dataset_name(revision: KnowledgeRevision) -> str:
-    return f"ideer-kb-{revision.knowledge_base_id[:8]}-rev{revision.revision_no}-{revision.id[:8]}"
+    return f"{PUBLISHED_DATASET_NAME_PREFIX}{revision.knowledge_base_id[:8]}-rev{revision.revision_no}-{revision.id[:8]}"
 
 
 async def _await_document_ready(
@@ -243,12 +299,45 @@ async def _await_document_ready(
 
 
 async def execute_publish(
-    session_factory,
+    session_factory: Callable[[], AsyncSession],
     *,
     resource_id: str,
     revision_id: str,
     actor_id: str,
     provider: KnowledgeProvider,
+    execution_token: str | None = None,
+    poll_interval: float = 2.0,
+    parse_timeout: float = 300.0,
+) -> None:
+    """Build the immutable provider dataset, verify it, then switch the pointer.
+
+    Clears the in-process active-publish mark on exit so a crash-and-restart
+    can resume the revision (see :meth:`KnowledgeRevisionService.publish_revision`).
+    """
+
+    try:
+        await _run_publish_build(
+            session_factory,
+            resource_id=resource_id,
+            revision_id=revision_id,
+            actor_id=actor_id,
+            provider=provider,
+            execution_token=execution_token,
+            poll_interval=poll_interval,
+            parse_timeout=parse_timeout,
+        )
+    finally:
+        _ACTIVE_PUBLISHES.discard(revision_id)
+
+
+async def _run_publish_build(
+    session_factory: Callable[[], AsyncSession],
+    *,
+    resource_id: str,
+    revision_id: str,
+    actor_id: str,
+    provider: KnowledgeProvider,
+    execution_token: str | None = None,
     poll_interval: float = 2.0,
     parse_timeout: float = 300.0,
 ) -> None:
@@ -266,12 +355,36 @@ async def execute_publish(
         revision = await session.get(KnowledgeRevision, revision_id)
         if revision is None or revision.knowledge_base_id != resource_id or revision.status != "indexing":
             return
+        execution_token = execution_token or revision.publish_execution_token
+        if not execution_token or execution_token != revision.publish_execution_token:
+            return
         entries = list(revision.manifest_json or [])
         base_dir = get_paths().base_dir
         try:
+
+            def renew_lease() -> None:
+                if revision.publish_execution_token != execution_token:
+                    raise ResourceConflict("Publish execution token is no longer valid")
+                revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
+
             dataset_id = revision.provider_dataset_id
             if not dataset_id:
-                dataset_id = await provider.create_dataset(name=_dataset_name(revision))
+                renew_lease()
+                profiles = entries[0].get("knowledge_profiles") if entries else None
+                embedding = profiles.get("embedding") if isinstance(profiles, dict) else None
+                embedding_model = embedding.get("model") if isinstance(embedding, dict) else None
+                if embedding_model is not None and not isinstance(embedding_model, str):
+                    embedding_model = str(embedding_model)
+                try:
+                    dataset_id = await provider.create_dataset(
+                        name=_dataset_name(revision),
+                        embedding_model=embedding_model,
+                    )
+                except TypeError:
+                    # Keep compatibility with older provider implementations
+                    # while passing the frozen model to providers that support
+                    # the current contract.
+                    dataset_id = await provider.create_dataset(name=_dataset_name(revision))
                 revision.provider_dataset_id = dataset_id
                 revision.provider_revision_hint = f"rev-{revision.revision_no}"
                 await session.commit()
@@ -282,17 +395,18 @@ async def execute_publish(
                 if key in document_map:
                     continue
                 content = await asyncio.to_thread((base_dir / revision_document_key(revision.id, key, str(entry["filename"]))).read_bytes)
+                renew_lease()
                 result = await provider.ingest(
                     dataset_id=dataset_id,
                     filename=str(entry["filename"]),
                     mime_type=str(entry["mime_type"]),
                     content=content,
-                    provider_document_id=document_map.get(key),
                 )
                 if not result.provider_document_id:
                     raise KnowledgeProviderError("invalid_response")
                 document_map[key] = result.provider_document_id
                 revision.provider_doc_map_json = dict(document_map)
+                renew_lease()
                 await session.commit()
 
             started = asyncio.get_running_loop().time()
@@ -330,11 +444,29 @@ async def execute_publish(
                     )
 
             provider_documents = await provider.list_dataset_documents(dataset_id=dataset_id)
+            renew_lease()
             listed_ids = {str(item.get("id")) for item in provider_documents if isinstance(item, dict)}
             if listed_ids != set(document_map.values()) or len(provider_documents) != len(document_map):
                 raise KnowledgeProviderError("verification_failed")
+            provider_by_id = {str(item.get("id")): item for item in provider_documents if isinstance(item, dict)}
+            provider_hash_unverified = False
+            for entry in entries:
+                provider_document = provider_by_id.get(document_map[str(entry["document_id"])])
+                if provider_document is None:
+                    raise KnowledgeProviderError("verification_failed")
+                provider_hash = provider_document.get("content_hash")
+                if provider_hash is None or not isinstance(provider_hash, str) or len(provider_hash) != 64 or any(character not in "0123456789abcdefABCDEF" for character in provider_hash):
+                    # Some providers expose an opaque internal digest (or no
+                    # digest). The document set and frozen bytes have already
+                    # been verified locally; retain an explicit UNVERIFIED
+                    # status instead of rejecting an otherwise valid publish.
+                    provider_hash_unverified = True
+                elif provider_hash.lower() != str(entry.get("content_hash", "")).lower():
+                    raise KnowledgeProviderError("verification_failed")
             if canonical_manifest_hash(entries) != revision.manifest_hash:
                 raise KnowledgeProviderError("verification_failed")
+
+            renew_lease()
 
             prior = (
                 (
@@ -355,6 +487,10 @@ async def execute_publish(
             revision.published_at = datetime.now(UTC)
             revision.failure_code = None
             revision.failure_message = None
+            revision.integrity_status = INTEGRITY_UNVERIFIED if provider_hash_unverified else None
+            revision.publish_lease_owner = None
+            revision.publish_lease_until = None
+            revision.publish_execution_token = None
             kb_row = await session.get(KnowledgeBase, resource_id)
             if kb_row is not None:
                 kb_row.active_revision_id = revision.id
@@ -362,6 +498,9 @@ async def execute_publish(
         except Exception as exc:  # provider/storage boundary: keep a recoverable record
             revision.status = "failed"
             revision.failure_code, revision.failure_message = stable_provider_error(exc)
+            revision.publish_lease_owner = None
+            revision.publish_lease_until = None
+            revision.publish_execution_token = None
             await session.commit()
             await record_audit(
                 actor_id,

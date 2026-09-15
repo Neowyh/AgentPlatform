@@ -10,21 +10,22 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agentplatform.knowledge.integrity import (
+    INTEGRITY_DRIFTED,
+    INTEGRITY_HEALTHY,
+    INTEGRITY_MISSING_PROVIDER_DATASET,
+    INTEGRITY_UNVERIFIED,
+)
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRevision, KnowledgeRevisionCheck
 from app.agentplatform.knowledge.provider import KnowledgeProvider, KnowledgeProviderError
-
-# Revision integrity statuses (ticket 05 taxonomy; UNVERIFIED is deliberately
-# distinct so an unreachable or unverifiable provider is never reported as
-# HEALTHY nor as a confirmed failure).
-INTEGRITY_HEALTHY = "healthy"
-INTEGRITY_UNVERIFIED = "unverified"
-INTEGRITY_MISSING_PROVIDER_DATASET = "missing_provider_dataset"
-INTEGRITY_DRIFTED = "drifted"
+from app.agentplatform.knowledge.revisions import PUBLISHED_DATASET_NAME_PREFIX
+from app.agentplatform.knowledge.settings import config_value
 
 _OUTCOME_TO_INTEGRITY = {
     "HEALTHY": INTEGRITY_HEALTHY,
@@ -35,22 +36,33 @@ _OUTCOME_TO_INTEGRITY = {
     "ORPHAN_PROVIDER_RESOURCE": INTEGRITY_UNVERIFIED,
 }
 
-# Platform-created published datasets follow the publish naming scheme; a
-# provider dataset carrying that prefix but bound to nothing is an orphan.
-_ORPHAN_NAME_PREFIX = "ideer-kb-"
-
 
 def configured_interval_seconds() -> int:
     """Read ``knowledge.reconciliation_interval_seconds`` (0 disables the loop)."""
 
-    from deerflow.config.app_config import get_app_config
-
-    knowledge = getattr(get_app_config(), "knowledge", None)
-    raw = knowledge.get("reconciliation_interval_seconds") if isinstance(knowledge, dict) else getattr(knowledge, "reconciliation_interval_seconds", None)
+    raw = config_value("reconciliation_interval_seconds")
     try:
         return max(0, int(raw)) if raw is not None else 0
     except (TypeError, ValueError):
         return 0
+
+
+def _compare_provider_hash(provider_hash: object, expected: str | None) -> str:
+    """Classify one provider-side content hash against the manifest hash.
+
+    Only a 64-character hex digest can be the SHA-256 of the source bytes we
+    hashed into the manifest. Anything else (absent, or a foreign digest such
+    as RAGFlow's internal xxhash) can neither confirm nor contradict the
+    manifest, so it is recorded as ``unverified`` — never a false HEALTHY and
+    never a false HASH_MISMATCH.
+    """
+
+    text = str(provider_hash) if provider_hash is not None else ""
+    if len(text) != 64 or any(character not in "0123456789abcdefABCDEF" for character in text):
+        return "unverified"
+    if expected is not None and text.lower() != expected.lower():
+        return "hash_mismatch"
+    return "verified"
 
 
 async def _check_revision(provider: KnowledgeProvider, revision: KnowledgeRevision) -> tuple[str, list[dict]]:
@@ -71,11 +83,11 @@ async def _check_revision(provider: KnowledgeProvider, revision: KnowledgeRevisi
         if document_id not in expected:
             findings.append({**entry, "verdict": "unexpected"})
             continue
-        provider_hash = document.get("content_hash")
-        if provider_hash is None:
-            findings.append({**entry, "verdict": "unverified", "reason": "provider exposes no verifiable content hash"})
-        elif _expected_hash(revision, expected[document_id]) != str(provider_hash):
+        verdict = _compare_provider_hash(document.get("content_hash"), _expected_hash(revision, expected[document_id]))
+        if verdict == "hash_mismatch":
             findings.append({**entry, "verdict": "hash_mismatch"})
+        elif verdict == "unverified":
+            findings.append({**entry, "verdict": "unverified", "reason": "provider exposes no verifiable sha-256 content hash"})
     for document_id in sorted(set(expected) - actual_ids):
         findings.append({"kind": "document", "provider_document_id": document_id, "verdict": "missing"})
     missing = any(item.get("verdict") == "missing" for item in findings)
@@ -120,14 +132,51 @@ async def _find_orphans(session: AsyncSession, provider: KnowledgeProvider) -> l
         name = str(dataset.get("name") or "")
         if dataset_id in bound:
             continue
-        if not name.startswith(_ORPHAN_NAME_PREFIX):
+        if not name.startswith(PUBLISHED_DATASET_NAME_PREFIX):
             continue
         orphans.append(dataset_id)
     return sorted(orphans)
 
 
+def _summary(revision_id: str | None, revision_no: int | None, kb_id: str | None, check: KnowledgeRevisionCheck, findings: list[dict]) -> dict[str, object]:
+    return {
+        "knowledge_base_id": kb_id,
+        "revision_id": revision_id,
+        "revision_no": revision_no,
+        "outcome": check.outcome,
+        "check_id": check.id,
+        "findings": findings,
+    }
+
+
+def _record_check(
+    session: AsyncSession,
+    *,
+    kb_id: str | None,
+    revision_id: str | None,
+    trigger: str,
+    outcome: str,
+    findings: list[dict],
+    checked_by: str | None,
+    started: float,
+) -> KnowledgeRevisionCheck:
+    check = KnowledgeRevisionCheck(
+        id=str(uuid.uuid4()),
+        knowledge_base_id=kb_id,
+        revision_id=revision_id,
+        trigger=trigger,
+        outcome=outcome,
+        findings_json=findings,
+        checked_by=checked_by,
+        checked_at=datetime.now(UTC),
+        duration_ms=int((time.perf_counter() - started) * 1000),
+    )
+    session.add(check)
+    return check
+
+
 async def run_reconciliation(
-    session_factory,
+    session_factory: Callable[[], AsyncSession],
     *,
     provider: KnowledgeProvider,
     trigger: str = "manual",
@@ -143,7 +192,7 @@ async def run_reconciliation(
 
     summaries: list[dict[str, object]] = []
     async with session_factory() as session:
-        rows = (await session.execute(select(KnowledgeRevision).where(KnowledgeRevision.status == "published").order_by(KnowledgeRevision.knowledge_base_id, KnowledgeRevision.revision_no))).scalars().all()
+        rows = (await session.execute(select(KnowledgeRevision).where(KnowledgeRevision.status.in_(("published", "superseded"))).order_by(KnowledgeRevision.knowledge_base_id, KnowledgeRevision.revision_no))).scalars().all()
         if knowledge_base_id is not None:
             rows = [revision for revision in rows if revision.knowledge_base_id == knowledge_base_id]
         kb_ids = sorted({revision.knowledge_base_id for revision in rows})
@@ -161,72 +210,44 @@ async def run_reconciliation(
                 reachable = False
                 outcome = "UNVERIFIED"
                 findings = [{"kind": "provider_unreachable"}]
-            check = KnowledgeRevisionCheck(
-                id=str(uuid.uuid4()),
-                knowledge_base_id=revision.knowledge_base_id,
+            check = _record_check(
+                session,
+                kb_id=revision.knowledge_base_id,
                 revision_id=revision.id,
                 trigger=trigger,
                 outcome=outcome,
-                findings_json=findings,
+                findings=findings,
                 checked_by=checked_by,
-                checked_at=datetime.now(UTC),
-                duration_ms=int((time.perf_counter() - started) * 1000),
+                started=started,
             )
-            session.add(check)
             revision.integrity_status = _OUTCOME_TO_INTEGRITY.get(outcome, INTEGRITY_UNVERIFIED)
             revision.integrity_checked_at = check.checked_at
             kb_row = kb_rows.get(revision.knowledge_base_id)
             if outcome == "UNVERIFIED" and kb_row is not None:
                 kb_row.sync_status = "unreachable"
-            summaries.append(
-                {
-                    "knowledge_base_id": revision.knowledge_base_id,
-                    "revision_id": revision.id,
-                    "revision_no": revision.revision_no,
-                    "outcome": outcome,
-                    "check_id": check.id,
-                    "findings": findings,
-                }
-            )
+            summaries.append(_summary(revision.id, revision.revision_no, revision.knowledge_base_id, check, findings))
 
-        if reachable and rows:
+        # Orphan scanning is workspace-level: it runs whenever the provider is
+        # reachable, whether or not any published revision exists, and is
+        # recorded once per run instead of once per KnowledgeBase.
+        if reachable:
             orphans = await _find_orphans(session, provider)
             if orphans:
-                for kb_id in kb_ids:
-                    findings = [{"kind": "orphan_dataset", "dataset_id": orphan} for orphan in orphans]
-                    check = KnowledgeRevisionCheck(
-                        id=str(uuid.uuid4()),
-                        knowledge_base_id=kb_id,
-                        revision_id=None,
-                        trigger=trigger,
-                        outcome="ORPHAN_PROVIDER_RESOURCE",
-                        findings_json=findings,
-                        checked_by=checked_by,
-                        checked_at=datetime.now(UTC),
-                        duration_ms=None,
-                    )
-                    session.add(check)
-                    kb_row = kb_rows.get(kb_id)
-                    if kb_row is not None:
-                        kb_row.sync_status = "orphaned"
-                    summaries.append(
-                        {
-                            "knowledge_base_id": kb_id,
-                            "revision_id": None,
-                            "revision_no": None,
-                            "outcome": "ORPHAN_PROVIDER_RESOURCE",
-                            "check_id": check.id,
-                            "findings": findings,
-                        }
-                    )
-            else:
+                findings = [{"kind": "orphan_dataset", "dataset_id": orphan} for orphan in orphans]
+                check = _record_check(
+                    session,
+                    kb_id=None,
+                    revision_id=None,
+                    trigger=trigger,
+                    outcome="ORPHAN_PROVIDER_RESOURCE",
+                    findings=findings,
+                    checked_by=checked_by,
+                    started=time.perf_counter(),
+                )
                 for kb_row in kb_rows.values():
-                    if kb_row.sync_status == "ok":
-                        continue
-                    if kb_row.sync_status == "unreachable":
-                        continue
-                    kb_row.sync_status = "ok"
-        elif not reachable:
+                    kb_row.sync_status = "orphaned"
+                summaries.append(_summary(None, None, None, check, findings))
+        else:
             for kb_row in kb_rows.values():
                 kb_row.sync_status = "unreachable"
         await session.commit()

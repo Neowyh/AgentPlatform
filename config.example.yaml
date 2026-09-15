@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 40
+config_version: 41
 
 # ============================================================================
 # Logging
@@ -36,6 +36,13 @@ logging:
   enhance:
     enabled: false
     format: text
+
+# ============================================================================
+# Knowledge revisions
+# ============================================================================
+knowledge:
+  publish_eval_required: false
+  reconciliation_interval_seconds: 0  # 0 disables scheduled reconciliation
 
 # ============================================================================
 # Agent Extensions

@@ -50,9 +50,14 @@ test.describe("real memory persistence", () => {
         "xpath=ancestor::div[contains(@class, 'rounded-md') and (.//button[@aria-label='Delete' or @aria-label='删除'] or .//button[@title='Delete' or @title='删除'])]",
       );
     await factRow.getByRole("button", { name: /delete|删除/i }).click();
-    const confirmation = page.getByRole("dialog");
+    const confirmation = page
+      .getByRole("dialog")
+      .filter({ hasText: /delete this fact|删除此事实/i });
     await confirmation.getByRole("button", { name: /delete|删除/i }).click();
-    await expect(page.getByText(fact)).not.toBeVisible();
+    await expect(confirmation).not.toBeVisible();
+    await expect(
+      page.getByTestId("settings-dialog-content").getByText(fact),
+    ).not.toBeVisible();
     await expectMemoryStorageToContain(fact, false);
   });
 });

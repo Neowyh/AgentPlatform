@@ -320,3 +320,72 @@ async def test_drifted_revision_cannot_anchor_pinned_or_live_runs(store) -> None
     await session.commit()
     with pytest.raises(ResourceConflict, match="drifted"):
         await service.resolve_dependency_closure(agent.id)
+
+
+@pytest.mark.asyncio
+async def test_non_sha256_provider_hash_is_unverified_not_a_mismatch(store) -> None:
+    """RAGFlow exposes non-SHA-256 digests (e.g. xxhash128); those can never
+    confirm or contradict our manifest, so the document stays UNVERIFIED."""
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = _published_revision(session, kb, dataset_id="xxhash-dataset")
+    await _activate(session, kb, revision)
+
+    provider = FakeReconciliationProvider(datasets={"xxhash-dataset": [{"id": "provider-doc-reconcile-1", "name": "guide.txt", "content_hash": "deadbeef" * 4}]})
+    checks = await run_reconciliation(factory, provider=provider, trigger="manual", checked_by="admin")
+    await session.commit()
+
+    assert checks[0]["outcome"] == "UNVERIFIED"
+    fresh = await _integrity(session, revision.id)
+    assert fresh.integrity_status == "unverified"
+
+
+@pytest.mark.asyncio
+async def test_matching_sha256_provider_hash_is_healthy(store) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = _published_revision(session, kb, dataset_id="matching-dataset")
+    await _activate(session, kb, revision)
+
+    provider = FakeReconciliationProvider(datasets={"matching-dataset": [{"id": "provider-doc-reconcile-1", "name": "guide.txt", "content_hash": "a" * 64}]})
+    checks = await run_reconciliation(factory, provider=provider, trigger="manual", checked_by="admin")
+    assert checks[0]["outcome"] == "HEALTHY"
+
+
+@pytest.mark.asyncio
+async def test_orphans_are_visible_without_published_revisions(store) -> None:
+    """Orphan scanning must not be gated on published revisions existing."""
+    session, factory = store
+    await _seed_kb(session)  # no revision at all
+
+    provider = FakeReconciliationProvider(extra_datasets=["ideer-kb-stray"])
+    checks = await run_reconciliation(factory, provider=provider, trigger="manual", checked_by="admin")
+    await session.commit()
+
+    orphan_checks = [check for check in checks if check["outcome"] == "ORPHAN_PROVIDER_RESOURCE"]
+    assert len(orphan_checks) == 1
+
+
+@pytest.mark.asyncio
+async def test_orphan_findings_are_recorded_once_per_run(store) -> None:
+    """The same orphan dataset is one finding, not one per KnowledgeBase."""
+    session, factory = store
+    first = await _seed_kb(session, slug="kb-a")
+    second = await _seed_kb(session, slug="kb-b")
+    revision_a = _published_revision(session, first, dataset_id="dataset-a")
+    revision_b = _published_revision(session, second, dataset_id="dataset-b")
+    await _activate(session, first, revision_a)
+    await _activate(session, second, revision_b)
+
+    provider = FakeReconciliationProvider(
+        datasets={
+            "dataset-a": [{"id": "provider-doc-kb-a-1", "name": "guide.txt", "content_hash": "a" * 64}],
+            "dataset-b": [{"id": "provider-doc-kb-b-1", "name": "guide.txt", "content_hash": "a" * 64}],
+        },
+        extra_datasets=["ideer-kb-stray"],
+    )
+    checks = await run_reconciliation(factory, provider=provider, trigger="manual", checked_by="admin")
+    await session.commit()
+
+    orphan_checks = [check for check in checks if check["outcome"] == "ORPHAN_PROVIDER_RESOURCE"]
+    assert len(orphan_checks) == 1

@@ -1596,6 +1596,11 @@ export const enUS: Translations = {
     errorNetwork: "Network error. Please try again.",
   },
   workflows: {
+    knowledgeSnapshot: {
+      title: "Knowledge used by this run",
+      entry: (kb: string, no: number | string, hash: string) =>
+        `KB ${kb} · v${no} · manifest ${hash}`,
+    },
     title: "Workflows",
     description: "Automate repeatable, step-by-step tasks with iDeer.",
     newWorkflow: "New Workflow",
@@ -1760,6 +1765,38 @@ export const enUS: Translations = {
     documents: "Documents",
     knowledgeBases: "Knowledge Bases",
     revisions: "Revisions",
+    revisionList: {
+      selectKnowledgeBase: "Select a knowledge base to view revisions",
+      loading: "Loading...",
+      loadFailed: "Unable to load revisions.",
+      empty: "No revision candidates yet",
+      createCandidate: "Create revision candidate",
+      creating: "Creating...",
+      createFailed:
+        "Unable to create a revision candidate. A candidate requires at least one ready document.",
+      publishFailed: "Unable to publish this revision.",
+      viewDetails: "View details",
+      hideDetails: "Hide details",
+      documentsAndManifest: (count: number, hash: string) =>
+        `${count} documents · manifest ${hash}`,
+      publishingStatus: "publishing",
+      integrityFlagged: (status: string) =>
+        `Reconciliation flagged this revision as ${status}`,
+      publish: "Publish",
+      publishingAction: "Publishing...",
+      publishAria: (no: number) => `Publish v${no}`,
+    },
+    dependencySelector: {
+      loadError:
+        "Knowledge dependencies could not be loaded. Reload before saving.",
+      live: "LIVE",
+      pinned: "PINNED",
+      selectRevision: "Select published revision",
+      revisionsUnavailable: "Revisions unavailable",
+      noPublishedRevisions: "No published revisions available",
+      modeAria: (slug: string) => `${slug} dependency mode`,
+      revisionAria: (slug: string) => `${slug} published revision`,
+    },
   },
 
   // Settings
@@ -1778,6 +1815,22 @@ export const enUS: Translations = {
   },
 
   admin: {
+    knowledgeReconciliation: {
+      title: "Knowledge reconciliation",
+      description: "Read-only drift checks for published knowledge revisions",
+      run: "Run reconciliation",
+      running: "Running...",
+      loading: "Loading...",
+      loadFailed: "Failed to load reconciliation state",
+      emptyHint: (kb: string) =>
+        `Run a reconciliation to see the latest drift findings for KB ${kb}.`,
+      noPublished: "Reconciliation found no published revisions to check",
+      recorded: (n: number) => `Reconciliation recorded ${n} check(s)`,
+      lastChecked: (at: string) => `Last checked: ${at}`,
+      checkHistory: "Check history",
+      noChecks: "No reconciliation checks recorded yet",
+      unknown: "unknown",
+    },
     dashboard: {
       title: "Admin Console",
       subtitle: "Manage users, departments, and system tools",

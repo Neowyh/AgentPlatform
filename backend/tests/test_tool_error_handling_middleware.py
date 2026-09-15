@@ -13,6 +13,8 @@ from deerflow.agents.middlewares.tool_error_handling_middleware import (
     ToolErrorHandlingMiddleware,
     build_lead_runtime_middlewares,
     build_subagent_runtime_middlewares,
+    reset_workflow_subagent_runtime,
+    workflow_subagent_runtime,
 )
 from deerflow.agents.middlewares.tool_result_meta import TOOL_META_KEY
 from deerflow.agents.middlewares.view_image_middleware import ViewImageMiddleware
@@ -215,6 +217,27 @@ def test_subagent_runtime_sandbox_does_not_own_lead_skill_projection() -> None:
 
     sandbox_middleware = next(middleware for middleware in middlewares if isinstance(middleware, SandboxMiddleware))
     assert sandbox_middleware._owns_agent_skill_projection is False
+
+
+def test_workflow_subagent_runtime_avoids_non_terminating_after_model_hooks() -> None:
+    """Workflow tool graphs keep terminal routing with the bridge's guard mode."""
+    token = workflow_subagent_runtime()
+    try:
+        middlewares = build_subagent_runtime_middlewares(app_config=_make_app_config())
+    finally:
+        reset_workflow_subagent_runtime(token)
+
+    names = {type(middleware).__name__ for middleware in middlewares}
+    assert names == {
+        "InputSanitizationMiddleware",
+        "ThreadDataMiddleware",
+        "SandboxMiddleware",
+        "LLMErrorHandlingMiddleware",
+        "ToolErrorHandlingMiddleware",
+        "ToolReceiptMiddleware",
+        "SafetyFinishReasonMiddleware",
+        "SubagentDateContextMiddleware",
+    }
 
 
 def test_tool_progress_middleware_is_outer_relative_to_error_handling(monkeypatch: pytest.MonkeyPatch):

@@ -56,6 +56,9 @@ export default defineConfig({
       IDEER_NEXT_DIST_DIR: `.next-e2e-${runId}`,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",
+      REAL_E2E_REAL_MODEL: process.env.REAL_E2E_REAL_MODEL ?? "",
+      REAL_E2E_MODEL_NAME: process.env.REAL_E2E_MODEL_NAME ?? "",
+      REAL_E2E_EXPECTED_MARKER: process.env.REAL_E2E_EXPECTED_MARKER ?? "",
     },
   },
 });

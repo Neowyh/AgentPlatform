@@ -61,6 +61,22 @@ async def test_runtime_adapter_passes_ready_document_allowlist_to_async_provider
 
 
 @pytest.mark.asyncio
+async def test_runtime_adapter_passes_frozen_retrieval_profile_when_supported() -> None:
+    calls: list[dict] = []
+
+    async def provider(query: str, *, dataset_ids: list[str], retrieval_profile: dict[str, object]) -> str:
+        calls.append({"query": query, "dataset_ids": dataset_ids, "retrieval_profile": retrieval_profile})
+        return "ok"
+
+    scope = KnowledgeScope.from_bindings(
+        {"docs": "opaque-dataset"},
+        retrieval_profiles={"opaque-dataset": {"top_k": 3}},
+    )
+    assert await KnowledgeRuntimeAdapter(scope, provider).search_knowledge("find it", logical_kb="docs") == "ok"
+    assert calls == [{"query": "find it", "dataset_ids": ["opaque-dataset"], "retrieval_profile": {"top_k": 3}}]
+
+
+@pytest.mark.asyncio
 async def test_runtime_adapter_rejects_provider_without_document_filtering() -> None:
     calls: list[dict] = []
 

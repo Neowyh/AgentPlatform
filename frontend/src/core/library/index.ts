@@ -30,6 +30,7 @@ export {
   useKnowledgeBases,
   useKnowledgeRevision,
   useKnowledgeRevisions,
+  usePublishedKnowledgeRevisions,
   useUploadKnowledgeDocument,
   useRetryKnowledgeDocument,
   useRebuildKnowledgeDocumentIndex,

@@ -112,6 +112,8 @@ def test_dependency_and_snapshot_rows_use_resource_ids_and_actual_versions() -> 
         "provider_dataset_id",
         "retrieval_profile_hash",
         "embedding_profile_hash",
+        "retrieval_profile_json",
+        "embedding_profile_json",
         "resolved_at",
     }
     assert ("run_id", "resource_id") in _unique_column_sets(RunResourceSnapshot)

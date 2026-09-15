@@ -387,14 +387,13 @@ async def test_list_dataset_documents_accepts_plain_list_shape() -> None:
 
 @pytest.mark.anyio
 async def test_parse_document_uses_the_batch_endpoint() -> None:
-    """RAGFlow v0.27+ has no single-document parse route; real-provider
-    acceptance (M4 ticket 06) caught the 404."""
+    """Parsing uses the provider's chunks batch endpoint."""
     requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         assert request.method == "POST"
-        assert request.url.path == "/api/v1/datasets/dataset-1/documents/parse"
+        assert request.url.path == "/api/v1/datasets/dataset-1/chunks"
         assert json.loads(request.content) == {"document_ids": ["doc-9"]}
         return httpx.Response(200, json={"code": 0, "data": True})
 

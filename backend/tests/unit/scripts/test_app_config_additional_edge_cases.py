@@ -77,6 +77,7 @@ def test_resolve_config_path_finds_project_config(tmp_path, monkeypatch):
     config_file = tmp_path / "config.yaml"
     config_file.write_text("sandbox: {}")
     monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("DEER_FLOW_CONFIG_PATH", raising=False)
 
     with patch("deerflow.config.app_config.existing_project_file", return_value=config_file):
         result = AppConfig.resolve_config_path()
@@ -89,6 +90,7 @@ def test_resolve_config_path_finds_project_config(tmp_path, monkeypatch):
 def test_resolve_config_path_finds_legacy_config(tmp_path, monkeypatch):
     """Line 152: Falls back to legacy candidates."""
     monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("DEER_FLOW_CONFIG_PATH", raising=False)
 
     legacy = tmp_path / "config.yaml"
     legacy.write_text("sandbox: {}")
@@ -104,6 +106,7 @@ def test_resolve_config_path_finds_legacy_config(tmp_path, monkeypatch):
 def test_resolve_config_path_raises_when_nothing_found(monkeypatch):
     """Line 152: Raises FileNotFoundError when no config found."""
     monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("DEER_FLOW_CONFIG_PATH", raising=False)
 
     with (
         patch("deerflow.config.app_config.existing_project_file", return_value=None),

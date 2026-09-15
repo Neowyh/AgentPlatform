@@ -1243,6 +1243,10 @@ export interface Translations {
 
   // Workflows
   workflows: {
+    knowledgeSnapshot: {
+      title: string;
+      entry: (kb: string, no: number | string, hash: string) => string;
+    };
     // Gallery
     title: string;
     description: string;
@@ -1404,6 +1408,34 @@ export interface Translations {
     documents: string;
     knowledgeBases: string;
     revisions: string;
+    revisionList: {
+      selectKnowledgeBase: string;
+      loading: string;
+      loadFailed: string;
+      empty: string;
+      createCandidate: string;
+      creating: string;
+      createFailed: string;
+      publishFailed: string;
+      viewDetails: string;
+      hideDetails: string;
+      documentsAndManifest: (count: number, hash: string) => string;
+      publishingStatus: string;
+      integrityFlagged: (status: string) => string;
+      publish: string;
+      publishingAction: string;
+      publishAria: (no: number) => string;
+    };
+    dependencySelector: {
+      loadError: string;
+      live: string;
+      pinned: string;
+      selectRevision: string;
+      revisionsUnavailable: string;
+      noPublishedRevisions: string;
+      modeAria: (slug: string) => string;
+      revisionAria: (slug: string) => string;
+    };
   };
 
   // Settings
@@ -1415,6 +1447,21 @@ export interface Translations {
   };
 
   admin: {
+    knowledgeReconciliation: {
+      title: string;
+      description: string;
+      run: string;
+      running: string;
+      loading: string;
+      loadFailed: string;
+      emptyHint: (kb: string) => string;
+      noPublished: string;
+      recorded: (n: number) => string;
+      lastChecked: (at: string) => string;
+      checkHistory: string;
+      noChecks: string;
+      unknown: string;
+    };
     dashboard: {
       title: string;
       subtitle: string;

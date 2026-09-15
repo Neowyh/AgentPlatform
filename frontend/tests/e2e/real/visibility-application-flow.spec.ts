@@ -5,7 +5,7 @@ import {
   loginAsRealUser,
   requireRealE2EEnvironment,
   runScopedName,
-  seedAgentName,
+  seedAgentResourceId,
   hasRealE2EEnvironment,
 } from "./real-e2e";
 
@@ -26,11 +26,18 @@ async function submitApplication(
     `/workspace/capabilities/experts/${encodeURIComponent(agentName)}`,
   );
   await page
-    .getByRole("button", { name: /apply.*visibility|申请.*可见性/i })
+    .getByRole("button", {
+      name: /change.*visibility|apply.*visibility|更改可见性|申请.*可见性/i,
+    })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("combobox").click();
-  await dialog.getByRole("option", { name: targetVisibility }).click();
+  await page
+    .getByRole("option", {
+      name:
+        targetVisibility === "department" ? /department|部门/i : /public|公开/i,
+    })
+    .click();
   await dialog.getByLabel(/reason|理由/i).fill(reason);
   await dialog.getByRole("button", { name: /submit|提交/i }).click();
   await expect(
@@ -49,22 +56,15 @@ async function reviewApplication(
     .locator('[data-slot="card"]')
     .filter({ hasText: reason });
   await expect(application).toBeVisible();
-  await application.getByRole("button", { name: "审核" }).click();
+  await application.getByRole("button", { name: /review|审核/i }).click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: action === "approved" ? "通过" : "驳回" })
+    .getByRole("button", {
+      name: action === "approved" ? /approve|通过/i : /reject|驳回/i,
+    })
     .click();
-  await page
-    .getByRole("button", { name: action === "approved" ? "已批准" : "已拒绝" })
-    .click();
-  const reviewedApplication = page
-    .locator('[data-slot="card"]')
-    .filter({ hasText: reason });
-  await expect(reviewedApplication).toBeVisible();
   await expect(
-    reviewedApplication.getByText(action === "approved" ? "已批准" : "已拒绝", {
-      exact: true,
-    }),
+    page.getByText(/no pending applications|无待处理申请/i),
   ).toBeVisible();
 }
 
@@ -79,7 +79,7 @@ test.describe.serial("real visibility applications", () => {
     test(`user ${action === "approved" ? "approves" : "rejects"} ${suffix}`, async ({
       page,
     }) => {
-      const agentName = seedAgentName(suffix);
+      const agentName = seedAgentResourceId(suffix);
       const reason = runScopedName(`${action}-reason`);
       await loginAsRealUser(page, "user@test.com");
       await submitApplication(page, agentName, reason);

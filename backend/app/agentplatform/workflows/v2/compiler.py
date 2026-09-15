@@ -31,7 +31,15 @@ def _knowledge_scope_from_state(state: dict[str, Any]) -> KnowledgeScope | None:
     bindings = value.get("bindings")
     if not isinstance(bindings, dict):
         return None
-    return KnowledgeScope.from_bindings({str(logical): str(dataset) for logical, dataset in bindings.items()})
+    ready = value.get("ready_document_ids")
+    profiles = value.get("retrieval_profiles")
+    ready_ids = ready if isinstance(ready, dict) else None
+    retrieval_profiles = profiles if isinstance(profiles, dict) else None
+    return KnowledgeScope.from_bindings(
+        {str(logical): str(dataset) for logical, dataset in bindings.items()},
+        ready_document_ids=ready_ids,
+        retrieval_profiles=retrieval_profiles,
+    )
 
 
 class WorkflowCancelled(RuntimeError):

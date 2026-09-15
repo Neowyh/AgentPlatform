@@ -256,6 +256,7 @@ export type MockWorkflowRun = {
   workflow: string;
   status: string;
   definition_version?: number;
+  snapshot?: Record<string, unknown>;
   error?: string | null;
   steps?: Record<
     string,

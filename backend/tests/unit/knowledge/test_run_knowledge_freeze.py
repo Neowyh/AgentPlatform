@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
@@ -141,6 +142,9 @@ async def test_live_dependency_freezes_published_revision_into_run_snapshot(stor
     kb_snapshot = next(snapshot for snapshot in snapshots if snapshot.resource_id == kb.id)
     assert kb_snapshot.knowledge_revision_id == revision.id
     assert kb_snapshot.knowledge_revision_no == 1
+    # The freeze records the actual profile values, not just a digest.
+    assert kb_snapshot.retrieval_profile_json == {"top_k": 6}
+    assert kb_snapshot.embedding_profile_json == {"model": "bge-m3"}
     assert kb_snapshot.manifest_hash == revision.manifest_hash
     assert kb_snapshot.provider_dataset_id == "published-dataset-1"
     assert kb_snapshot.provider_type == "ragflow"
@@ -166,9 +170,15 @@ async def test_profile_change_after_freeze_does_not_move_run_a(store) -> None:
     await session.commit()
     kb_snapshot = next(snapshot for snapshot in snapshots if snapshot.resource_id == kb.id)
     original_profile_hash = kb_snapshot.retrieval_profile_hash
+    original_profile_values = kb_snapshot.retrieval_profile_json
 
     kb_row.retrieval_profile_json = {"top_k": 99}
     await session.commit()
+
+    # The frozen values are the ones in effect at freeze time, not the
+    # mutable latest configuration.
+    assert kb_snapshot.retrieval_profile_json == original_profile_values
+    assert kb_snapshot.retrieval_profile_hash == original_profile_hash
 
     new_closure = await service.resolve_dependency_closure(agent.id)
     kb_item = next(item for item in new_closure if item.resource.type == "knowledge_base")
@@ -241,3 +251,26 @@ async def test_draft_active_revision_is_not_resolvable(store) -> None:
     service = ResourceService(session, _actor())
     with pytest.raises(ResourceConflict, match="published revision"):
         await service.resolve_dependency_closure(agent.id)
+
+
+@pytest.mark.asyncio
+async def test_pinned_dependency_can_resolve_superseded_revision(store) -> None:
+    session, _factory = store
+    agent, kb = await _seed_agent_with_kb(session)
+    revision = _revision(session, kb, revision_no=1, status="superseded")
+    dependency = (
+        await session.execute(
+            select(ResourceDependency).where(
+                ResourceDependency.source_resource_id == agent.id,
+                ResourceDependency.target_resource_id == kb.id,
+            )
+        )
+    ).scalar_one()
+    dependency.dependency_mode = "pinned"
+    dependency.revision_id = revision.id
+    await session.commit()
+
+    closure = await ResourceService(session, _actor()).resolve_dependency_closure(agent.id)
+    resolved = next(item for item in closure if item.resource.id == kb.id)
+    assert resolved.knowledge_revision is not None
+    assert resolved.knowledge_revision.id == revision.id

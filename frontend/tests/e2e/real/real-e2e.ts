@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 
 import { expect, type Page } from "@playwright/test";
@@ -20,6 +20,15 @@ export function hasRealE2EEnvironment() {
   return existsSync(join(process.env.E2E_STATE_DIR, "manifest.json"));
 }
 
+export function hasRealModelEnvironment() {
+  return (
+    hasRealE2EEnvironment() &&
+    process.env.REAL_E2E_REAL_MODEL === "1" &&
+    Boolean(process.env.REAL_E2E_MODEL_NAME) &&
+    Boolean(process.env.REAL_E2E_EXPECTED_MARKER)
+  );
+}
+
 export function requireRealE2EEnvironment() {
   const stateDir = requiredEnv("E2E_STATE_DIR");
   requiredEnv("E2E_RUN_ID");
@@ -35,6 +44,46 @@ export function runScopedName(suffix: string) {
 
 export function seedAgentName(suffix: string) {
   return runScopedName(suffix);
+}
+
+export function seedAgentResourceId(suffix: string) {
+  return requiredDatabaseValue(
+    "SELECT id FROM resources WHERE type = 'agent' AND slug = ?",
+    [seedAgentName(suffix)],
+    `${suffix} resource id`,
+  );
+}
+
+export function seedWorkflowResourceId() {
+  return requiredDatabaseValue(
+    "SELECT id FROM resources WHERE type = 'workflow' AND slug = ?",
+    [runScopedName("knowledge-workflow")],
+    "knowledge workflow resource id",
+  );
+}
+
+export function seedWorkflowRunId(workflowResourceId: string) {
+  return requiredDatabaseValue(
+    "SELECT run_id FROM workflow_v2_runs WHERE workflow_resource_id = ? ORDER BY created_at DESC LIMIT 1",
+    [workflowResourceId],
+    "knowledge workflow run id",
+  );
+}
+
+export function seedRealModelWorkflowResourceId() {
+  return requiredDatabaseValue(
+    "SELECT id FROM resources WHERE type = 'workflow' AND slug = ?",
+    [runScopedName("real-model-workflow")],
+    "real model workflow resource id",
+  );
+}
+
+export function seedRealModelManifestHash() {
+  return requiredDatabaseValue(
+    "SELECT r.manifest_hash FROM knowledge_base_revisions r JOIN knowledge_bases k ON k.active_revision_id = r.id JOIN resources x ON x.id = k.resource_id WHERE x.slug = ?",
+    [runScopedName("real-model-kb")],
+    "real model manifest hash",
+  );
 }
 
 export async function loginAsRealUser(page: Page, email: string) {
@@ -115,7 +164,7 @@ export function assertRbacSeed() {
 
   for (const agentSuffix of ["approve-agent", "reject-agent"] as const) {
     requiredDatabaseValue(
-      "SELECT resource_metadata.owner_id FROM resource_metadata JOIN users ON resource_metadata.owner_id = users.id WHERE resource_metadata.resource_type = 'agent' AND resource_metadata.resource_id = ? AND users.email = ?",
+      "SELECT resources.owner_id FROM resources JOIN users ON resources.owner_id = users.id WHERE resources.type = 'agent' AND resources.slug = ? AND users.email = ?",
       [seedAgentName(agentSuffix), "user@test.com"],
       `${agentSuffix} ownership by user@test.com`,
     );
@@ -134,7 +183,7 @@ export function expectVisibilityState({
   visibility: "department" | "private";
 }) {
   const application = queryDatabase(
-    "SELECT status FROM visibility_applications WHERE resource_type = 'agent' AND resource_id = ? AND reason = ?",
+    "SELECT status FROM visibility_applications WHERE resource_type = 'agent' AND canonical_resource_id = ? AND reason = ?",
     [agentName, reason],
   );
   if (application?.[0] !== status) {
@@ -142,13 +191,13 @@ export function expectVisibilityState({
       `Expected ${agentName} application to be ${status}, got ${JSON.stringify(application)}`,
     );
   }
-  const metadata = queryDatabase(
-    "SELECT visibility FROM resource_metadata WHERE resource_type = 'agent' AND resource_id = ?",
+  const resource = queryDatabase(
+    "SELECT visibility FROM resources WHERE type = 'agent' AND id = ?",
     [agentName],
   );
-  if (metadata?.[0] !== visibility) {
+  if (resource?.[0] !== visibility) {
     throw new Error(
-      `Expected ${agentName} visibility ${visibility}, got ${JSON.stringify(metadata)}`,
+      `Expected ${agentName} visibility ${visibility}, got ${JSON.stringify(resource)}`,
     );
   }
 }
@@ -169,12 +218,43 @@ export async function expectMemoryStorageToContain(
     "memory.json",
   );
 
+  function storageContainsFact(): boolean {
+    if (
+      existsSync(memoryPath) &&
+      readFileSync(memoryPath, "utf8").includes(content)
+    ) {
+      return true;
+    }
+    const factsRoot = resolve(
+      memoryPath,
+      "..",
+      "agents",
+      "__default__",
+      "facts",
+    );
+    if (!existsSync(factsRoot)) return false;
+    const pending = [factsRoot];
+    while (pending.length > 0) {
+      const directory = pending.pop()!;
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) pending.push(path);
+        else if (
+          entry.isFile() &&
+          readFileSync(path, "utf8").includes(content)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   await expect
     .poll(
       async () => {
-        if (!existsSync(memoryPath)) return { exists: false, found: false };
-        const raw = readFileSync(memoryPath, "utf8");
-        return { exists: true, found: raw.includes(content) };
+        const exists = existsSync(memoryPath);
+        return { exists, found: storageContainsFact() };
       },
       {
         timeout: 15_000,

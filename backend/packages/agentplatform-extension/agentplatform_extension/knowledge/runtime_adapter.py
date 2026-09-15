@@ -49,6 +49,9 @@ class KnowledgeRuntimeAdapter:
             search_options = {"dataset_ids": [resolved]}
             if document_ids is not None:
                 search_options["document_ids"] = list(document_ids)
+            profile = self.scope.retrieval_profile_for(resolved)
+            if profile and _accepts_parameter(self.search, "retrieval_profile"):
+                search_options["retrieval_profile"] = profile
             result = self.search(query, **search_options)
         else:
             result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
@@ -139,6 +142,9 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
                 search_options = {"dataset_ids": [resolved]}
                 if document_ids is not None:
                     search_options["document_ids"] = list(document_ids)
+                profile = scope.retrieval_profile_for(resolved)
+                if profile and _accepts_parameter(provider, "retrieval_profile"):
+                    search_options["retrieval_profile"] = profile
                 return provider(query, **search_options)
             except (KeyError, TypeError) as exc:
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc

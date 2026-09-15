@@ -35,6 +35,19 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       agents: { backToGallery: "Back to Gallery" },
       common: { loading: "Loading..." },
+      library: {
+        dependencySelector: {
+          loadError:
+            "Knowledge dependencies could not be loaded. Reload before saving.",
+          live: "LIVE",
+          pinned: "PINNED",
+          selectRevision: "Select published revision",
+          revisionsUnavailable: "Revisions unavailable",
+          noPublishedRevisions: "No published revisions available",
+          modeAria: (slug: string) => `${slug} dependency mode`,
+          revisionAria: (slug: string) => `${slug} published revision`,
+        },
+      },
     },
     changeLocale: vi.fn(),
   }),
@@ -110,6 +123,13 @@ vi.mock("@/core/skills/hooks", () => ({
     isLoading: false,
     error: null,
   })),
+}));
+
+vi.mock("@/core/library", () => ({
+  usePublishedKnowledgeRevisions: () => ({
+    publishedRevisions: {},
+    isError: false,
+  }),
 }));
 
 vi.mock("@/core/resources/api", () => resourceMocks);

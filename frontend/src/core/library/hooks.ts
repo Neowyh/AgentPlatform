@@ -14,7 +14,7 @@ import {
   deleteKnowledgeDocument,
   editKnowledgeDocument,
 } from "./api";
-import type { CreateKnowledgeBaseRequest } from "./api";
+import type { CreateKnowledgeBaseRequest, KnowledgeRevision } from "./api";
 
 export function useKnowledgeBases() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -114,6 +114,33 @@ export function useKnowledgeRevision(
     enabled: Boolean(resourceId && revisionId),
   });
   return query;
+}
+
+export function usePublishedKnowledgeRevisions(knowledgeBaseIds: string[]) {
+  const query = useQuery({
+    queryKey: ["knowledge-revisions-published", knowledgeBaseIds],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        knowledgeBaseIds.map(async (id) => {
+          const revisions = await listKnowledgeRevisions(id);
+          return [
+            id,
+            revisions.filter((revision) => revision.status === "published"),
+          ] as const;
+        }),
+      );
+      return Object.fromEntries(entries);
+    },
+    enabled: knowledgeBaseIds.length > 0,
+  });
+  return {
+    ...query,
+    publishedRevisions: (query.data ?? {}) as Record<
+      string,
+      KnowledgeRevision[]
+    >,
+    isError: query.isError,
+  };
 }
 
 export function useCreateKnowledgeRevision(resourceId: string) {

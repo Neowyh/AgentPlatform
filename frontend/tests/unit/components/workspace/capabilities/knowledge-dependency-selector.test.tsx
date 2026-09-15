@@ -29,26 +29,52 @@ const mockRevisions = [
   },
 ];
 
-const listKnowledgeRevisions = vi.fn();
+let mockState: {
+  published: Record<string, typeof mockRevisions>;
+  isError: boolean;
+};
 
-vi.mock("@/core/library/api", () => ({
-  listKnowledgeRevisions: (...args: unknown[]) =>
-    listKnowledgeRevisions(...args),
+const onChangeCalls: unknown[] = [];
+let onChange: (next: unknown) => void;
+
+vi.mock("@/core/library", () => ({
+  usePublishedKnowledgeRevisions: () => ({
+    publishedRevisions: mockState.published,
+    isError: mockState.isError,
+  }),
+}));
+
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({
+    t: {
+      library: {
+        dependencySelector: {
+          loadError:
+            "Knowledge dependencies could not be loaded. Reload before saving.",
+          live: "LIVE",
+          pinned: "PINNED",
+          selectRevision: "Select published revision",
+          revisionsUnavailable: "Revisions unavailable",
+          noPublishedRevisions: "No published revisions available",
+          modeAria: (slug: string) => `${slug} dependency mode`,
+          revisionAria: (slug: string) => `${slug} published revision`,
+        },
+      },
+    },
+  }),
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
-type SelectorModule =
-  typeof import("@/components/workspace/capabilities/knowledge-dependency-selector");
-
-let KnowledgeDependencySelector: SelectorModule["KnowledgeDependencySelector"];
-let onChangeCalls: unknown[];
-let onChange: (next: unknown) => void;
+let KnowledgeDependencySelector: typeof import("@/components/workspace/capabilities/knowledge-dependency-selector").KnowledgeDependencySelector;
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  listKnowledgeRevisions.mockResolvedValue(mockRevisions);
-  onChangeCalls = [];
+  mockState = {
+    published: { "kb-1": [mockRevisions[0]!] },
+    isError: false,
+  };
+  onChangeCalls.length = 0;
   onChange = (next: unknown) => {
     onChangeCalls.push(next);
   };
@@ -131,14 +157,16 @@ describe("KnowledgeDependencySelector", () => {
         purpose: null,
       },
     ]);
-    const options = Array.from(select.options).map((option) => option.value);
+    const options = Array.from(select.querySelectorAll("option")).map(
+      (option) => option.value,
+    );
     expect(options).toContain("rev-published");
     expect(options).not.toContain("rev-draft");
   });
 
   test("a failed revisions read blocks pinned selection instead of faking empty", async () => {
     const onRevisionsLoadError = vi.fn();
-    listKnowledgeRevisions.mockRejectedValue(new Error("boom"));
+    mockState.isError = true;
     renderSelector({
       dependencies: [
         {

@@ -1085,6 +1085,10 @@ async def publish_knowledge_revision(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     provider = configured_ragflow_provider()
+    if provider is None:
+        # Environment readiness, not a client mistake: align with the admin
+        # reconciliation endpoint's 503 semantics.
+        raise HTTPException(status_code=503, detail="No knowledge provider is configured")
     async with _factory()() as session:
         revision = await KnowledgeRevisionService(session, _resource_actor(current_user)).publish_revision(
             resource_id,
@@ -1092,15 +1096,15 @@ async def publish_knowledge_revision(
             provider=provider,
         )
         await session.commit()
-    if provider is not None:
-        background_tasks.add_task(
-            execute_publish,
-            _factory(),
-            resource_id=resource_id,
-            revision_id=revision_id,
-            actor_id=str(current_user.id),
-            provider=provider,
-        )
+    background_tasks.add_task(
+        execute_publish,
+        _factory(),
+        resource_id=resource_id,
+        revision_id=revision_id,
+        actor_id=str(current_user.id),
+        provider=provider,
+        execution_token=revision.get("publish_execution_token"),
+    )
     await record_audit(
         str(current_user.id),
         "knowledge_revision_publish_requested",

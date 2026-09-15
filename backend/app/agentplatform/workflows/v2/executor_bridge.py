@@ -157,6 +157,22 @@ class WorkflowSubagentExecutor(SubagentExecutor):
 
     _PROGRESS_POLL_INTERVAL_SECONDS = 0.05
 
+    def _create_agent(self, tools=None, *, deferred_setup=None, extensions=None):
+        """Build workflow subagents with the workflow-safe middleware profile.
+
+        The executor may cross an async capacity boundary before the base
+        executor assembles its graph, so a context flag set around ``_aexecute``
+        is not guaranteed to survive until middleware construction. Bind it at
+        the actual assembly seam instead.
+        """
+        from deerflow.agents.middlewares.tool_error_handling_middleware import reset_workflow_subagent_runtime, workflow_subagent_runtime
+
+        runtime_token = workflow_subagent_runtime()
+        try:
+            return super()._create_agent(tools, deferred_setup=deferred_setup, extensions=extensions)
+        finally:
+            reset_workflow_subagent_runtime(runtime_token)
+
     async def _aexecute(
         self,
         task: str,
@@ -192,6 +208,9 @@ class WorkflowSubagentExecutor(SubagentExecutor):
                 pending_middlewares = None
         token = _PENDING_FILE_SCOPE.set(pending_middlewares)
         knowledge_token = _PENDING_KNOWLEDGE_SCOPE.set(knowledge_scope)
+        from deerflow.agents.middlewares.tool_error_handling_middleware import reset_workflow_subagent_runtime, workflow_subagent_runtime
+
+        runtime_token = workflow_subagent_runtime()
         try:
             if progress_callback is None:
                 return await super()._aexecute(task, result_holder)
@@ -199,6 +218,7 @@ class WorkflowSubagentExecutor(SubagentExecutor):
         finally:
             _PENDING_KNOWLEDGE_SCOPE.reset(knowledge_token)
             _PENDING_FILE_SCOPE.reset(token)
+            reset_workflow_subagent_runtime(runtime_token)
             if scoped:
                 self.thread_id = original_thread_id
 

@@ -1,6 +1,20 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({
+    t: {
+      workflows: {
+        knowledgeSnapshot: {
+          title: "Knowledge used by this run",
+          entry: (kb: string, no: number | string, hash: string) =>
+            `KB ${kb} · v${no} · manifest ${hash}`,
+        },
+      },
+    },
+  }),
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let KnowledgeSnapshotCard: typeof import("@/components/workspace/workflows/knowledge-snapshot-card").KnowledgeSnapshotCard;

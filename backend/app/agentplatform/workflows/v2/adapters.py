@@ -32,7 +32,13 @@ def _agent_knowledge_scope(
         return None
     if not declared_resource_ids:
         return KnowledgeScope()
-    return KnowledgeScope.from_bindings((logical, dataset) for logical, dataset in scope.bindings if logical in declared_resource_ids)
+    bindings = tuple((logical, dataset) for logical, dataset in scope.bindings if logical in declared_resource_ids)
+    datasets = {dataset for _, dataset in bindings}
+    return KnowledgeScope.from_bindings(
+        bindings,
+        ready_document_ids={dataset: ids for dataset, ids in scope.ready_document_ids if dataset in datasets},
+        retrieval_profiles={dataset: dict(profile) for dataset, profile in scope.retrieval_profiles if dataset in datasets},
+    )
 
 
 @dataclass

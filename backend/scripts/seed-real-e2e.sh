@@ -40,6 +40,7 @@ STATE_DIR="${manifest_values[0]}"
 PID="${manifest_values[1]}"
 PORT="${manifest_values[2]}"
 BASE_URL="${manifest_values[3]}"
+DATABASE_PATH="${manifest_values[6]}"
 LOG_PATH="${manifest_values[8]}"
 RUN_ID="${manifest_values[9]}"
 LOGS_DIR="$(dirname "$LOG_PATH")"
@@ -147,8 +148,14 @@ request 200 -c "$USER_COOKIE" -X POST "$BASE_URL/api/v1/auth/login/local" \
 
 create_agent() {
   local name="$1"
-  request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/agents" -H 'Content-Type: application/json' \
-    --data "{\"name\":\"$name\",\"description\":\"Isolated real E2E resource $name\",\"skills\":[],\"soul\":\"Real E2E seed resource.\"}"
+  request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources" -H 'Content-Type: application/json' \
+    --data "{\"type\":\"agent\",\"slug\":\"$name\",\"display_name\":\"$name\",\"storage_kind\":\"filesystem\"}"
+  local resource_id
+  resource_id="$(json_value id)"
+  request 200 -b "$USER_COOKIE" -X PUT "$BASE_URL/api/resources/$resource_id/agent-draft" -H 'Content-Type: application/json' \
+    --data "{\"config\":{\"name\":\"$name\",\"description\":\"Isolated real E2E resource $name\",\"skills\":[]},\"soul\":\"Real E2E seed resource.\",\"expected_revision\":0}"
+  request 200 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$resource_id/publish" -H 'Content-Type: application/json' \
+    --data '{"expected_draft_revision":1}'
 }
 
 APPROVE_AGENT="e2e-${RUN_ID}-approve-agent"
@@ -156,5 +163,141 @@ REJECT_AGENT="e2e-${RUN_ID}-reject-agent"
 create_agent "$APPROVE_AGENT"
 create_agent "$REJECT_AGENT"
 
+REAL_MODEL_WORKFLOW=""
+if [[ "${REAL_E2E_REAL_MODEL:-0}" == "1" ]]; then
+  REAL_MODEL_DATASET_ID="${REAL_E2E_RAGFLOW_DATASET_ID:-}"
+  [[ -n "$REAL_MODEL_DATASET_ID" ]] || {
+    echo "REAL_E2E_RAGFLOW_DATASET_ID is required when REAL_E2E_REAL_MODEL=1." >&2
+    exit 2
+  }
+
+  REAL_MODEL_KB="e2e-${RUN_ID}-real-model-kb"
+  request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources" -H 'Content-Type: application/json' \
+    --data "{\"type\":\"knowledge_base\",\"slug\":\"$REAL_MODEL_KB\",\"display_name\":\"$REAL_MODEL_KB\",\"storage_kind\":\"database\"}"
+  REAL_MODEL_KB_ID="$(json_value id)"
+  request 200 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$REAL_MODEL_KB_ID/knowledge" -H 'Content-Type: application/json' \
+    --data "{\"provider_dataset_id\":\"$REAL_MODEL_DATASET_ID\",\"provider_type\":\"ragflow\"}"
+
+  # The provider dataset and its marker are created by the real RAGFlow gate.
+  # Seed a published immutable revision that points at that dataset so the
+  # browser-triggered run exercises the same production closure resolver.
+  REAL_MODEL_REVISION_ID="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+  python3 - "$DATABASE_PATH" "$REAL_MODEL_KB_ID" "$REAL_MODEL_REVISION_ID" "$REAL_MODEL_DATASET_ID" <<'PY'
+import hashlib
+import json
+import sqlite3
+import sys
+import uuid
+from datetime import datetime, timezone
+
+database_path, kb_id, revision_id, dataset_id = sys.argv[1:]
+now = datetime.now(timezone.utc).isoformat()
+with sqlite3.connect(database_path) as connection:
+    user_id = connection.execute(
+        "SELECT id FROM users_ext WHERE id IN (SELECT id FROM users WHERE email = 'user@test.com')"
+    ).fetchone()[0]
+    manifest = []
+    manifest_hash = hashlib.sha256(b"[]").hexdigest()
+    connection.execute(
+        "UPDATE knowledge_bases SET provider_dataset_id = ?, sync_status = 'ok', initialization_status = 'ready', initialization_step = 'ready' WHERE resource_id = ?",
+        (dataset_id, kb_id),
+    )
+    connection.execute(
+        "UPDATE resources SET latest_version = 1, draft_revision = 1 WHERE id = ?",
+        (kb_id,),
+    )
+    connection.execute(
+        "INSERT INTO resource_versions (id, resource_id, version, content_hash, storage_key, scan_result, content, created_by, published_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)",
+        (
+            str(uuid.uuid4()),
+            kb_id,
+            hashlib.sha256(b"{}").hexdigest(),
+            f"knowledge_bases/{kb_id}",
+            json.dumps({}),
+            json.dumps({}),
+            user_id,
+            now,
+        ),
+    )
+    connection.execute(
+        "INSERT INTO knowledge_base_revisions "
+        "(id, knowledge_base_id, revision_no, status, manifest_hash, manifest_json, provider_doc_map_json, document_count, provider_dataset_id, publish_attempt, integrity_status, created_by, created_at, published_at) "
+        "VALUES (?, ?, 1, 'published', ?, ?, ?, 0, ?, 1, 'healthy', ?, ?, ?)",
+        (revision_id, kb_id, manifest_hash, json.dumps(manifest), json.dumps({}), dataset_id, user_id, now, now),
+    )
+    connection.execute("UPDATE knowledge_bases SET active_revision_id = ? WHERE resource_id = ?", (revision_id, kb_id))
+    connection.commit()
+PY
+
+  REAL_MODEL_AGENT="e2e-${RUN_ID}-real-model-agent"
+  request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources" -H 'Content-Type: application/json' \
+    --data "{\"type\":\"agent\",\"slug\":\"$REAL_MODEL_AGENT\",\"display_name\":\"$REAL_MODEL_AGENT\",\"storage_kind\":\"filesystem\"}"
+  REAL_MODEL_AGENT_ID="$(json_value id)"
+  request 200 -b "$USER_COOKIE" -X PUT "$BASE_URL/api/resources/$REAL_MODEL_AGENT_ID/agent-draft" -H 'Content-Type: application/json' \
+    --data "{\"config\":{\"name\":\"$REAL_MODEL_AGENT\",\"description\":\"Browser real model acceptance agent\",\"skills\":[],\"tool_groups\":[\"knowledge\"]},\"soul\":\"Use knowledge_search with gate-kb and answer the marker only.\",\"knowledge_dependencies\":[{\"resource_id\":\"$REAL_MODEL_KB_ID\",\"dependency_mode\":\"pinned\",\"revision_id\":\"$REAL_MODEL_REVISION_ID\",\"required\":true,\"purpose\":\"M4 browser real model proof\"}],\"expected_revision\":0}"
+  request 200 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$REAL_MODEL_AGENT_ID/publish" -H 'Content-Type: application/json' \
+    --data '{"expected_draft_revision":1}'
+
+  REAL_MODEL_WORKFLOW="e2e-${RUN_ID}-real-model-workflow"
+  request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources" -H 'Content-Type: application/json' \
+    --data "{\"type\":\"workflow\",\"slug\":\"$REAL_MODEL_WORKFLOW\",\"display_name\":\"$REAL_MODEL_WORKFLOW\",\"storage_kind\":\"database\"}"
+  REAL_MODEL_WORKFLOW_ID="$(json_value id)"
+  request 200 -b "$USER_COOKIE" -X PUT "$BASE_URL/api/resources/$REAL_MODEL_WORKFLOW_ID/workflow-draft" -H 'Content-Type: application/json' \
+    --data "{\"content\":{\"schema_version\":2,\"name\":\"$REAL_MODEL_WORKFLOW\",\"inputs\":{},\"state\":{},\"entrypoint\":\"run\",\"nodes\":[{\"id\":\"run\",\"type\":\"action\",\"action\":{\"kind\":\"agent\",\"name\":\"$REAL_MODEL_AGENT\"}}],\"edges\":[]},\"dependencies\":[{\"resource_id\":\"$REAL_MODEL_AGENT_ID\",\"dependency_mode\":\"live\",\"required\":true,\"purpose\":\"M4 browser real model proof\"}],\"expected_revision\":0}"
+  request 200 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$REAL_MODEL_WORKFLOW_ID/publish" -H 'Content-Type: application/json' \
+    --data '{"expected_draft_revision":1}'
+fi
+
+# Create one canonical Workflow Run so the real browser lane can inspect the
+# production run-detail API and its immutable knowledge snapshot. The run is
+# marked completed after creation; no model call is needed for this UI proof.
+WORKFLOW_NAME="e2e-${RUN_ID}-knowledge-workflow"
+request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources" -H 'Content-Type: application/json' \
+  --data "{\"type\":\"workflow\",\"slug\":\"$WORKFLOW_NAME\",\"display_name\":\"$WORKFLOW_NAME\",\"storage_kind\":\"database\"}"
+WORKFLOW_RESOURCE_ID="$(json_value id)"
+request 200 -b "$USER_COOKIE" -X PUT "$BASE_URL/api/resources/$WORKFLOW_RESOURCE_ID/workflow-draft" -H 'Content-Type: application/json' \
+  --data "{\"content\":{\"schema_version\":2,\"name\":\"$WORKFLOW_NAME\",\"inputs\":{},\"state\":{},\"entrypoint\":\"run\",\"nodes\":[{\"id\":\"run\",\"type\":\"action\",\"action\":{\"kind\":\"agent\",\"name\":\"$APPROVE_AGENT\"}}],\"edges\":[]},\"dependencies\":[],\"expected_revision\":0}"
+request 200 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$WORKFLOW_RESOURCE_ID/publish" -H 'Content-Type: application/json' \
+  --data '{"expected_draft_revision":1}'
+request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/resources/$WORKFLOW_RESOURCE_ID/workflow-runs" -H 'Content-Type: application/json' \
+  --data '{}'
+WORKFLOW_RUN_ID="$(json_value run_id)"
+python3 - "$DATABASE_PATH" "$WORKFLOW_RUN_ID" <<'PY'
+import json
+import sqlite3
+import sys
+
+database_path, run_id = sys.argv[1:]
+snapshot = {
+    "run_evidence": {
+        "knowledge_scope": {
+            "logical_selectors": ["gate-kb"],
+            "revisions": {
+                "gate-kb": {
+                    "revision_id": "real-e2e-revision-2",
+                    "revision_no": 2,
+                    "manifest_hash": "abcdef1234567890",
+                }
+            },
+        }
+    }
+}
+connection = sqlite3.connect(database_path)
+connection.execute(
+    "UPDATE workflow_v2_runs SET status = 'completed', snapshot = ? WHERE run_id = ?",
+    (json.dumps(snapshot), run_id),
+)
+connection.execute("UPDATE workflow_tasks SET status = 'completed' WHERE run_id = ?", (run_id,))
+connection.commit()
+connection.close()
+PY
+
 rm -f "$RESPONSE_FILE"
 echo "Seed complete: $APPROVE_AGENT and $REJECT_AGENT."
+if [[ -n "$REAL_MODEL_WORKFLOW" ]]; then
+  echo "Real model workflow seeded: $REAL_MODEL_WORKFLOW"
+fi

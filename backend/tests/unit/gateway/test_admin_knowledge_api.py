@@ -78,3 +78,72 @@ async def test_reconciliation_state_read_is_admin_scoped(tmp_path, monkeypatch: 
         )
     assert forbidden.value.status_code == 403
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_state_includes_run_level_orphan_checks(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Orphan findings are run-scoped (kb_id NULL) but visible per KB."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from app.agentplatform.knowledge.models import KnowledgeRevisionCheck
+
+    engine, factory, admin = await _make_env(tmp_path, monkeypatch)
+    async with factory() as session:
+        session.add(
+            KnowledgeRevisionCheck(
+                id=str(uuid.uuid4()),
+                knowledge_base_id=None,
+                revision_id=None,
+                trigger="manual",
+                outcome="ORPHAN_PROVIDER_RESOURCE",
+                findings_json=[{"kind": "orphan_dataset", "dataset_id": "ideer-kb-stray"}],
+                checked_by="admin",
+                checked_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+
+    state = await admin_knowledge.get_reconciliation("kb-1", SimpleNamespace(), current_user=admin)
+    outcomes = [check["outcome"] for check in state["checks"]]
+    assert "ORPHAN_PROVIDER_RESOURCE" in outcomes
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_global_reconciliation_returns_historical_revisions(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.agentplatform.knowledge.models import KnowledgeRevision
+
+    engine, factory, admin = await _make_env(tmp_path, monkeypatch)
+    async with factory() as session:
+        session.add_all(
+            [
+                KnowledgeRevision(
+                    id="rev-old",
+                    knowledge_base_id="kb-1",
+                    revision_no=1,
+                    status="superseded",
+                    manifest_hash="a" * 64,
+                    manifest_json=[{"document_id": "doc-1"}],
+                    document_count=1,
+                    created_by="admin",
+                ),
+                KnowledgeRevision(
+                    id="rev-live",
+                    knowledge_base_id="kb-1",
+                    revision_no=2,
+                    status="published",
+                    manifest_hash="b" * 64,
+                    manifest_json=[{"document_id": "doc-1"}],
+                    document_count=1,
+                    created_by="admin",
+                ),
+            ]
+        )
+        await session.commit()
+
+    state = await admin_knowledge.get_global_reconciliation(SimpleNamespace(), current_user=admin)
+    assert [item["status"] for item in state["revisions"]] == ["superseded", "published"]
+    filtered = await admin_knowledge.get_global_reconciliation(SimpleNamespace(), knowledge_base_id="kb-1", current_user=admin)
+    assert len(filtered["revisions"]) == 2
+    await engine.dispose()

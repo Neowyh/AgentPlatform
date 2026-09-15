@@ -51,6 +51,8 @@ def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str, knowled
             "revision_id": snapshot.knowledge_revision_id,
             "revision_no": snapshot.knowledge_revision_no,
             "manifest_hash": snapshot.manifest_hash,
+            "retrieval_profile": snapshot.retrieval_profile_json,
+            "embedding_profile": snapshot.embedding_profile_json,
         }
         for snapshot in snapshots
         if snapshot.knowledge_revision_id

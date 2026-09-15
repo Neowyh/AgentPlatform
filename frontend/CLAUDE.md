@@ -84,6 +84,9 @@ The frontend is a stateful chat application. Users create **threads** (conversat
 
 ## Environment
 
+Knowledge administration server state is managed through TanStack Query hooks
+in `core/knowledge-admin/hooks.ts`.
+
 Backend API URLs are optional; an nginx proxy is used by default:
 
 ```

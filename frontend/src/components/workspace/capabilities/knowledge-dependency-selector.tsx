@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { listKnowledgeRevisions } from "@/core/library/api";
-import type { KnowledgeRevision } from "@/core/library/api";
+import { useI18n } from "@/core/i18n/hooks";
+import { usePublishedKnowledgeRevisions } from "@/core/library";
 
 export interface KnowledgeDependencyOption {
   resource_id: string;
@@ -19,8 +19,6 @@ export interface KnowledgeDependencyKnowledgeBase {
   display_name: string;
 }
 
-type PublishedRevisionsByKnowledgeBase = Record<string, KnowledgeRevision[]>;
-
 export function KnowledgeDependencySelector({
   knowledgeBases,
   dependencies,
@@ -34,44 +32,15 @@ export function KnowledgeDependencySelector({
   loadError?: boolean;
   onRevisionsLoadError?: (failed: boolean) => void;
 }) {
-  const [publishedRevisions, setPublishedRevisions] =
-    useState<PublishedRevisionsByKnowledgeBase>({});
-  const [revisionsLoadFailed, setRevisionsLoadFailed] = useState(false);
+  const { t } = useI18n();
+  const selector = t.library.dependencySelector;
+  const { publishedRevisions, isError } = usePublishedKnowledgeRevisions(
+    knowledgeBases.map((knowledgeBase) => knowledgeBase.id),
+  );
 
   useEffect(() => {
-    if (knowledgeBases.length === 0) {
-      setPublishedRevisions({});
-      onRevisionsLoadError?.(false);
-      return;
-    }
-    let cancelled = false;
-    void Promise.all(
-      knowledgeBases.map(async (knowledgeBase) => {
-        const revisions = await listKnowledgeRevisions(knowledgeBase.id);
-        return [
-          knowledgeBase.id,
-          revisions.filter((revision) => revision.status === "published"),
-        ] as const;
-      }),
-    )
-      .then((entries) => {
-        if (cancelled) return;
-        setPublishedRevisions(Object.fromEntries(entries));
-        setRevisionsLoadFailed(false);
-        onRevisionsLoadError?.(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // A failed revision read must never look like "no published
-        // revisions", so PINNED selection is blocked instead.
-        setRevisionsLoadFailed(true);
-        onRevisionsLoadError?.(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [knowledgeBases]);
+    onRevisionsLoadError?.(isError);
+  }, [isError, onRevisionsLoadError]);
 
   function toggle(knowledgeBaseId: string) {
     onChange(
@@ -81,7 +50,7 @@ export function KnowledgeDependencySelector({
             ...dependencies,
             {
               resource_id: knowledgeBaseId,
-              dependency_mode: "live",
+              dependency_mode: "live" as const,
               revision_id: null,
               required: true,
               purpose: null,
@@ -105,7 +74,7 @@ export function KnowledgeDependencySelector({
     <div className="space-y-2">
       {loadError && (
         <div role="alert" className="text-destructive type-body">
-          Knowledge dependencies could not be loaded. Reload before saving.
+          {selector.loadError}
         </div>
       )}
       {knowledgeBases.length > 0 && (
@@ -148,10 +117,10 @@ export function KnowledgeDependencySelector({
                         })
                       }
                       className="type-compact h-8 rounded border px-2"
-                      aria-label={`${knowledgeBase.slug} dependency mode`}
+                      aria-label={selector.modeAria(knowledgeBase.slug)}
                     >
-                      <option value="live">LIVE</option>
-                      <option value="pinned">PINNED</option>
+                      <option value="live">{selector.live}</option>
+                      <option value="pinned">{selector.pinned}</option>
                     </select>
                     {dependencyMode === "pinned" && (
                       <select
@@ -162,12 +131,12 @@ export function KnowledgeDependencySelector({
                           })
                         }
                         className="type-compact h-8 min-w-0 rounded border px-2"
-                        aria-label={`${knowledgeBase.slug} published revision`}
+                        aria-label={selector.revisionAria(knowledgeBase.slug)}
                       >
                         <option value="">
-                          {revisionsLoadFailed
-                            ? "Revisions unavailable"
-                            : "Select published revision"}
+                          {isError
+                            ? selector.revisionsUnavailable
+                            : selector.selectRevision}
                         </option>
                         {revisions.map((revision) => (
                           <option key={revision.id} value={revision.id}>
@@ -180,10 +149,10 @@ export function KnowledgeDependencySelector({
                   </div>
                 )}
                 {dependencyMode === "pinned" &&
-                  !revisionsLoadFailed &&
+                  !isError &&
                   revisions.length === 0 && (
                     <div className="text-destructive type-body">
-                      No published revisions available
+                      {selector.noPublishedRevisions}
                     </div>
                   )}
               </div>

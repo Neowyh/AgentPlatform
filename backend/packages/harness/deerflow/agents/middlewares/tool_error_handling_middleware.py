@@ -3,6 +3,7 @@
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, override
 
 from langchain.agents import AgentState
@@ -33,6 +34,27 @@ if TYPE_CHECKING:
     from deerflow.tools.builtins.tool_search import DeferredToolSetup
 
 logger = logging.getLogger(__name__)
+
+# LangGraph's conditional tool router cannot terminate a workflow subagent
+# when the full native middleware graph is combined with the workflow
+# ThreadData/Sandbox before-agent hooks.  WorkflowSubagentExecutor sets this
+# request-scoped flag while assembling its graph; the workflow bridge uses a
+# terminal subset while retaining input, file/sandbox, safety, and tool-error
+# middleware, with its explicit max_turns cap as the runaway guard.
+_WORKFLOW_SUBAGENT_RUNTIME: ContextVar[bool] = ContextVar("workflow_subagent_runtime", default=False)
+
+
+def workflow_subagent_runtime(enabled: bool = True):
+    """Set workflow assembly mode for the current task and return its token."""
+
+    return _WORKFLOW_SUBAGENT_RUNTIME.set(enabled)
+
+
+def reset_workflow_subagent_runtime(token) -> None:
+    """Restore the prior workflow assembly mode."""
+
+    _WORKFLOW_SUBAGENT_RUNTIME.reset(token)
+
 
 _MISSING_TOOL_CALL_ID = "missing_tool_call_id"
 _TASK_TOOL_NAME = "task"
@@ -579,13 +601,14 @@ def build_subagent_runtime_middlewares(
     from deerflow.extensions.stack import compose_with_extensions
 
     if not resolved_extensions.has_middleware_contributors:
-        return compose_with_extensions(middlewares, AgentScope.SUBAGENT, None, resolved_extensions)
+        composed = compose_with_extensions(middlewares, AgentScope.SUBAGENT, None, resolved_extensions)
+        return _filter_workflow_subagent_middlewares(composed)
 
     from deerflow_extension_api import AgentBuildContext
 
     from deerflow.extensions.policy import project_host_policy
 
-    return compose_with_extensions(
+    composed = compose_with_extensions(
         middlewares,
         AgentScope.SUBAGENT,
         AgentBuildContext(
@@ -600,3 +623,26 @@ def build_subagent_runtime_middlewares(
         ),
         resolved_extensions,
     )
+    return _filter_workflow_subagent_middlewares(composed)
+
+
+def _filter_workflow_subagent_middlewares(middlewares: list[AgentMiddleware]) -> list[AgentMiddleware]:
+    if not _WORKFLOW_SUBAGENT_RUNTIME.get():
+        return middlewares
+    # The workflow ThreadData/Sandbox before-agent hooks must run with a small,
+    # terminal middleware graph.  The guard, durable-context, receipt, and
+    # extension hooks add conditional after-model edges that can route a
+    # completed workflow node back to the model.  Workflow execution keeps
+    # explicit max_turns/timeout bounds and retains input, sandbox, safety, and
+    # tool-error handling here.
+    allowed = {
+        "InputSanitizationMiddleware",
+        "ToolErrorHandlingMiddleware",
+        "ToolReceiptMiddleware",
+        "LLMErrorHandlingMiddleware",
+        "ThreadDataMiddleware",
+        "SandboxMiddleware",
+        "SafetyFinishReasonMiddleware",
+        "SubagentDateContextMiddleware",
+    }
+    return [middleware for middleware in middlewares if type(middleware).__name__ in allowed]

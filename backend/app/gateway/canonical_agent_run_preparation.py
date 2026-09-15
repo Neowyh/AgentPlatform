@@ -160,12 +160,17 @@ async def prepare_canonical_agent_run(
             # closure resolution.
             bindings = {}
             ready_document_ids: dict[str, list[str]] = {}
+            retrieval_profiles: dict[str, dict[str, object]] = {}
             for item in closure:
                 revision = item.knowledge_revision
                 if revision is None or not revision.provider_dataset_id:
                     continue
                 bindings[item.resource.id] = revision.provider_dataset_id
                 ready_document_ids[revision.provider_dataset_id] = [str(provider_document_id) for provider_document_id in (revision.provider_doc_map_json or {}).values()]
+                profiles = next((entry.get("knowledge_profiles") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)), {})
+                retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
+                if isinstance(retrieval, dict):
+                    retrieval_profiles[revision.provider_dataset_id] = dict(retrieval)
             run_context = diagnostic_context or {}
             tool_config = None
             try:
@@ -202,6 +207,7 @@ async def prepare_canonical_agent_run(
             knowledge_scope=KnowledgeScope.from_bindings(
                 knowledge_scope,
                 ready_document_ids={dataset: ready_document_ids[dataset] for dataset in knowledge_scope.values()},
+                retrieval_profiles={dataset: retrieval_profiles[dataset] for dataset in knowledge_scope.values() if dataset in retrieval_profiles},
             ),
         )
     except ResourceNotFound as exc:

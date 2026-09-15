@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -41,22 +42,26 @@ class FakePublishProvider:
         extra_dataset_documents: int = 0,
         fail_create_dataset: bool = False,
         dataset_prefix: str = "published-dataset",
+        omit_content_hash: bool = False,
     ) -> None:
         self.fail_ingest_on_call = fail_ingest_on_call
         self.doc_status = doc_status
         self.extra_dataset_documents = extra_dataset_documents
         self.fail_create_dataset = fail_create_dataset
         self.dataset_prefix = dataset_prefix
+        self.omit_content_hash = omit_content_hash
         self.created_datasets: list[str] = []
+        self.created_embedding_models: list[str | None] = []
         self.ingest_calls: list[dict] = []
         self.status_calls: list[dict] = []
         self.dataset_documents: dict[str, list[dict]] = {}
 
-    async def create_dataset(self, *, name: str) -> str:
+    async def create_dataset(self, *, name: str, embedding_model: str | None = None) -> str:
         if self.fail_create_dataset:
             raise KnowledgeProviderError("dataset_failed", "internal dataset detail")
         dataset_id = f"{self.dataset_prefix}-{len(self.created_datasets) + 1}"
         self.created_datasets.append(name)
+        self.created_embedding_models.append(embedding_model)
         self.dataset_documents[dataset_id] = []
         return dataset_id
 
@@ -80,8 +85,11 @@ class FakePublishProvider:
         )
         if self.fail_ingest_on_call is not None and len(self.ingest_calls) >= self.fail_ingest_on_call:
             raise KnowledgeProviderError("parse_failed", "internal parse detail")
-        document_id = provider_document_id or f"provider-doc-{len(self.ingest_calls)}"
-        self.dataset_documents.setdefault(dataset_id, []).append({"id": document_id, "name": filename})
+        document_id = provider_document_id or f"provider-doc-{sum(len(items) for items in self.dataset_documents.values()) + 1}"
+        document = {"id": document_id, "name": filename}
+        if not self.omit_content_hash:
+            document["content_hash"] = hashlib.sha256(content).hexdigest()
+        self.dataset_documents.setdefault(dataset_id, []).append(document)
         return ProviderIngestionResult(document_id, "processing")
 
     async def get_status(self, *, dataset_id: str, provider_document_id: str) -> str:
@@ -215,8 +223,50 @@ async def test_publish_switches_pointer_only_after_dataset_verification(
     kb_row = await _kb_row(factory, kb.id)
     assert kb_row.active_revision_id == revision.id
     assert provider.created_datasets == [f"ideer-kb-{kb.id[:8]}-rev1-{str(candidate['id'])[:8]}"]
+    assert provider.created_embedding_models == [None]
     assert {call["dataset_id"] for call in provider.ingest_calls} == {"published-dataset-1"}
     assert {call["provider_document_id"] for call in provider.status_calls} == set(revision.provider_doc_map_json.values())
+
+
+@pytest.mark.asyncio
+async def test_publish_accepts_provider_without_comparable_content_hash(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    provider = FakePublishProvider(omit_content_hash=True)
+    await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, poll_interval=0, parse_timeout=5)
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "published"
+    assert revision.integrity_status == "unverified"
+
+
+@pytest.mark.asyncio
+async def test_publish_uses_frozen_embedding_profile_for_dataset_creation(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    kb_settings = await session.get(KnowledgeBase, kb.id)
+    assert kb_settings is not None
+    kb_settings.embedding_profile_json = {"model": "frozen-embed-v2"}
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    provider = FakePublishProvider()
+    await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, poll_interval=0, parse_timeout=5)
+    assert provider.created_embedding_models == ["frozen-embed-v2"]
 
 
 @pytest.mark.asyncio
@@ -394,6 +444,33 @@ async def test_verification_failure_does_not_switch_pointer(
 
 
 @pytest.mark.asyncio
+async def test_provider_content_hash_mismatch_blocks_publish(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    await session.commit()
+
+    class TamperedProvider(FakePublishProvider):
+        async def list_dataset_documents(self, *, dataset_id: str) -> list[dict]:
+            documents = await super().list_dataset_documents(dataset_id=dataset_id)
+            documents[0]["content_hash"] = "f" * 64
+            return documents
+
+    provider = TamperedProvider()
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, poll_interval=0, parse_timeout=5)
+
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "failed"
+    assert revision.failure_code == "verification_failed"
+
+
+@pytest.mark.asyncio
 async def test_missing_frozen_content_fails_integrity_gate(
     store: tuple[AsyncSession, async_sessionmaker],
     tmp_path,
@@ -449,3 +526,108 @@ async def test_draft_changes_never_touch_published_datasets(
     assert publish_provider.dataset_documents[published_dataset]
     listing = (await session.execute(select(KnowledgeDocument).where(KnowledgeDocument.resource_id == kb.id))).scalars().all()
     assert any(item.status == "deleted" for item in listing)
+
+
+@pytest.mark.asyncio
+async def test_tampered_frozen_content_fails_integrity_gate(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Overwriting a frozen file's bytes (name intact) must block publishing."""
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    service = KnowledgeRevisionService(session, _actor())
+    detail = await service.get_revision(kb.id, str(candidate["id"]))
+    entry = detail["documents"][0]
+    frozen = tmp_path / "knowledge-revisions" / str(candidate["id"]) / f"{entry['document_id']}-{entry['filename']}"
+    frozen.write_bytes(b"tampered after the fact")
+
+    with pytest.raises(ResourceConflict, match="corrupt"):
+        await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "draft"
+
+
+@pytest.mark.asyncio
+async def test_stuck_indexing_revision_resumes_after_executor_loss(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A revision left in ``indexing`` by a crashed process is resumable."""
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb, documents=2)
+    service = KnowledgeRevisionService(session, _actor())
+    await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    await session.commit()
+
+    from app.agentplatform.knowledge import revisions as revisions_module
+
+    # Simulate the executor dying with the process: nothing in flight.
+    revisions_module._ACTIVE_PUBLISHES.clear()
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "indexing"
+
+    resumed = await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    assert resumed["status"] == "indexing"
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.publish_attempt == 1  # a resume is a continuation, not a new attempt
+
+    provider = FakePublishProvider()
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, poll_interval=0, parse_timeout=5)
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "published"
+
+
+@pytest.mark.asyncio
+async def test_indexing_revision_conflicts_while_build_is_in_flight(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A duplicate publish while the build is genuinely running stays a 409."""
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    service = KnowledgeRevisionService(session, _actor())
+    await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    await session.commit()
+
+    with pytest.raises(ResourceConflict, match="already publishing"):
+        await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.publish_attempt == 1
+
+
+@pytest.mark.asyncio
+async def test_foreign_publish_lease_blocks_until_expiry(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    service = KnowledgeRevisionService(session, _actor())
+    await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())
+    await session.commit()
+
+    async with factory() as foreign:
+        revision = await foreign.get(KnowledgeRevision, str(candidate["id"]))
+        assert revision is not None
+        revision.publish_lease_owner = "another-process"
+        revision.publish_lease_until = datetime.now(UTC) + timedelta(minutes=5)
+        await foreign.commit()
+
+    from app.agentplatform.knowledge import revisions as revisions_module
+
+    revisions_module._ACTIVE_PUBLISHES.clear()
+    with pytest.raises(ResourceConflict, match="already publishing"):
+        await service.publish_revision(kb.id, str(candidate["id"]), provider=FakePublishProvider())

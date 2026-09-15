@@ -11,6 +11,7 @@ from enum import StrEnum
 from sqlalchemy import Select, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRevision
 from app.agentplatform.resource_models import (
     Resource,
@@ -1309,9 +1310,9 @@ class ResourceService:
             ).scalar_one_or_none()
             if revision is None:
                 raise ResourceConflict("revision_id does not belong to the KnowledgeBase")
-            if revision.status != "published":
+            if revision.status not in {"published", "superseded"}:
                 raise ResourceConflict("revision_id must reference a published Knowledge Revision")
-            if revision.integrity_status in {"drifted", "missing_provider_dataset"}:
+            if revision.integrity_status in UNUSABLE_INTEGRITY:
                 raise ResourceConflict("revision_id is not usable: reconciliation flagged this revision as drifted")
         elif revision_id is not None:
             raise ResourceConflict("revision_id must be empty for live dependencies")
@@ -1396,9 +1397,9 @@ class ResourceService:
                 raise ResourceConflict(f"KnowledgeBase {resource_id} has no published revision to run against")
             query = select(KnowledgeRevision).where(KnowledgeRevision.id == kb_row.active_revision_id)
         revision = (await self.session.execute(query)).scalar_one_or_none()
-        if revision is None or revision.status != "published":
+        if revision is None or revision.status not in {"published", "superseded"}:
             raise ResourceConflict(f"KnowledgeBase {resource_id} has no published revision to run against")
-        if revision.integrity_status in {"drifted", "missing_provider_dataset"}:
+        if revision.integrity_status in UNUSABLE_INTEGRITY:
             raise ResourceConflict(f"KnowledgeBase {resource_id} active revision is drifted; reconciliation flagged it as {revision.integrity_status}")
         return revision
 
@@ -1487,6 +1488,24 @@ class ResourceService:
         for item in closure:
             revision = item.knowledge_revision
             kb_row = knowledge_rows.get(item.resource.id)
+            frozen_profiles = (
+                next(
+                    (entry.get("knowledge_profiles") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
+                    {},
+                )
+                if revision is not None
+                else {}
+            )
+            # Revisions created before profile freezing have no historical
+            # values; preserve their legacy snapshot behavior while new
+            # candidates always carry an explicit frozen profile projection.
+            if not frozen_profiles and kb_row is not None:
+                frozen_profiles = {
+                    "retrieval": dict(kb_row.retrieval_profile_json or {}),
+                    "embedding": dict(kb_row.embedding_profile_json or {}),
+                }
+            retrieval_profile = frozen_profiles.get("retrieval", {}) if isinstance(frozen_profiles, dict) else {}
+            embedding_profile = frozen_profiles.get("embedding", {}) if isinstance(frozen_profiles, dict) else {}
             snapshots.append(
                 RunResourceSnapshot(
                     id=str(uuid.uuid4()),
@@ -1502,8 +1521,10 @@ class ResourceService:
                     manifest_hash=revision.manifest_hash if revision is not None else None,
                     provider_type=kb_row.provider_type if revision is not None and kb_row is not None else None,
                     provider_dataset_id=revision.provider_dataset_id if revision is not None else None,
-                    retrieval_profile_hash=_knowledge_profile_hash(kb_row.retrieval_profile_json, kb_row.provider_type) if kb_row is not None else None,
-                    embedding_profile_hash=_knowledge_profile_hash(kb_row.embedding_profile_json, kb_row.provider_type) if kb_row is not None else None,
+                    retrieval_profile_hash=_knowledge_profile_hash(retrieval_profile, kb_row.provider_type) if kb_row is not None else None,
+                    embedding_profile_hash=_knowledge_profile_hash(embedding_profile, kb_row.provider_type) if kb_row is not None else None,
+                    retrieval_profile_json=retrieval_profile if kb_row is not None else None,
+                    embedding_profile_json=embedding_profile if kb_row is not None else None,
                 )
             )
         self.session.add_all(snapshots)

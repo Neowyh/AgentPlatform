@@ -15,7 +15,7 @@ import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
 import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
 import app.agentplatform.resource_models  # noqa: F401 - register resource tables
 import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
-from app.agentplatform.knowledge.models import KnowledgeDocument
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument
 from app.agentplatform.knowledge.revisions import (
     KnowledgeRevisionService,
     KnowledgeRevisionValidationError,
@@ -131,6 +131,32 @@ async def test_candidate_freezes_only_ready_documents_with_deterministic_manifes
     repeat = await KnowledgeRevisionService(session, _actor()).create_revision(kb.id)
     assert repeat["manifest_hash"] == payload["manifest_hash"]
     assert repeat["revision_no"] == 2
+
+
+@pytest.mark.asyncio
+async def test_candidate_manifest_freezes_knowledge_profiles(
+    session: AsyncSession,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    kb = await _seed_kb(session)
+    _seed_document(session, tmp_path, kb, "guide.txt", b"profile content")
+    kb_row = await session.get(KnowledgeBase, kb.id)
+    assert kb_row is not None
+    kb_row.retrieval_profile_json = {"top_k": 5}
+    kb_row.embedding_profile_json = {"model": "bge-m3"}
+    kb_row.ingestion_profile_json = {"chunk_size": 512}
+    await session.commit()
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    payload = await KnowledgeRevisionService(session, _actor()).create_revision(kb.id)
+    detail = await KnowledgeRevisionService(session, _actor()).get_revision(kb.id, str(payload["id"]))
+
+    assert detail["documents"][0]["knowledge_profiles"] == {
+        "retrieval": {"top_k": 5},
+        "embedding": {"model": "bge-m3"},
+        "ingestion": {"chunk_size": 512},
+    }
 
 
 @pytest.mark.asyncio

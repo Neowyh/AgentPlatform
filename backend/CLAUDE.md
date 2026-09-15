@@ -660,6 +660,9 @@ For models with `supports_vision: true`:
 
 ## Documentation
 
+Knowledge revision publishing and reconciliation use the typed `knowledge`
+section in `packages/harness/deerflow/config/app_config.py`.
+
 See `docs/` directory for detailed documentation:
 - [CONFIGURATION.md](docs/CONFIGURATION.md) - Configuration options
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Architecture details

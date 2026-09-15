@@ -1519,6 +1519,11 @@ export const zhCN: Translations = {
     errorNetwork: "网络错误，请稍后重试",
   },
   workflows: {
+    knowledgeSnapshot: {
+      title: "本次运行使用的知识",
+      entry: (kb: string, no: number | string, hash: string) =>
+        `知识库 ${kb} · v${no} · manifest ${hash}`,
+    },
     // Gallery
     title: "工作流",
     description: "把固定流程交给 iDeer 自动执行，适合可重复的任务。",
@@ -1678,6 +1683,35 @@ export const zhCN: Translations = {
     documents: "文档",
     knowledgeBases: "知识库",
     revisions: "版本",
+    revisionList: {
+      selectKnowledgeBase: "选择一个知识库以查看版本",
+      loading: "加载中...",
+      loadFailed: "无法加载版本。",
+      empty: "暂无版本候选",
+      createCandidate: "创建版本候选",
+      creating: "创建中...",
+      createFailed: "无法创建版本候选：候选至少需要一个就绪文档。",
+      publishFailed: "无法发布该版本。",
+      viewDetails: "查看详情",
+      hideDetails: "收起详情",
+      documentsAndManifest: (count: number, hash: string) =>
+        `${count} 个文档 · manifest ${hash}`,
+      publishingStatus: "发布中",
+      integrityFlagged: (status: string) => `对账已将该版本标记为 ${status}`,
+      publish: "发布",
+      publishingAction: "发布中...",
+      publishAria: (no: number) => `发布 v${no}`,
+    },
+    dependencySelector: {
+      loadError: "知识依赖加载失败，请在重新加载后再保存。",
+      live: "LIVE",
+      pinned: "PINNED",
+      selectRevision: "选择已发布版本",
+      revisionsUnavailable: "版本不可用",
+      noPublishedRevisions: "暂无已发布版本",
+      modeAria: (slug: string) => `${slug} 依赖模式`,
+      revisionAria: (slug: string) => `${slug} 已发布版本`,
+    },
   },
 
   landing: {
@@ -1695,6 +1729,21 @@ export const zhCN: Translations = {
   },
 
   admin: {
+    knowledgeReconciliation: {
+      title: "知识对账",
+      description: "对已发布知识版本的只读漂移检查",
+      run: "执行对账",
+      running: "执行中...",
+      loading: "加载中...",
+      loadFailed: "无法加载对账状态",
+      emptyHint: (kb: string) => `执行对账以查看知识库 ${kb} 的最新漂移结论。`,
+      noPublished: "没有可检查的已发布版本",
+      recorded: (n: number) => `对账已记录 ${n} 条检查`,
+      lastChecked: (at: string) => `上次检查：${at}`,
+      checkHistory: "检查历史",
+      noChecks: "尚未记录任何对账检查",
+      unknown: "未知",
+    },
     dashboard: {
       title: "管理后台",
       subtitle: "管理用户、部门和系统工具",

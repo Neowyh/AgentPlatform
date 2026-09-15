@@ -25,6 +25,8 @@ def test_canonical_workflow_evidence_is_caller_scoped_and_immutable() -> None:
             knowledge_revision_id="revision-9",
             knowledge_revision_no=9,
             manifest_hash="c" * 64,
+            retrieval_profile_json={"top_k": 6},
+            embedding_profile_json={"model": "bge-m3"},
         ),
     ]
     actor = SimpleNamespace(user_id="caller", tool_groups=frozenset({"read", "write"}))

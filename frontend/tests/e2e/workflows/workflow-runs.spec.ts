@@ -31,6 +31,18 @@ const COMPLETED_RUN: MockWorkflowRun = {
   workflow: "test-workflow",
   status: "completed",
   definition_version: 2,
+  snapshot: {
+    run_evidence: {
+      knowledge_scope: {
+        revisions: {
+          "kb-real-m4": {
+            revision_no: 2,
+            manifest_hash: "abcdef1234567890",
+          },
+        },
+      },
+    },
+  },
   error: null,
   steps: {
     fork_start: { status: "completed", retries: 0 },
@@ -100,6 +112,9 @@ test.describe("Workflow run detail", () => {
       timeout: 15_000,
     });
     await expect(page.getByText("completed").first()).toBeVisible();
+    await expect(page.getByTestId("knowledge-snapshot")).toContainText(
+      "KB kb-real- · v2 · manifest abcdef123456",
+    );
 
     // Event timeline (Collapsible is open by default? click the trigger)
     await page.getByText("Event timeline").click();

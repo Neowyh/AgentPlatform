@@ -30,18 +30,24 @@ class RAGFlowKnowledgeProvider:
 
     async def create_dataset(self, *, name: str, embedding_model: str | None = None) -> str:
         try:
-            existing = [item for item in await self.client.list_datasets() if item.get("name") == name and isinstance(item.get("id"), str)]
+            list_datasets = getattr(self.client, "list_datasets", None)
+            existing = [] if list_datasets is None else [item for item in await list_datasets() if item.get("name") == name and isinstance(item.get("id"), str)]
             if len(existing) == 1:
                 return str(existing[0]["id"])
             if len(existing) > 1:
                 raise KnowledgeProviderError("invalid_response")
-            return await self.client.create_dataset(name, embedding_model=embedding_model)
+            try:
+                return await self.client.create_dataset(name, embedding_model=embedding_model)
+            except TypeError:
+                # Keep compatibility with lightweight provider clients that
+                # implement the original name-only boundary.
+                return await self.client.create_dataset(name=name)
         except RAGFlowConnectionError as exc:
             raise KnowledgeProviderError("unavailable") from exc
         except RAGFlowProtocolError as exc:
             raise KnowledgeProviderError("invalid_response") from exc
         except RAGFlowAPIError as exc:
-            raise KnowledgeProviderError("index_failed") from exc
+            raise KnowledgeProviderError("dataset_failed") from exc
 
     async def ingest(
         self,

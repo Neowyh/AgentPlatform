@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/core/i18n/hooks";
 import {
   useCreateKnowledgeRevision,
   useKnowledgeRevision,
@@ -20,6 +21,13 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   archived: "bg-gray-100 text-gray-600",
 };
 
+// Reconciliation statuses that mean confirmed drift (mirrors the backend
+// knowledge.integrity.UNUSABLE_INTEGRITY set).
+const UNUSABLE_INTEGRITY_STATUSES = new Set([
+  "drifted",
+  "missing_provider_dataset",
+]);
+
 export function RevisionList({
   knowledgeBaseId,
   canModify,
@@ -27,6 +35,8 @@ export function RevisionList({
   knowledgeBaseId?: string;
   canModify?: boolean;
 }) {
+  const { t } = useI18n();
+  const i = t.library.revisionList;
   const { revisions, isLoading, error } =
     useKnowledgeRevisions(knowledgeBaseId);
   const create = useCreateKnowledgeRevision(knowledgeBaseId ?? "");
@@ -34,21 +44,17 @@ export function RevisionList({
   const [expandedId, setExpandedId] = useState<string>();
 
   if (!knowledgeBaseId) {
-    return (
-      <div className="text-muted-foreground">
-        Select a knowledge base to view revisions
-      </div>
-    );
+    return <div className="text-muted-foreground">{i.selectKnowledgeBase}</div>;
   }
 
   if (isLoading) {
-    return <div className="text-muted-foreground">Loading...</div>;
+    return <div className="text-muted-foreground">{i.loading}</div>;
   }
 
   if (error) {
     return (
       <div role="alert" className="text-muted-foreground">
-        Unable to load revisions.
+        {i.loadFailed}
       </div>
     );
   }
@@ -63,23 +69,22 @@ export function RevisionList({
             aria-busy={create.isPending}
             onClick={() => void create.mutateAsync()}
           >
-            {create.isPending ? "Creating..." : "Create revision candidate"}
+            {create.isPending ? i.creating : i.createCandidate}
           </Button>
           {create.error ? (
             <div role="alert" className="text-destructive">
-              Unable to create a revision candidate. A candidate requires at
-              least one ready document.
+              {i.createFailed}
             </div>
           ) : null}
         </div>
       ) : null}
       {publish.error ? (
         <div role="alert" className="text-destructive">
-          Unable to publish this revision.
+          {i.publishFailed}
         </div>
       ) : null}
       {revisions.length === 0 ? (
-        <div className="text-muted-foreground">No revision candidates yet</div>
+        <div className="text-muted-foreground">{i.empty}</div>
       ) : (
         <div className="space-y-3">
           {revisions.map((revision) => (
@@ -95,19 +100,20 @@ export function RevisionList({
                   }`}
                 >
                   {revision.status === "indexing" && canModify
-                    ? "publishing"
+                    ? i.publishingStatus
                     : revision.status}
                 </span>
               </div>
               <p className="text-muted-foreground type-body">
-                {revision.document_count} documents · manifest{" "}
-                {revision.manifest_hash.slice(0, 12)}
+                {i.documentsAndManifest(
+                  revision.document_count,
+                  revision.manifest_hash.slice(0, 12),
+                )}
               </p>
-              {revision.integrity_status === "drifted" ||
-              revision.integrity_status === "missing_provider_dataset" ? (
+              {revision.integrity_status &&
+              UNUSABLE_INTEGRITY_STATUSES.has(revision.integrity_status) ? (
                 <div role="alert" className="text-destructive type-body">
-                  Reconciliation flagged this revision as{" "}
-                  {revision.integrity_status}
+                  {i.integrityFlagged(revision.integrity_status)}
                 </div>
               ) : null}
               {revision.failure_message ? (
@@ -126,21 +132,19 @@ export function RevisionList({
                       )
                     }
                   >
-                    {expandedId === revision.id
-                      ? "Hide details"
-                      : "View details"}
+                    {expandedId === revision.id ? i.hideDetails : i.viewDetails}
                   </button>
                   {canModify &&
                   (revision.status === "draft" ||
                     revision.status === "failed") ? (
                     <button
                       type="button"
-                      aria-label={`Publish v${revision.revision_no}`}
+                      aria-label={i.publishAria(revision.revision_no)}
                       disabled={publish.isPending}
                       aria-busy={publish.isPending}
                       onClick={() => void publish.mutateAsync(revision.id)}
                     >
-                      {publish.isPending ? "Publishing..." : "Publish"}
+                      {publish.isPending ? i.publishingAction : i.publish}
                     </button>
                   ) : null}
                 </div>
@@ -169,18 +173,23 @@ function RevisionDetail({
   knowledgeBaseId: string;
   revisionId: string;
 }) {
+  const { t } = useI18n();
   const { data, isLoading, error } = useKnowledgeRevision(
     knowledgeBaseId,
     revisionId,
   );
 
   if (isLoading) {
-    return <div className="text-muted-foreground mt-3">Loading details...</div>;
+    return (
+      <div className="text-muted-foreground mt-3">
+        {t.library.revisionList.loading}
+      </div>
+    );
   }
   if (error || !data) {
     return (
       <div role="alert" className="text-muted-foreground mt-3">
-        Unable to load revision details.
+        {t.library.revisionList.loadFailed}
       </div>
     );
   }

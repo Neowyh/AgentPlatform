@@ -3,8 +3,10 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
 export interface KnowledgeRevisionIntegrity {
+  knowledge_base_id?: string;
   revision_id: string;
   revision_no: number;
+  status?: string;
   integrity_status: string | null;
   integrity_checked_at: string | null;
 }
@@ -21,7 +23,7 @@ export interface KnowledgeReconciliationCheck {
 }
 
 export interface KnowledgeReconciliationState {
-  knowledge_base_id: string;
+  knowledge_base_id: string | null;
   revisions: KnowledgeRevisionIntegrity[];
   checks: KnowledgeReconciliationCheck[];
 }
@@ -54,11 +56,12 @@ export async function runKnowledgeReconciliation(
 }
 
 export async function getKnowledgeReconciliation(
-  knowledgeBaseId: string,
+  knowledgeBaseId?: string,
 ): Promise<KnowledgeReconciliationState> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/admin/knowledge/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/reconciliation`,
-  );
+  const path = knowledgeBaseId
+    ? `/api/admin/knowledge/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/reconciliation`
+    : "/api/admin/knowledge/reconciliation";
+  const res = await fetch(`${getBackendBaseURL()}${path}`);
   if (!res.ok) await extractError(res, "Failed to load reconciliation state");
   return (await res.json()) as KnowledgeReconciliationState;
 }

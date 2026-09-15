@@ -162,6 +162,8 @@ class RunResourceSnapshot(Base):
     provider_dataset_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     retrieval_profile_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embedding_profile_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    retrieval_profile_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    embedding_profile_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
 
     __table_args__ = (

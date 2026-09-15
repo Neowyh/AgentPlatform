@@ -152,6 +152,13 @@ class LoggingConfig(BaseModel):
     enhance: LoggingEnhanceConfig = Field(default_factory=LoggingEnhanceConfig, description="Request trace correlation logging settings.")
 
 
+class KnowledgeConfig(BaseModel):
+    """Knowledge revision publishing and reconciliation settings."""
+
+    publish_eval_required: bool = Field(default=False, description="Require matching evaluation evidence before publishing a knowledge revision.")
+    reconciliation_interval_seconds: int = Field(default=0, ge=0, description="Scheduled knowledge reconciliation interval in seconds; 0 disables it.")
+
+
 def _legacy_config_candidates() -> tuple[Path, ...]:
     """Return source-tree config.yaml locations for monorepo compatibility."""
     backend_dir = Path(__file__).resolve().parents[4]
@@ -200,6 +207,7 @@ class AppConfig(BaseModel):
             field_doc="Structured logging settings: whether request trace ids appear in log records, and in which format.",
         ),
     )
+    knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig, description="Knowledge revision publishing and reconciliation configuration.")
     token_usage: TokenUsageConfig = Field(default_factory=TokenUsageConfig, description="Token usage tracking configuration")
     token_budget: TokenBudgetConfig = Field(default_factory=TokenBudgetConfig, description="Token Budget tracking and limits configuration.")
     plugins: list[ExtensionSpec] = Field(

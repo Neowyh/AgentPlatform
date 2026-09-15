@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -36,6 +37,8 @@ def _kb_snapshot(run_id: str, resource_id: str, *, revision_no: int, dataset_id:
         manifest_hash=f"{revision_no}" * 64,
         provider_type="ragflow",
         provider_dataset_id=dataset_id,
+        retrieval_profile_json={"top_k": 6},
+        embedding_profile_json={"model": "bge-m3"},
     )
 
 
@@ -53,12 +56,16 @@ def _agent_snapshot(run_id: str) -> RunResourceSnapshot:
 
 
 @pytest.mark.asyncio
-async def test_frozen_scope_binds_logical_kb_to_revision_dataset() -> None:
+async def test_frozen_scope_binds_logical_kb_to_revision_dataset(monkeypatch: pytest.MonkeyPatch) -> None:
     snapshots = [
         _agent_snapshot("run-1"),
         _kb_snapshot("run-1", "kb-1", revision_no=1, dataset_id="published-dataset-1"),
     ]
 
+    monkeypatch.setattr(
+        "deerflow.config.get_app_config",
+        lambda: SimpleNamespace(get_tool_config=lambda _name: SimpleNamespace(datasets=None)),
+    )
     scope = await _frozen_knowledge_scope(MagicMock(), snapshots, _actor())
 
     assert scope == {"kb-1": "published-dataset-1"}
@@ -88,6 +95,8 @@ def test_run_evidence_records_revision_identities() -> None:
             "revision_id": "revision-2",
             "revision_no": 2,
             "manifest_hash": "2" * 64,
+            "retrieval_profile": {"top_k": 6},
+            "embedding_profile": {"model": "bge-m3"},
         }
     }
 

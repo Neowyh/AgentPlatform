@@ -48,6 +48,36 @@ const mockDetail = {
   ],
 };
 
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({
+    t: {
+      library: {
+        revisionList: {
+          selectKnowledgeBase: "Select a knowledge base to view revisions",
+          loading: "Loading...",
+          loadFailed: "Unable to load revisions.",
+          empty: "No revision candidates yet",
+          createCandidate: "Create revision candidate",
+          creating: "Creating...",
+          createFailed:
+            "Unable to create a revision candidate. A candidate requires at least one ready document.",
+          publishFailed: "Unable to publish this revision.",
+          viewDetails: "View details",
+          hideDetails: "Hide details",
+          documentsAndManifest: (count: number, hash: string) =>
+            `${count} documents · manifest ${hash}`,
+          publishingStatus: "publishing",
+          integrityFlagged: (status: string) =>
+            `Reconciliation flagged this revision as ${status}`,
+          publish: "Publish",
+          publishingAction: "Publishing...",
+          publishAria: (no: number) => `Publish v${no}`,
+        },
+      },
+    },
+  }),
+}));
+
 const createRevision = vi.fn();
 const publishRevision = vi.fn();
 

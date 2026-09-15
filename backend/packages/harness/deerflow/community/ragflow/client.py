@@ -148,25 +148,27 @@ class RAGFlowClient:
     async def parse_document(self, dataset_id: str, document_id: str) -> None:
         if not isinstance(document_id, str) or not document_id.strip():
             raise ValueError("document_id must not be empty")
-        # RAGFlow exposes parsing only as the batch endpoint; single-document
-        # parse paths 404 on current RAGFlow versions (found by real-provider
-        # acceptance, M4 ticket 06).
-        await self._request("POST", f"/datasets/{dataset_id}/documents/parse", json={"document_ids": [document_id]})
+        await self._request("POST", f"/datasets/{dataset_id}/chunks", json={"document_ids": [document_id]})
 
     async def get_document_status(self, dataset_id: str, document_id: str) -> str:
-        # RAGFlow v0.27+ has no reliable single-document GET (returns
-        # non-JSON); resolve the document through the list endpoint instead
-        # (real-provider acceptance, M4 ticket 06).
-        documents = await self.list_dataset_documents(dataset_id)
-        for document in documents:
-            if str(document.get("id")) == document_id:
-                value = str(document.get("run") or document.get("status") or "").upper()
-                if value in {"DONE", "READY", "SUCCESS", "3"}:
-                    return "ready"
-                if value in {"FAIL", "FAILED", "ERROR", "4"}:
-                    return "failed"
-                return "processing"
-        raise RAGFlowProtocolError("RAGFlow returned no matching document.")
+        payload = await self._request(
+            "GET",
+            f"/datasets/{dataset_id}/documents",
+            params={"id": document_id, "page": 1, "page_size": 1},
+        )
+        data = payload.get("data")
+        items = data.get("docs") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            raise RAGFlowProtocolError("RAGFlow returned an invalid document list.")
+        document = next((item for item in items if isinstance(item, dict) and str(item.get("id")) == document_id), None)
+        if document is None:
+            raise RAGFlowProtocolError("RAGFlow returned no matching document.")
+        value = str(document.get("run") or document.get("status") or "").upper()
+        if value in {"DONE", "READY", "SUCCESS", "3"}:
+            return "ready"
+        if value in {"FAIL", "FAILED", "ERROR", "4"}:
+            return "failed"
+        return "processing"
 
     async def delete_document(self, dataset_id: str, document_id: str) -> None:
         if not isinstance(document_id, str) or not document_id.strip():

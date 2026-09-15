@@ -153,4 +153,7 @@ src/
 
 ## License
 
+Server state for the knowledge administration surface is managed by the
+TanStack Query hooks in `src/core/knowledge-admin/hooks.ts`.
+
 MIT License. See [LICENSE](../LICENSE) for details.

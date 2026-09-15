@@ -556,6 +556,9 @@ reachability.
 
 ## License
 
+Knowledge revision publishing and reconciliation are configured under the
+`knowledge` section of the root `config.yaml`; see [Configuration Guide](docs/CONFIGURATION.md).
+
 See the [LICENSE](../LICENSE) file in the project root.
 
 ## Contributing

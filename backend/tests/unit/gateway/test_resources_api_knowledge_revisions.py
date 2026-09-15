@@ -181,3 +181,31 @@ async def test_publish_endpoint_transitions_and_schedules_build(
         await resources.publish_knowledge_revision(kb_id, str(revision["id"]), BackgroundTasks(), current_user)
     assert duplicate.value.status_code == 409
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_publish_endpoint_reports_unavailable_without_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No configured knowledge provider is a 503, not a client conflict."""
+    engine, factory, current_user = await _make_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(resources, "configured_ragflow_provider", lambda: None)
+
+    created = await resources.create_resource(
+        resources.ResourceCreateRequest(type="knowledge_base", slug="noprov", display_name="NoProv", storage_kind="database"),
+        current_user,
+    )
+    kb_id = created["id"]
+    async with factory() as session:
+        kb = await session.get(Resource, kb_id)
+        _seed_ready_document(session, tmp_path, kb, "guide.txt", b"bytes")
+        await session.commit()
+    revision = await resources.create_knowledge_revision(kb_id, current_user)
+
+    from fastapi import BackgroundTasks
+
+    with pytest.raises(HTTPException) as unavailable:
+        await resources.publish_knowledge_revision(kb_id, str(revision["id"]), BackgroundTasks(), current_user)
+    assert unavailable.value.status_code == 503
+    await engine.dispose()

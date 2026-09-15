@@ -7,15 +7,13 @@ match, so enabling ``publish_eval_required`` rejects every publish.
 
 from __future__ import annotations
 
-from deerflow.config.app_config import get_app_config
+from app.agentplatform.knowledge.settings import config_value
 
 
 def eval_required() -> bool:
     """Read the optional ``knowledge.publish_eval_required`` config flag."""
 
-    knowledge = getattr(get_app_config(), "knowledge", None)
-    raw = knowledge.get("publish_eval_required") if isinstance(knowledge, dict) else getattr(knowledge, "publish_eval_required", None)
-    return bool(raw)
+    return bool(config_value("publish_eval_required"))
 
 
 def load_eval_evidence(knowledge_base_id: str, manifest_hash: str) -> dict | None:

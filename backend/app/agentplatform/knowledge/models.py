@@ -111,6 +111,9 @@ class KnowledgeRevision(Base):
     provider_dataset_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     provider_revision_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     publish_attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    publish_lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    publish_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    publish_execution_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     integrity_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -137,18 +140,21 @@ class KnowledgeRevision(Base):
 
 
 class KnowledgeRevisionCheck(Base):
-    """One read-only reconciliation observation for a KnowledgeBase (M4).
+    """One read-only reconciliation observation recorded by a run (M4).
 
-    Findings are immutable history: reconciliation never rewrites manifests,
-    never deletes provider resources, and never replaces run snapshots.
+    KB-bound rows carry per-revision findings; run-scoped rows (nullable
+    ``knowledge_base_id``) carry workspace-level findings such as orphan
+    provider datasets. Findings are immutable history: reconciliation never
+    rewrites manifests, never deletes provider resources, and never replaces
+    run snapshots.
     """
 
     __tablename__ = "knowledge_revision_checks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    knowledge_base_id: Mapped[str] = mapped_column(
+    knowledge_base_id: Mapped[str | None] = mapped_column(
         ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     revision_id: Mapped[str | None] = mapped_column(
         ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"),
