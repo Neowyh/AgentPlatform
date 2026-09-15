@@ -63,4 +63,5 @@ def build_canonical_agent_factory(
             finally:
                 deerflow_tools.get_available_tools = original
 
+    factory.knowledge_scope = knowledge_scope.model_mapping() if knowledge_scope is not None else None
     return factory

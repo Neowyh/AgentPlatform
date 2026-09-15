@@ -75,6 +75,8 @@ def _workflow_run_evidence_context(run: Any):
         runtime_assembly_fingerprint=evidence.get("runtime_assembly_fingerprint"),
         trace_id=evidence.get("trace_id"),
         retrieval_receipts=tuple(evidence.get("retrieval_receipts", ())),
+        run_id=str(getattr(run, "run_id", "")) or None,
+        knowledge_scope=evidence.get("knowledge_scope") if isinstance(evidence.get("knowledge_scope"), dict) else None,
     )
     with bind_run_evidence(binding):
         yield

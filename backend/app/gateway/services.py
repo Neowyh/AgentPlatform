@@ -1342,6 +1342,10 @@ async def start_run(
             logger.debug("Memory preload did not complete for %s (non-fatal)", sanitize_log_param(thread_id))
 
     run_evidence_binding = getattr(prepared, "evidence_binding", None)
+    if run_evidence_binding is not None and run_evidence_binding.run_id is None:
+        from dataclasses import replace
+
+        run_evidence_binding = replace(run_evidence_binding, run_id=record.run_id)
 
     async def _execute_run() -> None:
         metadata_task = asyncio.create_task(

@@ -279,10 +279,16 @@ class _AgentAdapter:
             executor, prompt = await self._build_executor(context, params, model_name=candidate)
             user_token = set_current_user(SimpleNamespace(id=self.user_id))
             try:
+                from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
+
+                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                    result = await executor._aexecute(prompt)
+            except ImportError:
                 result = await executor._aexecute(prompt)
             finally:
                 reset_current_user(user_token)
             try:
+                _adopt_subagent_retrieval_evidence(result, context=context, agent_id=self.name)
                 value = self._finalize_result(result)
                 context.model_name = candidate or getattr(executor, "model_name", None) or context.model_name
                 return value
@@ -302,7 +308,13 @@ class _AgentAdapter:
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def produce() -> Any:
-            result = await executor._aexecute(prompt, progress_callback=queue.put)
+            try:
+                from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
+
+                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                    result = await executor._aexecute(prompt, progress_callback=queue.put)
+            except ImportError:
+                result = await executor._aexecute(prompt, progress_callback=queue.put)
             await queue.put(_STREAM_END)
             return result
 
@@ -320,7 +332,9 @@ class _AgentAdapter:
                         args = update.get("args_summary", "")
                         yield {"type": "progress", "message": f"[回合 {update.get('turn', '-')}] 调用工具 {tool} → {args}"}
                 try:
-                    value = self._finalize_result(await producer)
+                    result = await producer
+                    _adopt_subagent_retrieval_evidence(result, context=context, agent_id=self.name)
+                    value = self._finalize_result(result)
                 except WorkflowTransientError:
                     continue
                 context.model_name = candidate or getattr(executor, "model_name", None) or context.model_name
@@ -416,3 +430,19 @@ def _is_llm_unavailable_text(result: Any) -> bool:
         return False
     lowered = result.lower()
     return any(marker in lowered for marker in _AgentAdapter._LLM_UNAVAILABLE_MARKERS)
+
+
+def _adopt_subagent_retrieval_evidence(result: Any, *, context: ActionContext, agent_id: str) -> None:
+    receipts = getattr(result, "retrieval_receipts", None)
+    if receipts is None:
+        return
+    try:
+        from agentplatform_extension.evidence import record_delegated_retrieval_receipts
+    except ImportError:
+        return
+    record_delegated_retrieval_receipts(
+        receipts,
+        parent_tool_receipt_id=context.idempotency_key,
+        child_task_id=str(getattr(result, "task_id", context.node_id)),
+        child_agent_id=agent_id,
+    )

@@ -64,10 +64,22 @@ class KnowledgeRuntimeAdapter:
             result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
         result = await result if inspect.isawaitable(result) else result
         try:
-            from agentplatform_extension.evidence import current_run_evidence, record_retrieval_receipt
+            from agentplatform_extension.evidence import current_delegation_evidence, current_run_evidence, record_retrieval_receipt
 
-            if current_run_evidence() is not None:
-                receipt = build_retrieval_receipt(query, logical_kb, self.scope, result)
+            binding = current_run_evidence()
+            if binding is not None:
+                delegation = current_delegation_evidence()
+                receipt = build_retrieval_receipt(
+                    query,
+                    logical_kb,
+                    self.scope,
+                    result,
+                    parent_tool_receipt_id=delegation.parent_tool_receipt_id if delegation else None,
+                    run_id=binding.run_id,
+                    caller_user_id=binding.authorization.caller_user_id,
+                    effective_agent_id=binding.authorization.effective_agent_id,
+                    child_agent_id=delegation.child_agent_id if delegation else None,
+                )
                 record_retrieval_receipt(receipt)
                 result = model_facing_retrieval_result(result, receipt)
         except (ImportError, KeyError, TypeError, ValueError):

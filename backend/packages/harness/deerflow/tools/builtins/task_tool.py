@@ -654,6 +654,23 @@ def _record_run_evidence_verification(
     )
 
 
+def _record_delegated_retrieval_evidence(*, parent_tool_call_id: str, child_task_id: str, agent_id: str, receipts: list[dict] | None) -> None:
+    """Merge child retrieval evidence only after the child has terminated."""
+
+    if receipts is None:
+        return
+    try:
+        from agentplatform_extension.evidence import record_delegated_retrieval_receipts
+    except ImportError:
+        return
+    record_delegated_retrieval_receipts(
+        receipts,
+        parent_tool_receipt_id=parent_tool_call_id,
+        child_task_id=child_task_id,
+        child_agent_id=agent_id,
+    )
+
+
 @tool("task", parse_docstring=True)
 async def task_tool(
     runtime: Runtime,
@@ -932,7 +949,13 @@ async def task_tool(
 
     # Keep the provider tool-call ID for stream/message correlation, but use a
     # server-generated execution ID for process-wide background task control.
-    execution_id = executor.execute_async(prompt, task_id=tool_call_id)
+    try:
+        from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
+
+        with bind_delegation_evidence(DelegationEvidenceContext(tool_call_id, subagent_type)):
+            execution_id = executor.execute_async(prompt, task_id=tool_call_id)
+    except ImportError:
+        execution_id = executor.execute_async(prompt, task_id=tool_call_id)
 
     # Poll for task completion in backend (removes need for LLM to poll)
     poll_count = 0
@@ -1034,6 +1057,12 @@ async def task_tool(
                 # deployments exactly pre-PR2. An empty list is a real
                 # harvest (zero stamped calls) and still gets a verdict.
                 receipts = getattr(result, "tool_receipts", None)
+                _record_delegated_retrieval_evidence(
+                    parent_tool_call_id=tool_call_id,
+                    child_task_id=str(getattr(result, "task_id", tool_call_id)),
+                    agent_id=subagent_type,
+                    receipts=getattr(result, "retrieval_receipts", None),
+                )
                 receipt_verdict = verify_receipt_citations(result.result or "", receipts) if receipts is not None else None
                 _record_run_evidence_verification(
                     task_id=tool_call_id,

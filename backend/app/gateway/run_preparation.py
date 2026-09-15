@@ -215,6 +215,9 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     if user_id is not None:
         snapshots = selection.get("resource_snapshots", ()) if isinstance(selection, dict) else ()
         policy_revision = selection.get("policy_revision", "runtime-default") if isinstance(selection, dict) else "runtime-default"
+        factory_knowledge_scope = getattr(canonical_factory, "knowledge_scope", None)
+        if not isinstance(factory_knowledge_scope, dict):
+            factory_knowledge_scope = None
         evidence_binding = RunEvidenceBinding(
             snapshots=snapshots,
             authorization=AuthorizationContext(
@@ -227,6 +230,8 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
                 canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
                 snapshots,
             ),
+            run_id=canonical_run_id,
+            knowledge_scope=(run_metadata.get("knowledge_scope") if isinstance(run_metadata.get("knowledge_scope"), dict) else factory_knowledge_scope),
         )
         # Persist the same caller-safe projection that the Extension binds to
         # the task lifecycle. This keeps Run metadata and runtime evidence on

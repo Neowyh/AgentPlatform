@@ -138,6 +138,11 @@ def build_retrieval_receipt(
     *,
     tool_call_id: str | None = None,
     parent_tool_receipt_id: str | None = None,
+    run_id: str | None = None,
+    caller_user_id: str | None = None,
+    effective_agent_id: str | None = None,
+    child_task_id: str | None = None,
+    child_agent_id: str | None = None,
 ) -> dict[str, object]:
     """Project provider output without exposing provider IDs or configuration secrets."""
     dataset_id = scope.resolve(logical_kb)
@@ -157,6 +162,11 @@ def build_retrieval_receipt(
         "configuration_source": metadata.get("configuration_source"),
         "tool_call_id": tool_call_id,
         "parent_tool_receipt_id": parent_tool_receipt_id,
+        "run_id": run_id,
+        "caller_user_id": caller_user_id,
+        "effective_agent_id": effective_agent_id,
+        "child_task_id": child_task_id,
+        "child_agent_id": child_agent_id,
         "created_at": created_at,
         "query_sha256": _query_hash(query),
         "result_status": status,

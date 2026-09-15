@@ -77,6 +77,33 @@ class AuthorizationContext:
 
 
 @dataclass(frozen=True, slots=True)
+class DelegationEvidenceContext:
+    """Parent call identity inherited by one delegated execution."""
+
+    parent_tool_receipt_id: str
+    child_agent_id: str | None = None
+
+
+_delegation_evidence_context: ContextVar[DelegationEvidenceContext | None] = ContextVar(
+    "agentplatform_delegation_evidence_context",
+    default=None,
+)
+
+
+@contextmanager
+def bind_delegation_evidence(context: DelegationEvidenceContext) -> Iterator[None]:
+    token = _delegation_evidence_context.set(context)
+    try:
+        yield
+    finally:
+        _delegation_evidence_context.reset(token)
+
+
+def current_delegation_evidence() -> DelegationEvidenceContext | None:
+    return _delegation_evidence_context.get()
+
+
+@dataclass(frozen=True, slots=True)
 class RunEvidenceBinding:
     """Per-run evidence projected into the extension lifecycle."""
 
@@ -88,6 +115,8 @@ class RunEvidenceBinding:
     retrieval_receipts: tuple[Mapping[str, Any], ...] = ()
     subagent_verification: tuple[Mapping[str, Any], ...] = ()
     artifact_receipts: tuple[Mapping[str, Any], ...] = ()
+    run_id: str | None = None
+    knowledge_scope: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshots", tuple(self.snapshots))
@@ -113,6 +142,8 @@ class RunEvidenceBinding:
             "retrieval_receipts": list(self.retrieval_receipts),
             "subagent_verification": list(self.subagent_verification),
             "artifact_receipts": list(self.artifact_receipts),
+            "run_id": self.run_id,
+            "knowledge_scope": dict(self.knowledge_scope) if self.knowledge_scope is not None else None,
         }
 
 
@@ -145,10 +176,27 @@ def _append_evidence_item(field: str, item: Mapping[str, Any]) -> None:
         return
     values = list(getattr(binding, field))
     normalized = dict(item)
-    if normalized in values:
+    identity = _evidence_item_identity(normalized)
+    if any(_evidence_item_identity(value) == identity for value in values):
         return
     values.append(normalized)
     _run_evidence_binding.set(replace(binding, **{field: tuple(values)}))
+
+
+def _evidence_item_identity(item: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Return the event identity used for retry/re-delivery idempotency.
+
+    Query hashes are deliberately absent: two calls in one or different Runs
+    may ask the same question and must remain independently auditable.
+    """
+
+    for field in ("receipt_id", "tool_call_id", "event_id"):
+        value = item.get(field)
+        if value:
+            return (field, str(value))
+    if item.get("task_id"):
+        return ("task_id", str(item["task_id"]), str(item.get("status", "")))
+    return ("value", repr(sorted(item.items(), key=lambda pair: str(pair[0]))))
 
 
 def record_tool_receipt(receipt: Mapping[str, Any]) -> None:
@@ -175,6 +223,55 @@ def record_retrieval_receipt(receipt: Mapping[str, Any]) -> None:
     """Record a retrieval receipt only inside the active run evidence binding."""
 
     _append_evidence_item("retrieval_receipts", receipt)
+
+
+def record_delegated_retrieval_receipts(
+    receipts: Iterable[Mapping[str, Any]],
+    *,
+    parent_tool_receipt_id: str,
+    child_task_id: str,
+    child_agent_id: str | None = None,
+) -> int:
+    """Adopt child retrieval evidence into the active parent Run.
+
+    Adoption is fail-closed. A child receipt is usable only when it carries
+    the current Run identity and a logical KB in the parent's frozen scope.
+    Missing parent linkage or a scope mismatch is retained as an unavailable
+    delegation status by the caller, never as a verifiable citation.
+    """
+
+    binding = current_run_evidence()
+    if binding is None or not parent_tool_receipt_id or not child_task_id:
+        return 0
+    scope = binding.knowledge_scope
+    bindings = scope.get("bindings") if isinstance(scope, Mapping) else None
+    if not isinstance(bindings, Mapping):
+        return 0
+    allowed = {str(value) for value in bindings}
+    allowed.update(str(value) for value in bindings.values())
+    adopted = 0
+    for raw in receipts:
+        receipt = dict(raw)
+        if receipt.get("run_id") != binding.run_id:
+            continue
+        logical_kb = receipt.get("logical_knowledge_base")
+        if str(logical_kb) not in allowed:
+            continue
+        if not receipt.get("receipt_id") or not receipt.get("parent_tool_receipt_id"):
+            continue
+        if receipt["parent_tool_receipt_id"] != parent_tool_receipt_id:
+            continue
+        record_retrieval_receipt(
+            {
+                **receipt,
+                "delegated": True,
+                "child_task_id": child_task_id,
+                "child_agent_id": child_agent_id,
+                "parent_tool_receipt_id": parent_tool_receipt_id,
+            }
+        )
+        adopted += 1
+    return adopted
 
 
 def record_retrieval_citations(text: str) -> None:
