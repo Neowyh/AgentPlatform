@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from .audit import AuditEntry, AuditKind, LocalAuditLog
+from .audit import AuditEntry, AuditIntegrity, AuditKind, LocalAuditLog
 from .consent import ConsentStore, PendingConsent
 from .file_service import LocalFileService
 from .files import LocalFileStore
@@ -434,6 +434,26 @@ class TrayController:
 
     # --- settings --------------------------------------------------------
 
+    def open_settings(self) -> RuntimeSettings:
+        """The live settings object the UI edits in place.
+
+        Open Settings in the tray menu hands this back to the settings panel;
+        every edit goes through ``set_rule`` / ``set_risk_level`` / ``add_root``
+        / ``remove_root`` / ``save_settings`` below, and the panel simply reads
+        the same object. No copy is made: the panel must see what the runtime
+        sees, not a stale snapshot.
+        """
+        return self.settings
+
+    def view_local_audit(self) -> "LocalAuditView":
+        """A read-only view of the local audit history, for the tray menu.
+
+        The UI renders ``entries`` newest-first, calls ``clear`` to wipe the
+        visible history (the clear itself stays on record), and shows
+        ``integrity`` when the chain does not verify.
+        """
+        return LocalAuditView(self)
+
     def save_settings(self) -> Path:
         """Write the current configuration and re-point the running client at it.
 
@@ -666,3 +686,34 @@ def _build_mcp_service(
     return LocalMCPService(
         supervisor, policy=settings.policy(), consent=consent
     )
+
+
+class LocalAuditView:
+    """A read-only window into the local audit history, for the tray menu.
+
+    The UI renders ``entries`` (newest first), calls ``clear`` to wipe the
+    visible history, and shows ``integrity`` when the hash chain does not
+    verify. The one destructive operation, ``clear``, seals what it drops so
+    a wiped log can never be mistaken for an empty one (Local 方案 §35).
+    """
+
+    def __init__(self, controller: "TrayController") -> None:
+        self._controller = controller
+
+    @property
+    def entries(self) -> list[AuditEntry]:
+        """The visible history, newest first: what the user sees on open."""
+        return self._controller.audit.recent(limit=200)
+
+    def clear(self, *, actor_id: str = "local-user") -> dict[str, Any]:
+        """Drop the visible history; the clear itself stays on record."""
+        return self._controller.clear_audit(actor_id=actor_id)
+
+    @property
+    def integrity(self) -> AuditIntegrity:
+        """Walks the hash chain; a rewritten row makes ``ok`` false."""
+        return self._controller.audit.verify()
+
+    def clearances(self) -> list[dict[str, Any]]:
+        """Every past clear, so the user sees what was wiped and when."""
+        return self._controller.audit.clearances()

@@ -17,7 +17,7 @@ from .consent import (
     ConsentRequest,
     ConsentStore,
     PendingConsent,
-    request_summary,
+    render_consent_summary,
 )
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError
@@ -467,16 +467,7 @@ class LocalRuntimeClient:
                     )
                     return
                 if file_task.decision is not PolicyDecision.ALLOW:
-                    self._record_policy_denial(operation, task_id, envelope.payload)
-                    await self._send_error(
-                        task_id,
-                        file_task.decision.value,
-                        "LOCAL_POLICY_DENIED",
-                        envelope.payload,
-                        operation,
-                        policy_decision=file_task.decision.value,
-                        status="denied",
-                    )
+                    await self._denial_response(operation, task_id, envelope.payload, file_task.decision)
                     return
                 result = file_task.value
                 receipt = self._file_receipt(
@@ -503,15 +494,8 @@ class LocalRuntimeClient:
                 if python_result is not PolicyDecision.ALLOW and not isinstance(
                     python_result, PythonResult
                 ):
-                    self._record_policy_denial(operation, task_id, envelope.payload)
-                    await self._send_error(
-                        task_id,
-                        python_result.value,
-                        "LOCAL_POLICY_DENIED",
-                        envelope.payload,
-                        operation,
-                        policy_decision=python_result.value,
-                        status="denied",
+                    await self._denial_response(
+                        operation, task_id, envelope.payload, python_result
                     )
                     return
                 assert isinstance(python_result, PythonResult)
@@ -536,16 +520,7 @@ class LocalRuntimeClient:
                     )
                     return
                 if not isinstance(execution, MCPExecution):
-                    self._record_policy_denial(operation, task_id, envelope.payload)
-                    await self._send_error(
-                        task_id,
-                        execution.value,
-                        "LOCAL_POLICY_DENIED",
-                        envelope.payload,
-                        operation,
-                        policy_decision=execution.value,
-                        status="denied",
-                    )
+                    await self._denial_response(operation, task_id, envelope.payload, execution)
                     return
                 result = execution.value
                 receipt = replace(execution.receipt, task_id=task_id)
@@ -629,6 +604,31 @@ class LocalRuntimeClient:
             },
         )
 
+    async def _denial_response(
+        self,
+        capability: str,
+        task_id: str,
+        payload: dict[str, Any],
+        decision: PolicyDecision,
+    ) -> None:
+        """Record the local audit row and emit the wire error frame in one call.
+
+        A policy denial is a single event with two observable halves: the
+        structured error frame the server learns from, and the audit row the
+        user sees. Owning both here means no caller can record without
+        sending or vice versa.
+        """
+        self._record_policy_denial(capability, task_id, payload)
+        await self._send_error(
+            task_id,
+            decision.value,
+            "LOCAL_POLICY_DENIED",
+            payload,
+            capability,
+            policy_decision=decision.value,
+            status="denied",
+        )
+
     def _record_execution(self, receipt: LocalExecutionReceipt) -> None:
         """One audit row per finished local execution, keyed by its receipt.
 
@@ -702,7 +702,7 @@ class LocalRuntimeClient:
             # Level 2 is displayed but never silenceable (§9: dangerous work
             # has no "always allow" escape hatch).
             silenceable=level is not RiskLevel.LEVEL_2,
-            summary=request_summary(
+            summary=render_consent_summary(
                 request.capability, request.payload, request_hash=request.request_hash
             ),
             requested_at=time.monotonic(),
@@ -746,7 +746,7 @@ class LocalRuntimeClient:
             digest=request.request_hash,
             detail={
                 "origin": "tray" if self.consent_prompt is not None else "server",
-                "summary": request_summary(request.capability, payload),
+                "summary": render_consent_summary(request.capability, payload),
             },
         )
         if self.consent_prompt is None:

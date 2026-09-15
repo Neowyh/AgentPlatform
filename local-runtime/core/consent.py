@@ -24,7 +24,7 @@ class ConsentRequest:
     request_hash: str
 
 
-def request_summary(
+def render_consent_summary(
     capability: str, payload: dict[str, Any], *, request_hash: str = ""
 ) -> dict[str, str]:
     """The human-readable essentials of a consent request (§9 risk grading).
