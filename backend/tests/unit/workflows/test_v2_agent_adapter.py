@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence, current_run_evidence
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 import deerflow.config
@@ -462,6 +463,82 @@ async def test_agent_adapter_raises_when_executor_fails(env: pytest.MonkeyPatch,
     )
     with pytest.raises(RuntimeError, match="agent 'fault-zeroing' failed with status"):
         await adapter.run(context, {"prompt": "hello"})
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_does_not_retry_execution_when_evidence_import_fails(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = 0
+
+    class ImportFailingExecutor(FakeExecutor):
+        async def _aexecute(self, prompt: str) -> SimpleNamespace:
+            nonlocal calls
+            calls += 1
+            raise ImportError("dependency raised during execution")
+
+    env.setattr(executor_module, "WorkflowSubagentExecutor", ImportFailingExecutor)
+    _canonical_env(monkeypatch, tmp_path)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="wf",
+        run_id="run-import-error",
+        node_id="n",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    with pytest.raises(ImportError, match="dependency raised during execution"):
+        await adapter.run(context, {"prompt": "hello"})
+
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_adopts_valid_subagent_retrieval_evidence(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class EvidenceExecutor(FakeExecutor):
+        async def _aexecute(self, prompt: str) -> SimpleNamespace:
+            return SimpleNamespace(
+                status=_Status.COMPLETED,
+                result={"ok": True},
+                error=None,
+                task_id="child-task-1",
+                retrieval_receipts=[
+                    {
+                        "receipt_id": "child-receipt-1",
+                        "run_id": "run-evidence",
+                        "logical_knowledge_base": "docs",
+                        "parent_tool_receipt_id": "wf:run-evidence:node:evidence_collection",
+                    }
+                ],
+            )
+
+    env.setattr(executor_module, "WorkflowSubagentExecutor", EvidenceExecutor)
+    _canonical_env(monkeypatch, tmp_path)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-evidence",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    binding = RunEvidenceBinding(
+        [],
+        AuthorizationContext("caller", "agent", "policy"),
+        run_id="run-evidence",
+        knowledge_scope={"bindings": {"docs": "dataset-1"}},
+    )
+
+    with bind_run_evidence(binding):
+        assert await adapter.run(context, {"prompt": "提取证据"}) == {"ok": True}
+        receipt = current_run_evidence().retrieval_receipts[0]
+
+    assert receipt["delegated"] is True
+    assert receipt["child_task_id"] == "child-task-1"
+    assert receipt["child_agent_id"] == "fault-zeroing"
 
 
 class StreamingExecutor(FakeExecutor):

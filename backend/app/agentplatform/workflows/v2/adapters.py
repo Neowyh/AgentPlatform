@@ -279,12 +279,13 @@ class _AgentAdapter:
             executor, prompt = await self._build_executor(context, params, model_name=candidate)
             user_token = set_current_user(SimpleNamespace(id=self.user_id))
             try:
-                from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
-
-                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                try:
+                    from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
+                except ImportError:
                     result = await executor._aexecute(prompt)
-            except ImportError:
-                result = await executor._aexecute(prompt)
+                else:
+                    with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                        result = await executor._aexecute(prompt)
             finally:
                 reset_current_user(user_token)
             try:
@@ -310,11 +311,11 @@ class _AgentAdapter:
         async def produce() -> Any:
             try:
                 from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
-
-                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
-                    result = await executor._aexecute(prompt, progress_callback=queue.put)
             except ImportError:
                 result = await executor._aexecute(prompt, progress_callback=queue.put)
+            else:
+                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                    result = await executor._aexecute(prompt, progress_callback=queue.put)
             await queue.put(_STREAM_END)
             return result
 

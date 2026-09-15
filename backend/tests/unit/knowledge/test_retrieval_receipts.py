@@ -240,3 +240,33 @@ def test_delegated_receipts_without_frozen_scope_are_rejected() -> None:
             == 0
         )
         assert current_run_evidence().retrieval_receipts == ()
+
+
+def test_rejected_delegated_receipts_leave_an_unavailable_status() -> None:
+    binding = RunEvidenceBinding(
+        [],
+        AuthorizationContext("caller", "agent", "policy"),
+        run_id="run-1",
+        knowledge_scope={"bindings": {"docs": "dataset-1"}},
+    )
+    rejected = {
+        "receipt_id": "rr-child",
+        "run_id": "run-2",
+        "logical_knowledge_base": "docs",
+        "parent_tool_receipt_id": "task-call-1",
+    }
+
+    with bind_run_evidence(binding):
+        assert (
+            record_delegated_retrieval_receipts(
+                [rejected],
+                parent_tool_receipt_id="task-call-1",
+                child_task_id="child-1",
+            )
+            == 0
+        )
+        status = current_run_evidence().subagent_verification[0]
+
+    assert status["status"] == "UNAVAILABLE"
+    assert status["task_id"] == "child-1"
+    assert status["reason"] == "delegated_retrieval_unavailable"

@@ -246,6 +246,15 @@ def record_delegated_retrieval_receipts(
     scope = binding.knowledge_scope
     bindings = scope.get("bindings") if isinstance(scope, Mapping) else None
     if not isinstance(bindings, Mapping):
+        _append_evidence_item(
+            "subagent_verification",
+            {
+                "task_id": child_task_id,
+                "status": "UNAVAILABLE",
+                "reason": "delegated_retrieval_unavailable",
+                "parent_tool_receipt_id": parent_tool_receipt_id,
+            },
+        )
         return 0
     allowed = {str(value) for value in bindings}
     allowed.update(str(value) for value in bindings.values())
@@ -271,6 +280,16 @@ def record_delegated_retrieval_receipts(
             }
         )
         adopted += 1
+    if adopted == 0:
+        _append_evidence_item(
+            "subagent_verification",
+            {
+                "task_id": child_task_id,
+                "status": "UNAVAILABLE",
+                "reason": "delegated_retrieval_unavailable",
+                "parent_tool_receipt_id": parent_tool_receipt_id,
+            },
+        )
     return adopted
 
 

@@ -657,14 +657,12 @@ def _record_run_evidence_verification(
 def _record_delegated_retrieval_evidence(*, parent_tool_call_id: str, child_task_id: str, agent_id: str, receipts: list[dict] | None) -> None:
     """Merge child retrieval evidence only after the child has terminated."""
 
-    if receipts is None:
-        return
     try:
         from agentplatform_extension.evidence import record_delegated_retrieval_receipts
     except ImportError:
         return
     record_delegated_retrieval_receipts(
-        receipts,
+        receipts or [],
         parent_tool_receipt_id=parent_tool_call_id,
         child_task_id=child_task_id,
         child_agent_id=agent_id,
@@ -951,11 +949,11 @@ async def task_tool(
     # server-generated execution ID for process-wide background task control.
     try:
         from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
-
-        with bind_delegation_evidence(DelegationEvidenceContext(tool_call_id, subagent_type)):
-            execution_id = executor.execute_async(prompt, task_id=tool_call_id)
     except ImportError:
         execution_id = executor.execute_async(prompt, task_id=tool_call_id)
+    else:
+        with bind_delegation_evidence(DelegationEvidenceContext(tool_call_id, subagent_type)):
+            execution_id = executor.execute_async(prompt, task_id=tool_call_id)
 
     # Poll for task completion in backend (removes need for LLM to poll)
     poll_count = 0

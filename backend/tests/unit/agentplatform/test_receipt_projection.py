@@ -1,6 +1,6 @@
 from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence, current_run_evidence
 
-from deerflow.tools.builtins.task_tool import _record_run_evidence_verification
+from deerflow.tools.builtins.task_tool import _record_delegated_retrieval_evidence, _record_run_evidence_verification
 
 
 def test_missing_subagent_receipts_are_recorded_as_unverified() -> None:
@@ -33,3 +33,24 @@ def test_cited_subagent_receipts_are_recorded_as_verified() -> None:
 
     assert verification["status"] == "VERIFIED"
     assert verification["receipt_count"] == 1
+
+
+def test_missing_delegated_retrieval_receipts_are_recorded_as_unavailable() -> None:
+    binding = RunEvidenceBinding(
+        snapshots=(),
+        authorization=AuthorizationContext("caller", "agent", "policy"),
+        run_id="run-1",
+        knowledge_scope={"bindings": {"docs": "dataset-1"}},
+    )
+
+    with bind_run_evidence(binding):
+        _record_delegated_retrieval_evidence(
+            parent_tool_call_id="task-call-1",
+            child_task_id="child-1",
+            agent_id="researcher",
+            receipts=None,
+        )
+        status = current_run_evidence().subagent_verification[0]
+
+    assert status["status"] == "UNAVAILABLE"
+    assert status["reason"] == "delegated_retrieval_unavailable"
