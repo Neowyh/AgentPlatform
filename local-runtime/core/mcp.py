@@ -438,6 +438,10 @@ class MCPSupervisor:
         record.restarts = 0
         await self._start_record(record)
 
+    def server_names(self) -> tuple[str, ...]:
+        """Configured server names, stable order, for display."""
+        return tuple(sorted(self._records))
+
     def state_of(self, name: str) -> str:
         return self._record(name).state.value
 

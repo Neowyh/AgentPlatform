@@ -336,15 +336,35 @@ def _validate_env_name(name: str) -> str:
 
 
 class SecretResolver:
-    """Resolves `local:<name>` references against a device-local store."""
+    """Resolves `local:<name>` references against a device-local store.
 
-    def __init__(self, store: SecretStore) -> None:
+    ``on_use`` is notified with the *names* every time references are actually
+    resolved, so the runtime can audit secret usage at the moment it happens
+    without the callback ever seeing a value.
+    """
+
+    def __init__(
+        self,
+        store: SecretStore,
+        *,
+        on_use: Callable[[tuple[str, ...]], None] | None = None,
+    ) -> None:
         self.store = store
+        self._on_use = on_use
+
+    def _note_use(self, names: Iterable[str]) -> None:
+        if self._on_use is None:
+            return
+        self._on_use(tuple(sorted(set(names))))
 
     def resolve(self, ref: str) -> str:
         if not is_secret_ref(ref):
             raise ValueError(f"{ref!r} is not a local: secret reference")
-        return self.store.get(ref[len(SECRET_REF_PREFIX) :])
+        name = ref[len(SECRET_REF_PREFIX) :]
+        value = self.store.get(name)
+        self._note_use([name])
+        return value
+
 
     def name_lookup(self) -> Callable[[str], str | None]:
         """Adapter for seams that ask by bare secret name.
