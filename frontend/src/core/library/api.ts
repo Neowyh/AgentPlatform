@@ -79,6 +79,7 @@ export interface KnowledgeRevision {
   failure_message?: string | null;
   integrity_status?: string | null;
   integrity_checked_at?: string | null;
+  knowledge_profiles?: Record<string, unknown>;
   created_at: string | null;
   published_at: string | null;
 }
@@ -388,4 +389,115 @@ export async function getEvalCaseRevisionApplicability(
   if (!res.ok)
     await extractError(res, "Failed to load eval case applicability");
   return (await res.json()) as EvalCaseRevisionApplicability;
+}
+
+export interface RetrievalTestItem {
+  rank: number;
+  document_id: string | null;
+  display_name: string | null;
+  content_hash: string | null;
+  chunk_ref: string | null;
+  content: string;
+  score: number | null;
+  rerank_score: number | null;
+  position: Record<string, unknown>;
+}
+
+export interface RetrievalTestRecord {
+  id: string;
+  resource_id: string;
+  revision_id: string;
+  revision_no: number;
+  manifest_hash: string;
+  query: string;
+  requested_top_k: number;
+  retrieval_profile: Record<string, unknown>;
+  result_status: "success" | "empty_hit" | "provider_error";
+  error_code: string | null;
+  returned_count: number;
+  truncated: boolean;
+  duration_ms: number | null;
+  created_by: string;
+  created_at: string | null;
+  items?: RetrievalTestItem[];
+  applied_parameters?: Record<string, number>;
+}
+
+export interface RunRetrievalTestRequest {
+  revisionId: string;
+  query: string;
+  topK?: number;
+}
+
+/** Access to the KnowledgeBase or archived record was lost (403/404). */
+export class RetrievalTestAccessError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function runRetrievalTest(
+  resourceId: string,
+  request: RunRetrievalTestRequest,
+): Promise<RetrievalTestRecord> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        revision_id: request.revisionId,
+        query: request.query,
+        ...(request.topK === undefined ? {} : { top_k: request.topK }),
+      }),
+    },
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "Access to this knowledge base was denied",
+      );
+    await extractError(res, "Failed to run the retrieval test");
+  }
+  return (await res.json()) as RetrievalTestRecord;
+}
+
+export async function listRetrievalTests(
+  resourceId: string,
+): Promise<RetrievalTestRecord[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests`,
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "Access to this knowledge base was denied",
+      );
+    await extractError(res, "Failed to load archived retrieval tests");
+  }
+  const data = (await res.json()) as { items: RetrievalTestRecord[] };
+  return data.items;
+}
+
+export async function getRetrievalTest(
+  resourceId: string,
+  testId: string,
+): Promise<RetrievalTestRecord> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests/${encodeURIComponent(testId)}`,
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "This retrieval test record is not accessible",
+      );
+    await extractError(res, "Failed to load the retrieval test record");
+  }
+  return (await res.json()) as RetrievalTestRecord;
 }

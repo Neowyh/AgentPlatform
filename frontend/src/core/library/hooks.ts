@@ -8,11 +8,14 @@ import {
   getEvalCaseRevisionApplicability,
   getKnowledgeEvalCase,
   getKnowledgeRevision,
+  getRetrievalTest,
   listKnowledgeBases,
   listKnowledgeDocuments,
   listKnowledgeEvalCases,
   listKnowledgeRevisions,
+  listRetrievalTests,
   publishKnowledgeRevision,
+  runRetrievalTest,
   updateKnowledgeEvalCase,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
@@ -20,6 +23,7 @@ import {
   deleteKnowledgeDocument,
   editKnowledgeDocument,
 } from "./api";
+import type { RunRetrievalTestRequest } from "./api";
 import type {
   CreateKnowledgeBaseRequest,
   CreateKnowledgeEvalCaseRequest,
@@ -264,4 +268,36 @@ export function useEvalCaseRevisionApplicability(
     enabled: Boolean(resourceId && revisionId),
   });
   return query;
+}
+
+export function useRetrievalTests(resourceId: string | undefined) {
+  const query = useQuery({
+    queryKey: ["knowledge-retrieval-tests", resourceId],
+    queryFn: () => listRetrievalTests(resourceId!),
+    enabled: Boolean(resourceId),
+  });
+  return { tests: query.data ?? [], ...query };
+}
+
+export function useRetrievalTest(
+  resourceId: string | undefined,
+  testId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["knowledge-retrieval-tests", resourceId, testId],
+    queryFn: () => getRetrievalTest(resourceId!, testId!),
+    enabled: Boolean(resourceId && testId),
+  });
+}
+
+export function useRunRetrievalTest(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RunRetrievalTestRequest) =>
+      runRetrievalTest(resourceId, request),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-retrieval-tests", resourceId],
+      }),
+  });
 }

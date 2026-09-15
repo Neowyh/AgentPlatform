@@ -1409,6 +1409,7 @@ export interface Translations {
     knowledgeBases: string;
     revisions: string;
     evalCases: string;
+    retrievalTestTab: string;
     revisionList: {
       selectKnowledgeBase: string;
       loading: string;
@@ -1464,6 +1465,29 @@ export interface Translations {
       applicabilityLoadFailed: string;
       applicable: string;
       notApplicable: (count: number) => string;
+    };
+    retrievalTest: {
+      selectKnowledgeBase: string;
+      loading: string;
+      revisionsLoadFailed: string;
+      noPublishedRevision: string;
+      revisionLabel: string;
+      questionLabel: string;
+      questionPlaceholder: string;
+      topKLabel: string;
+      run: string;
+      running: string;
+      runFailed: string;
+      restricted: string;
+      emptyResult: string;
+      providerFailed: (code: string) => string;
+      hitsTitle: (count: number) => string;
+      manifest: (hash: string) => string;
+      archivedTitle: string;
+      archivedEmpty: string;
+      archivedLoadFailed: string;
+      viewRecord: string;
+      recordLoadFailed: string;
     };
     dependencySelector: {
       loadError: string;

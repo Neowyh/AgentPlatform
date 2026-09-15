@@ -1766,6 +1766,7 @@ export const enUS: Translations = {
     knowledgeBases: "Knowledge Bases",
     revisions: "Revisions",
     evalCases: "Eval Cases",
+    retrievalTestTab: "Retrieval Test",
     revisionList: {
       selectKnowledgeBase: "Select a knowledge base to view revisions",
       loading: "Loading...",
@@ -1827,6 +1828,30 @@ export const enUS: Translations = {
       applicable: "Applicable",
       notApplicable: (count: number) =>
         `${count} expected document(s) missing from this revision (annotations kept, never silently removed)`,
+    },
+    retrievalTest: {
+      selectKnowledgeBase: "Select a knowledge base to run retrieval tests",
+      loading: "Loading...",
+      revisionsLoadFailed: "Unable to load revisions.",
+      noPublishedRevision:
+        "This knowledge base has no published revision to test yet",
+      revisionLabel: "Revision",
+      questionLabel: "Question",
+      questionPlaceholder: "Ask a question to probe this revision",
+      topKLabel: "Hits (K)",
+      run: "Run test",
+      running: "Running...",
+      runFailed: "Unable to run the retrieval test.",
+      restricted: "You no longer have access to this knowledge base.",
+      emptyResult: "No hits for this question.",
+      providerFailed: (code: string) => `Retrieval failed (${code}).`,
+      hitsTitle: (count: number) => `${count} hit(s)`,
+      manifest: (hash: string) => `manifest ${hash}`,
+      archivedTitle: "Archived tests",
+      archivedEmpty: "No archived retrieval tests yet",
+      archivedLoadFailed: "Unable to load archived tests.",
+      viewRecord: "View record",
+      recordLoadFailed: "This record is no longer accessible.",
     },
     dependencySelector: {
       loadError:
