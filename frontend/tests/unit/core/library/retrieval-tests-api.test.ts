@@ -51,7 +51,7 @@ describe("retrieval test API facade", () => {
     );
     await expect(listRetrievalTests("kb-1")).resolves.toEqual([{ id: "t1" }]);
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/resources/kb-1/retrieval-tests",
+      "http://localhost:8000/api/resources/kb-1/retrieval-tests?limit=50",
     );
   });
 

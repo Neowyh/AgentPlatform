@@ -469,8 +469,10 @@ export async function runRetrievalTest(
 export async function listRetrievalTests(
   resourceId: string,
 ): Promise<RetrievalTestRecord[]> {
+  // The panel renders one page; ask for the API maximum so archived records
+  // stay visible as history accumulates.
   const res = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests?limit=50`,
   );
   if (!res.ok) {
     if (res.status === 403 || res.status === 404)

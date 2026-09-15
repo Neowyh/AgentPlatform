@@ -390,6 +390,38 @@ async def test_execute_provider_api_failure_uses_low_cardinality_code(store, tmp
 
 
 @pytest.mark.asyncio
+async def test_execute_surfaces_rerank_score_only_when_provider_provides_one(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+    provider_document_id = next(iter(revision.provider_doc_map_json.values()))
+    chunks = [
+        {"document_id": provider_document_id, "document_keyword": "guide-0.txt", "content": "with rerank", "similarity": 0.9, "rerank_similarity": 0.81},
+        {"document_id": provider_document_id, "document_keyword": "guide-0.txt", "content": "without rerank", "similarity": 0.5, "rerank_similarity": True},
+    ]
+    service = KnowledgeRetrievalTestService(session, _actor(), search=_fake_search(_chunk_result(chunks)), settings_factory=lambda: _settings())
+
+    payload = await _execute(service, revision)
+
+    assert [item["rerank_score"] for item in payload["items"]] == [0.81, None]
+
+
+@pytest.mark.asyncio
+async def test_execute_maps_missing_tooling_module_to_unavailable(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+
+    def _no_tooling():
+        raise ImportError("deerflow.community.ragflow is not installed")
+
+    service = KnowledgeRetrievalTestService(session, _actor(), search=_fake_search(_chunk_result([])), settings_factory=_no_tooling)
+
+    with pytest.raises(RetrievalTestUnavailable):
+        await _execute(service, revision)
+
+
+@pytest.mark.asyncio
 async def test_execute_without_tool_settings_is_unavailable(store, tmp_path) -> None:
     session, factory = store
     kb = await _seed_kb(session)

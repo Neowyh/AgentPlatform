@@ -58,8 +58,10 @@ class KnowledgeRetrievalTestValidationError(ValueError):
 async def _official_retrieval_settings() -> Any | None:
     """Read the official knowledge_search tool settings (None if unconfigured)."""
 
-    from deerflow.community.ragflow import tools as ragflow_tools
-
+    try:
+        from deerflow.community.ragflow import tools as ragflow_tools
+    except ImportError as exc:
+        raise RetrievalTestUnavailable("knowledge retrieval is not available in this deployment") from exc
     settings, _error = ragflow_tools._settings_or_error()
     return settings
 
@@ -176,9 +178,8 @@ class KnowledgeRetrievalTestService:
         query: str,
         top_k: int | None = None,
     ) -> dict[str, object]:
-        resource = await self._knowledge_base(resource_id)
+        await self._knowledge_base(resource_id)
         revision = await self._retrievable_revision(resource_id, revision_id)
-
         normalized_query = (query or "").strip()
         if not normalized_query:
             raise KnowledgeRetrievalTestValidationError("query must not be empty")
@@ -188,7 +189,10 @@ class KnowledgeRetrievalTestService:
         if not isinstance(requested_top_k, int) or isinstance(requested_top_k, bool) or not 1 <= requested_top_k <= MAX_TEST_TOP_K:
             raise KnowledgeRetrievalTestValidationError(f"top_k must be between 1 and {MAX_TEST_TOP_K}")
 
-        settings = await _maybe_await(self._settings_factory())
+        try:
+            settings = await _maybe_await(self._settings_factory())
+        except ImportError as exc:
+            raise RetrievalTestUnavailable("knowledge retrieval is not available in this deployment") from exc
         if settings is None:
             raise RetrievalTestUnavailable("knowledge retrieval is not configured in this deployment")
         applied = self._applied_parameters(settings, requested_top_k)
@@ -205,12 +209,15 @@ class KnowledgeRetrievalTestService:
         duration_ms = int((time.monotonic() - started) * 1000)
 
         chunks = result.get("chunks") if isinstance(result, dict) and isinstance(result.get("chunks"), list) else []
-        items = [] if error_code else project_retrieval_items(result, self._revision_metadata(revision))[:requested_top_k]
+        # Projection skips non-dict chunks, so pre-filter to keep the raw
+        # chunk index aligned 1:1 with the projected items for rerank scores.
+        raw_chunks = [chunk for chunk in chunks if isinstance(chunk, dict)]
+        items = [] if error_code else project_retrieval_items({"chunks": raw_chunks}, self._revision_metadata(revision))[:requested_top_k]
         for rank, item in enumerate(items, start=1):
             item["rank"] = rank
-            item["rerank_score"] = _rerank_score(result, rank - 1)
+            item["rerank_score"] = _rerank_score(raw_chunks[rank - 1])
         result_status = "provider_error" if error_code else ("empty_hit" if not items else "success")
-        truncated = not error_code and len(chunks) > len(items)
+        truncated = not error_code and len(raw_chunks) > len(items)
 
         record = KnowledgeRetrievalTest(
             id=str(uuid.uuid4()),
@@ -232,9 +239,7 @@ class KnowledgeRetrievalTestService:
         )
         self.session.add(record)
         await self.session.flush()
-        payload = _test_payload(record, include_items=True)
-        payload["resource_slug"] = resource.slug
-        return payload
+        return _test_payload(record, include_items=True)
 
     async def list_tests(self, resource_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, object]:
         await self._knowledge_base(resource_id)
@@ -254,16 +259,13 @@ class KnowledgeRetrievalTestService:
         return _test_payload(record, include_items=True)
 
 
-def _rerank_score(result: object, index: int) -> float | None:
+def _rerank_score(chunk: object) -> float | None:
     """Surface a provider rerank score when one exists; never synthesize one."""
 
-    if not isinstance(result, dict) or not isinstance(result.get("chunks"), list):
-        return None
-    chunks = result["chunks"]
-    if index >= len(chunks) or not isinstance(chunks[index], dict):
+    if not isinstance(chunk, dict):
         return None
     for key in ("rerank_similarity", "rerank_score"):
-        value = chunks[index].get(key)
+        value = chunk.get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return float(value)
     return None
