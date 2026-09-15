@@ -26,6 +26,7 @@ from starlette.background import BackgroundTask
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
+from app.agentplatform.knowledge.eval_cases import KnowledgeEvalCaseService
 from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
 from app.agentplatform.knowledge.revisions import KnowledgeRevisionService, execute_publish
 from app.agentplatform.rbac_models import UserModel, UserRole
@@ -248,6 +249,18 @@ class KnowledgeDraftRequest(BaseModel):
 class KnowledgeDocumentUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     metadata: dict[str, Any] | None = None
+
+
+class EvalCaseCreateRequest(BaseModel):
+    question: str
+    expected_document_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class EvalCaseUpdateRequest(BaseModel):
+    question: str | None = None
+    expected_document_ids: list[str] | None = None
+    tags: list[str] | None = None
 
 
 def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
@@ -1113,6 +1126,120 @@ async def publish_knowledge_revision(
         {"resource_id": resource_id, "revision_no": revision["revision_no"]},
     )
     return revision
+
+
+@router.post("/{resource_id}/eval-cases", status_code=201)
+@_translate_resource_errors
+async def create_eval_case(
+    resource_id: str,
+    body: EvalCaseCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        case = await KnowledgeEvalCaseService(session, _resource_actor(current_user)).create_case(
+            resource_id,
+            question=body.question,
+            expected_document_ids=body.expected_document_ids,
+            tags=body.tags,
+        )
+        await session.commit()
+    await record_audit(
+        str(current_user.id),
+        "eval_case_created",
+        "knowledge_eval_case",
+        str(case["id"]),
+        {
+            "resource_id": resource_id,
+            "version_no": case["version_no"],
+            "content_hash": case["content_hash"],
+            "expected_document_count": len(case["expected_document_ids"]),
+        },
+    )
+    return case
+
+
+@router.get("/{resource_id}/eval-cases")
+@_translate_resource_errors
+async def list_eval_cases(
+    resource_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        cases = await KnowledgeEvalCaseService(session, _resource_actor(current_user)).list_cases(resource_id)
+        return {"items": cases, "total": len(cases)}
+
+
+@router.get("/{resource_id}/eval-cases/revisions/{revision_id}/applicability")
+@_translate_resource_errors
+async def get_eval_case_revision_applicability(
+    resource_id: str,
+    revision_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvalCaseService(session, _resource_actor(current_user)).revision_applicability(resource_id, revision_id)
+
+
+@router.get("/{resource_id}/eval-cases/{case_id}")
+@_translate_resource_errors
+async def get_eval_case(
+    resource_id: str,
+    case_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvalCaseService(session, _resource_actor(current_user)).get_case(resource_id, case_id)
+
+
+@router.patch("/{resource_id}/eval-cases/{case_id}")
+@_translate_resource_errors
+async def update_eval_case(
+    resource_id: str,
+    case_id: str,
+    body: EvalCaseUpdateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        case = await KnowledgeEvalCaseService(session, _resource_actor(current_user)).update_case(
+            resource_id,
+            case_id,
+            question=body.question,
+            expected_document_ids=body.expected_document_ids,
+            tags=body.tags,
+        )
+        await session.commit()
+    await record_audit(
+        str(current_user.id),
+        "eval_case_updated",
+        "knowledge_eval_case",
+        case_id,
+        {
+            "resource_id": resource_id,
+            "version_no": case["version_no"],
+            "content_hash": case["content_hash"],
+        },
+    )
+    return case
+
+
+@router.delete("/{resource_id}/eval-cases/{case_id}", status_code=204)
+@_translate_resource_errors
+async def delete_eval_case(
+    resource_id: str,
+    case_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> Response:
+    async with _factory()() as session:
+        await KnowledgeEvalCaseService(session, _resource_actor(current_user)).delete_case(resource_id, case_id)
+        await session.commit()
+    await record_audit(
+        str(current_user.id),
+        "eval_case_deleted",
+        "knowledge_eval_case",
+        case_id,
+        {"resource_id": resource_id},
+    )
+    return Response(status_code=204)
 
 
 @router.put("/{resource_id}/knowledge-draft")

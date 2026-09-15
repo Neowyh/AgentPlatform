@@ -130,6 +130,16 @@ def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
     return result.rstrip() + "\n\nKnowledge citations (copy the exact link when citing):\n" + "\n".join(links)
 
 
+def project_retrieval_items(result: object, metadata: dict[str, object]) -> list[dict[str, object]]:
+    """Project provider chunks into bounded, canonical-identity items.
+
+    Shared by run retrieval receipts and the KnowledgeBase management
+    retrieval test: identical document mapping, identical budgets.
+    """
+
+    return _items(result, metadata)
+
+
 def build_retrieval_receipt(
     query: str,
     logical_kb: str,

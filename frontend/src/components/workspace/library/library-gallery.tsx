@@ -7,6 +7,7 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
+import { EvalCaseList } from "./eval-case-list";
 import { KnowledgeBaseList } from "./knowledge-base-list";
 import { RevisionList } from "./revision-list";
 
@@ -70,6 +71,7 @@ export function LibraryGallery() {
             {t.library.knowledgeBases}
           </TabsTrigger>
           <TabsTrigger value="revisions">{t.library.revisions}</TabsTrigger>
+          <TabsTrigger value="eval-cases">{t.library.evalCases}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
@@ -82,6 +84,13 @@ export function LibraryGallery() {
 
         <TabsContent value="revisions" className="flex-1">
           <RevisionList
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
+        </TabsContent>
+
+        <TabsContent value="eval-cases" className="flex-1">
+          <EvalCaseList
             knowledgeBaseId={selectedId}
             canModify={selectedKnowledgeBase?.can_modify}
           />

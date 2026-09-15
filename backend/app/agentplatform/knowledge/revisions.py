@@ -102,6 +102,12 @@ def _revision_payload(revision: KnowledgeRevision, *, documents: list[dict] | No
     }
     if documents is not None:
         payload["documents"] = documents
+    frozen_profiles = next(
+        (entry.get("knowledge_profiles") for entry in revision.manifest_json or [] if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
+        None,
+    )
+    if frozen_profiles is not None:
+        payload["knowledge_profiles"] = frozen_profiles
     return payload
 
 

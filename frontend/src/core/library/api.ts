@@ -243,3 +243,149 @@ export async function editKnowledgeDocument(
   if (!res.ok) await extractError(res, "Failed to edit document");
   return (await res.json()) as KnowledgeDocument;
 }
+
+export interface KnowledgeEvalCase {
+  id: string;
+  resource_id: string;
+  question: string;
+  expected_document_ids: string[];
+  tags: string[];
+  content_hash: string;
+  version_no: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface KnowledgeEvalCaseVersion {
+  version_no: number;
+  question: string;
+  expected_document_ids: string[];
+  tags: string[];
+  content_hash: string;
+  change_type: "created" | "updated";
+  changed_by: string;
+  changed_at: string | null;
+}
+
+export interface KnowledgeEvalCaseDetail extends KnowledgeEvalCase {
+  versions: KnowledgeEvalCaseVersion[];
+}
+
+export interface CreateKnowledgeEvalCaseRequest {
+  question: string;
+  expectedDocumentIds: string[];
+  tags: string[];
+}
+
+export interface UpdateKnowledgeEvalCaseRequest {
+  question?: string;
+  expectedDocumentIds?: string[];
+  tags?: string[];
+}
+
+export interface EvalCaseApplicabilityItem {
+  case_id: string;
+  question: string;
+  content_hash: string;
+  version_no: number;
+  expected_document_count: number;
+  missing_document_ids: string[];
+  applicable: boolean;
+}
+
+export interface EvalCaseRevisionApplicability {
+  revision_id: string;
+  revision_no: number;
+  status: KnowledgeRevisionStatus;
+  manifest_hash: string;
+  items: EvalCaseApplicabilityItem[];
+  total: number;
+}
+
+export async function listKnowledgeEvalCases(
+  resourceId: string,
+): Promise<KnowledgeEvalCase[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load eval cases");
+  const data = (await res.json()) as { items: KnowledgeEvalCase[] };
+  return data.items;
+}
+
+export async function getKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+): Promise<KnowledgeEvalCaseDetail> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load eval case");
+  return (await res.json()) as KnowledgeEvalCaseDetail;
+}
+
+export async function createKnowledgeEvalCase(
+  resourceId: string,
+  request: CreateKnowledgeEvalCaseRequest,
+): Promise<KnowledgeEvalCase> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: request.question,
+        expected_document_ids: request.expectedDocumentIds,
+        tags: request.tags,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to create eval case");
+  return (await res.json()) as KnowledgeEvalCase;
+}
+
+export async function updateKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+  update: UpdateKnowledgeEvalCaseRequest,
+): Promise<KnowledgeEvalCase> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: update.question,
+        expected_document_ids: update.expectedDocumentIds,
+        tags: update.tags,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to update eval case");
+  return (await res.json()) as KnowledgeEvalCase;
+}
+
+export async function deleteKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) await extractError(res, "Failed to delete eval case");
+}
+
+export async function getEvalCaseRevisionApplicability(
+  resourceId: string,
+  revisionId: string,
+): Promise<EvalCaseRevisionApplicability> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/revisions/${encodeURIComponent(revisionId)}/applicability`,
+  );
+  if (!res.ok)
+    await extractError(res, "Failed to load eval case applicability");
+  return (await res.json()) as EvalCaseRevisionApplicability;
+}

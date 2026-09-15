@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -231,4 +231,49 @@ class KnowledgeRevisionCheck(Base):
     __table_args__ = (
         CheckConstraint("trigger in ('manual','scheduled')", name="ck_knowledge_revision_checks_trigger"),
         Index("ix_knowledge_revision_checks_kb_checked", "knowledge_base_id", "checked_at"),
+    )
+
+
+class KnowledgeRetrievalTest(Base):
+    """One archived management retrieval test against a published revision (M6).
+
+    Rows record the initiator, the exact revision identity, the frozen
+    retrieval profile selected for the test, the parameters actually applied,
+    and the bounded hits. Reads re-check current KnowledgeBase visibility, so
+    an archive never outlives the reader's authorization. Provider dataset
+    and document identifiers are deliberately not persisted: the archive
+    speaks canonical identities only.
+    """
+
+    __tablename__ = "knowledge_retrieval_tests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    query: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    retrieval_profile_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    applied_parameters_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    result_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    results_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    returned_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        CheckConstraint("result_status in ('success','empty_hit','provider_error')", name="ck_knowledge_retrieval_tests_result_status"),
+        CheckConstraint("requested_top_k >= 1", name="ck_knowledge_retrieval_tests_top_k"),
+        Index("ix_knowledge_retrieval_tests_kb_created", "knowledge_base_id", "created_at"),
+        Index("ix_knowledge_retrieval_tests_revision", "revision_id"),
     )

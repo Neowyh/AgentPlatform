@@ -1408,6 +1408,7 @@ export interface Translations {
     documents: string;
     knowledgeBases: string;
     revisions: string;
+    evalCases: string;
     revisionList: {
       selectKnowledgeBase: string;
       loading: string;
@@ -1425,6 +1426,44 @@ export interface Translations {
       publish: string;
       publishingAction: string;
       publishAria: (no: number) => string;
+    };
+    evalCaseList: {
+      selectKnowledgeBase: string;
+      loading: string;
+      loadFailed: string;
+      empty: string;
+      restricted: string;
+      createTitle: string;
+      questionLabel: string;
+      questionPlaceholder: string;
+      expectedDocsLabel: string;
+      expectedDocsEmpty: string;
+      tagsLabel: string;
+      tagsPlaceholder: string;
+      create: string;
+      creating: string;
+      createFailed: string;
+      viewDetails: string;
+      hideDetails: string;
+      versionsTitle: string;
+      versionAndHash: (no: number, hash: string) => string;
+      expectedDocsCount: (count: number) => string;
+      edit: string;
+      cancel: string;
+      save: string;
+      saving: string;
+      updateFailed: string;
+      delete: string;
+      deleting: string;
+      deleteFailed: string;
+      deleteConfirm: string;
+      applicabilityTitle: string;
+      applicabilityPlaceholder: string;
+      revisionOption: (no: number, status: string) => string;
+      applicabilityLoading: string;
+      applicabilityLoadFailed: string;
+      applicable: string;
+      notApplicable: (count: number) => string;
     };
     dependencySelector: {
       loadError: string;

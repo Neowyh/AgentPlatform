@@ -2,19 +2,30 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createKnowledgeBase,
+  createKnowledgeEvalCase,
   createKnowledgeRevision,
+  deleteKnowledgeEvalCase,
+  getEvalCaseRevisionApplicability,
+  getKnowledgeEvalCase,
   getKnowledgeRevision,
   listKnowledgeBases,
   listKnowledgeDocuments,
+  listKnowledgeEvalCases,
   listKnowledgeRevisions,
   publishKnowledgeRevision,
+  updateKnowledgeEvalCase,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
   deleteKnowledgeDocument,
   editKnowledgeDocument,
 } from "./api";
-import type { CreateKnowledgeBaseRequest, KnowledgeRevision } from "./api";
+import type {
+  CreateKnowledgeBaseRequest,
+  CreateKnowledgeEvalCaseRequest,
+  KnowledgeRevision,
+  UpdateKnowledgeEvalCaseRequest,
+} from "./api";
 
 export function useKnowledgeBases() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -181,4 +192,76 @@ export function useEditKnowledgeDocument(resourceId: string) {
         queryKey: ["knowledge-documents", resourceId],
       }),
   });
+}
+
+export function useKnowledgeEvalCases(resourceId: string | undefined) {
+  const query = useQuery({
+    queryKey: ["knowledge-eval-cases", resourceId],
+    queryFn: () => listKnowledgeEvalCases(resourceId!),
+    enabled: Boolean(resourceId),
+  });
+  return { evalCases: query.data ?? [], ...query };
+}
+
+export function useKnowledgeEvalCase(
+  resourceId: string | undefined,
+  caseId: string | undefined,
+) {
+  const query = useQuery({
+    queryKey: ["knowledge-eval-cases", resourceId, caseId],
+    queryFn: () => getKnowledgeEvalCase(resourceId!, caseId!),
+    enabled: Boolean(resourceId && caseId),
+  });
+  return query;
+}
+
+function useInvalidateEvalCases(resourceId: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    void queryClient.invalidateQueries({
+      queryKey: ["knowledge-eval-cases", resourceId],
+    });
+}
+
+export function useCreateKnowledgeEvalCase(resourceId: string) {
+  const invalidate = useInvalidateEvalCases(resourceId);
+  return useMutation({
+    mutationFn: (request: CreateKnowledgeEvalCaseRequest) =>
+      createKnowledgeEvalCase(resourceId, request),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateKnowledgeEvalCase(resourceId: string) {
+  const invalidate = useInvalidateEvalCases(resourceId);
+  return useMutation({
+    mutationFn: ({
+      caseId,
+      update,
+    }: {
+      caseId: string;
+      update: UpdateKnowledgeEvalCaseRequest;
+    }) => updateKnowledgeEvalCase(resourceId, caseId, update),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteKnowledgeEvalCase(resourceId: string) {
+  const invalidate = useInvalidateEvalCases(resourceId);
+  return useMutation({
+    mutationFn: (caseId: string) => deleteKnowledgeEvalCase(resourceId, caseId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useEvalCaseRevisionApplicability(
+  resourceId: string | undefined,
+  revisionId: string | undefined,
+) {
+  const query = useQuery({
+    queryKey: ["knowledge-eval-cases", resourceId, "applicability", revisionId],
+    queryFn: () => getEvalCaseRevisionApplicability(resourceId!, revisionId!),
+    enabled: Boolean(resourceId && revisionId),
+  });
+  return query;
 }

@@ -35,6 +35,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         documents: "Documents",
         knowledgeBases: "Knowledge Bases",
         revisions: "Revisions",
+        evalCases: "Eval Cases",
       },
     },
   }),
@@ -97,6 +98,10 @@ vi.mock("@/components/workspace/library/revision-list", () => ({
   RevisionList: () => <div data-testid="revision-list">Revision List</div>,
 }));
 
+vi.mock("@/components/workspace/library/eval-case-list", () => ({
+  EvalCaseList: () => <div data-testid="eval-case-list">Eval Case List</div>,
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let LibraryGallery: typeof import("@/components/workspace/library/library-gallery").LibraryGallery;
@@ -141,6 +146,7 @@ describe("LibraryGallery", () => {
     expect(screen.getByText("Documents")).toBeInTheDocument();
     expect(screen.getByText("Knowledge Bases")).toBeInTheDocument();
     expect(screen.getByText("Revisions")).toBeInTheDocument();
+    expect(screen.getByText("Eval Cases")).toBeInTheDocument();
   });
 
   test("renders tab content sections", () => {
@@ -148,6 +154,7 @@ describe("LibraryGallery", () => {
     expect(screen.getByTestId("document-list")).toBeInTheDocument();
     expect(screen.getByTestId("knowledge-base-list")).toBeInTheDocument();
     expect(screen.getByTestId("revision-list")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-case-list")).toBeInTheDocument();
   });
 
   test("has correct default tab value", () => {
@@ -162,5 +169,6 @@ describe("LibraryGallery", () => {
     expect(triggers[0]?.getAttribute("data-value")).toBe("documents");
     expect(triggers[1]?.getAttribute("data-value")).toBe("knowledge-bases");
     expect(triggers[2]?.getAttribute("data-value")).toBe("revisions");
+    expect(triggers[3]?.getAttribute("data-value")).toBe("eval-cases");
   });
 });

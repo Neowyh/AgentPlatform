@@ -50,7 +50,7 @@ def test_unified_chain_uses_default_version_table(tmp_path: Path) -> None:
 
 def test_merge_revision_joins_both_heads() -> None:
     script = _script_directory()
-    assert script.get_current_head() == "20260915_knowledge_publish_lease"
+    assert script.get_current_head() == "20260915_knowledge_eval_cases"
     merge = script.get_revision(MERGE_REVISION)
     assert set(merge._normalized_down_revisions) == {CONTROL_PLANE_HEAD, RUNTIME_HEAD}
 
