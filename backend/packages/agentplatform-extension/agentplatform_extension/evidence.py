@@ -12,6 +12,7 @@ from typing import Any
 from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_KNOWLEDGE_CITATION_RE = re.compile(r"\[citation:[^\]]+\]\(evidence://([A-Za-z0-9_-]+)\)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +173,29 @@ def record_retrieval_receipt(receipt: Mapping[str, Any]) -> None:
     """Record a retrieval receipt only inside the active run evidence binding."""
 
     _append_evidence_item("retrieval_receipts", receipt)
+
+
+def record_retrieval_citations(text: str) -> None:
+    """Mark only archived retrieval items explicitly cited by a final message."""
+
+    binding = current_run_evidence()
+    if binding is None:
+        return
+    cited_ids = set(_KNOWLEDGE_CITATION_RE.findall(text))
+    if not cited_ids:
+        return
+    receipts = list(binding.retrieval_receipts)
+    changed = False
+    for receipt_index, receipt in enumerate(receipts):
+        items = receipt.get("items")
+        if not isinstance(items, list):
+            continue
+        cited = [str(item["evidence_id"]) for item in items if isinstance(item, dict) and item.get("evidence_id") in cited_ids]
+        if cited:
+            receipts[receipt_index] = {**receipt, "cited_item_ids": cited}
+            changed = True
+    if changed:
+        _run_evidence_binding.set(replace(binding, retrieval_receipts=tuple(receipts)))
 
 
 def record_local_execution_receipt(receipt: Mapping[str, Any], *, tool_call_id: str | None = None) -> None:

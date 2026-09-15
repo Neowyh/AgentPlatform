@@ -9,7 +9,11 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
-from agentplatform_extension.knowledge.retrieval_receipts import build_denied_retrieval_receipt, build_retrieval_receipt
+from agentplatform_extension.knowledge.retrieval_receipts import (
+    build_denied_retrieval_receipt,
+    build_retrieval_receipt,
+    model_facing_retrieval_result,
+)
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 KNOWLEDGE_ACCESS_DENIED = "KNOWLEDGE_ACCESS_DENIED"
@@ -60,9 +64,12 @@ class KnowledgeRuntimeAdapter:
             result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
         result = await result if inspect.isawaitable(result) else result
         try:
-            from agentplatform_extension.evidence import record_retrieval_receipt
+            from agentplatform_extension.evidence import current_run_evidence, record_retrieval_receipt
 
-            record_retrieval_receipt(build_retrieval_receipt(query, logical_kb, self.scope, result))
+            if current_run_evidence() is not None:
+                receipt = build_retrieval_receipt(query, logical_kb, self.scope, result)
+                record_retrieval_receipt(receipt)
+                result = model_facing_retrieval_result(result, receipt)
         except (ImportError, KeyError, TypeError, ValueError):
             pass
         return result

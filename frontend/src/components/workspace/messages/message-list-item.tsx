@@ -414,9 +414,9 @@ function MessageContent_({
           maxWidth="90%"
         />
       ),
-      a: createMarkdownLinkComponent(threadId),
+      a: createMarkdownLinkComponent(threadId, runId),
     }),
-    [artifactPaths, threadId],
+    [artifactPaths, runId, threadId],
   );
 
   const rawContent = extractContentFromMessage(message);
@@ -474,7 +474,7 @@ function MessageContent_({
       <AIElementMessageContent className={className}>
         <Task defaultOpen={false}>
           <TaskTrigger title="">
-            <div className="text-muted-foreground flex w-full cursor-default items-center gap-2 type-supporting select-none">
+            <div className="text-muted-foreground type-supporting flex w-full cursor-default items-center gap-2 select-none">
               <Loader className="size-4" />
               <span>{contentToDisplay}</span>
             </div>
@@ -695,7 +695,7 @@ function RichFileCard({
         <div className="flex items-start gap-2">
           <Loader2Icon className="text-muted-foreground mt-0.5 size-4 shrink-0 animate-spin" />
           <span
-            className="text-foreground truncate type-supporting font-medium"
+            className="text-foreground type-supporting truncate font-medium"
             title={file.filename}
           >
             {file.filename}
@@ -704,7 +704,7 @@ function RichFileCard({
         <div className="flex items-center justify-between gap-2">
           <Badge
             variant="secondary"
-            className="rounded px-1.5 py-0.5 type-compact font-normal"
+            className="type-compact rounded px-1.5 py-0.5 font-normal"
           >
             {getFileTypeLabel(file.filename)}
           </Badge>
@@ -744,7 +744,7 @@ function RichFileCard({
       <div className="flex items-start gap-2">
         <FileIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
         <span
-          className="text-foreground truncate type-supporting font-medium"
+          className="text-foreground type-supporting truncate font-medium"
           title={file.filename}
         >
           {file.filename}
@@ -753,7 +753,7 @@ function RichFileCard({
       <div className="flex items-center justify-between gap-2">
         <Badge
           variant="secondary"
-          className="rounded px-1.5 py-0.5 type-compact font-normal"
+          className="type-compact rounded px-1.5 py-0.5 font-normal"
         >
           {getFileTypeLabel(file.filename)}
         </Badge>

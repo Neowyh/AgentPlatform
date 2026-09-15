@@ -72,6 +72,37 @@ def _items(result: object, metadata: dict[str, object]) -> list[dict[str, object
     return items
 
 
+def _citation_label(item: dict[str, object]) -> str:
+    label = str(item.get("display_name") or "Knowledge source")
+    position = item.get("position")
+    if isinstance(position, dict):
+        page = position.get("page") if position.get("page") is not None else position.get("page_number")
+        if isinstance(page, (str, int)) and str(page):
+            return f"{label} — Page {page}"
+        section = position.get("section")
+        if isinstance(section, str) and section.strip():
+            return f"{label} — {section.strip()}"
+    return label
+
+
+def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
+    """Add opaque, run-local citation links without changing provider content."""
+    if not isinstance(result, str):
+        return result
+    items = receipt.get("items")
+    if not isinstance(items, list) or not items:
+        return result
+    links = []
+    for item in items:
+        if not isinstance(item, dict) or not item.get("evidence_id"):
+            continue
+        evidence_id = item["evidence_id"]
+        links.append(f"- [citation:{_citation_label(item)}](evidence://{evidence_id})")
+    if not links:
+        return result
+    return result.rstrip() + "\n\nKnowledge citations (copy the exact link when citing):\n" + "\n".join(links)
+
+
 def build_retrieval_receipt(
     query: str,
     logical_kb: str,
@@ -88,7 +119,7 @@ def build_retrieval_receipt(
     status = _status(result)
     created_at = datetime.now(UTC).isoformat()
     receipt_id = "rr_" + hashlib.sha256(f"{query}\0{logical_kb}\0{created_at}".encode()).hexdigest()[:24]
-    return {
+    receipt = {
         "receipt_id": receipt_id,
         "receipt_kind": "retrieval",
         "logical_knowledge_base": logical_kb,
@@ -107,6 +138,16 @@ def build_retrieval_receipt(
         "truncated": isinstance(result, dict) and isinstance(result.get("chunks"), list) and len(result["chunks"]) > len(items),
         "items": items,
     }
+    receipt_id = str(receipt["receipt_id"])
+    for index, item in enumerate(items, start=1):
+        item["evidence_id"] = f"{receipt_id}_i{index}"
+        item["citation_label"] = _citation_label(item)
+    return receipt
+
+
+def model_facing_retrieval_result(result: object, receipt: dict[str, object]) -> object:
+    """Return provider output annotated with only archived item identifiers."""
+    return _model_facing_result(result, receipt)
 
 
 def build_denied_retrieval_receipt(query: str, logical_kb: str | None) -> dict[str, object]:

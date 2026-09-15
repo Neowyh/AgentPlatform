@@ -171,6 +171,13 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         for message in messages:
             if not isinstance(message, AIMessage):
                 continue
+            try:
+                from agentplatform_extension.evidence import record_retrieval_citations
+
+                content = message.content if isinstance(message.content, str) else ""
+                record_retrieval_citations(content)
+            except ImportError:
+                pass
             kwargs = dict(message.additional_kwargs or {})
             # Runtime-owned and always overwritten so provider output cannot
             # forge the ledger against which its citations will be checked.

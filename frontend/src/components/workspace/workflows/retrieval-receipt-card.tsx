@@ -108,7 +108,7 @@ export function RetrievalReceiptCard({
                       {item.display_name ?? "Unnamed document"}
                       {location(item) ? ` · ${location(item)}` : ""}
                       {typeof item.score === "number"
-                        ? ` · score ${item.score}`
+                        ? ` · retrieval score ${item.score}`
                         : ""}
                     </p>
                     {item.content ? (
