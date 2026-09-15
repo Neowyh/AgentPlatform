@@ -48,10 +48,11 @@ E2E_GATE7_EXPECTED_SNIPPET=<exact-snippet> \
 ```
 
 The browser assertion navigates to the real chat, verifies the exact snippet,
-and exercises the rendered `evidence://` citation and its Evidence Panel. The
-test is also included in `scripts/run-test-lane.sh frontend-real` when the
-standard real-E2E harness exports those variables. Missing harness, provider,
-model, browser, or credentials is recorded as `unexecuted`, never as pass.
+observes the Evidence API request for the supplied run ID, and exercises the
+rendered `evidence://` citation and its Evidence Panel. The test is also
+included in `scripts/run-test-lane.sh frontend-real` when the standard
+real-E2E harness exports those variables. Missing harness, provider, model,
+browser, or credentials is recorded as `unexecuted`, never as pass.
 
 ## Candidate result ledger
 
