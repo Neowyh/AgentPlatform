@@ -139,6 +139,67 @@ class KnowledgeRevision(Base):
     )
 
 
+class KnowledgeEvalCase(Base):
+    """A regression eval case maintained against one canonical KnowledgeBase (M6).
+
+    Expected documents use canonical document identities (platform UUIDs),
+    never provider ids. ``content_hash`` is deterministic over the case
+    content so a later Eval run can freeze exactly the version it evaluated.
+    """
+
+    __tablename__ = "knowledge_eval_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question: Mapped[str] = mapped_column(String(4000), nullable=False)
+    expected_document_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        CheckConstraint("version_no >= 1", name="ck_knowledge_eval_cases_version_no"),
+        Index("ix_knowledge_eval_cases_kb_created", "knowledge_base_id", "created_at"),
+    )
+
+
+class KnowledgeEvalCaseVersion(Base):
+    """Append-only snapshot of one eval case version (M6).
+
+    Rows are never rewritten: updates append the next version so the history
+    stays auditable, and deleting a case removes its history with it.
+    """
+
+    __tablename__ = "knowledge_eval_case_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_eval_cases.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    question: Mapped[str] = mapped_column(String(4000), nullable=False)
+    expected_document_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(16), nullable=False, default="created")
+    changed_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("case_id", "version_no", name="uq_knowledge_eval_case_versions_no"),
+        CheckConstraint("change_type in ('created','updated')", name="ck_knowledge_eval_case_versions_change_type"),
+        Index("ix_knowledge_eval_case_versions_case", "case_id", "version_no"),
+    )
+
+
 class KnowledgeRevisionCheck(Base):
     """One read-only reconciliation observation recorded by a run (M4).
 
