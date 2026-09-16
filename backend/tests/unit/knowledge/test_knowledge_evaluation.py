@@ -112,6 +112,18 @@ def test_comparison_reports_metric_deltas_and_case_regressions() -> None:
     assert [(item["case_id"], item["outcome"]) for item in comparison["cases"]] == [("case-1", "regressed"), ("case-2", "improved")]
 
 
+def test_comparison_is_ineligible_when_one_case_is_incomplete() -> None:
+    left = {"status": "completed", "top_k": 8, "metrics_version": "retrieval-metrics-v1", "aggregate": {"recall_at_k": 1.0}}
+    right = {"status": "partial", "top_k": 8, "metrics_version": "retrieval-metrics-v1", "aggregate": {"recall_at_k": 1.0}}
+    result = KnowledgeEvalResult(case_id="case-1", status="success", expected_hit=True, recall_at_k=1.0, mrr_at_k=1.0, ranked_items_json=[])
+
+    comparison = compare_evaluation_runs(left, right, [result], [])
+
+    assert comparison["eligible"] is False
+    assert comparison["delta"] == {"expected_hit_rate": None, "recall_at_k": None, "mrr_at_k": None}
+    assert comparison["cases"] == [{"case_id": "case-1", "outcome": "incomplete", "left": comparison["cases"][0]["left"], "right": None}]
+
+
 @pytest.mark.asyncio
 async def test_start_freezes_selected_case_and_profile_for_historical_reads(evaluation_session: AsyncSession) -> None:
     kb, case = await _evaluation_fixture(evaluation_session)
@@ -131,6 +143,25 @@ async def test_start_freezes_selected_case_and_profile_for_historical_reads(eval
     historical = await service.get_run(kb.id, run.id)
     assert historical["results"] == []
     assert historical["revision_id"] == payload["revision_id"]
+
+
+@pytest.mark.asyncio
+async def test_start_comparison_freezes_one_case_set_for_both_runs(evaluation_session: AsyncSession) -> None:
+    kb, case = await _evaluation_fixture(evaluation_session)
+    revision = (await evaluation_session.execute(select(KnowledgeRevision))).scalar_one()
+
+    comparison = await KnowledgeEvaluationService(evaluation_session, _owner()).start_comparison(
+        kb.id,
+        left_revision_id=revision.id,
+        left_profile_id="frozen",
+        right_revision_id=revision.id,
+        right_profile_id="configured",
+        case_ids=[case.id],
+    )
+
+    assert comparison["left"]["case_ids"] == [case.id]
+    assert comparison["right"]["case_ids"] == [case.id]
+    assert comparison["left"]["revision_id"] == comparison["right"]["revision_id"] == revision.id
 
 
 @pytest.mark.asyncio

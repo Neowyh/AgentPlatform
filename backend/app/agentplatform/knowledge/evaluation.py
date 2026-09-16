@@ -102,6 +102,7 @@ def _run_payload(run: KnowledgeEvalRun) -> dict[str, object]:
         "total_cases": run.total_cases,
         "completed_cases": run.completed_cases,
         "failed_cases": run.failed_cases,
+        "case_ids": list(run.case_ids_json or []),
         "aggregate": dict(run.aggregate_json or {}),
         "error_code": run.error_code,
         "created_by": run.created_by,

@@ -474,6 +474,7 @@ export interface KnowledgeEvaluationRun {
   total_cases: number;
   completed_cases: number;
   failed_cases: number;
+  case_ids: string[];
   aggregate: {
     denominator?: number;
     expected_hit_rate?: number | null;

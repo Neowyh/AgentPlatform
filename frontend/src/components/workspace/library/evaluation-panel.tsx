@@ -24,8 +24,13 @@ export function EvaluationPanel({
   const { evalCases } = useKnowledgeEvalCases(knowledgeBaseId);
   const { evaluations } = useKnowledgeEvaluations(knowledgeBaseId);
   const [revisionId, setRevisionId] = useState("");
-  const [rightRevisionId, setRightRevisionId] = useState("");
   const [profileId, setProfileId] = useState<"frozen" | "configured">("frozen");
+  const [comparisonLeftRevisionId, setComparisonLeftRevisionId] = useState("");
+  const [comparisonLeftProfileId, setComparisonLeftProfileId] = useState<
+    "frozen" | "configured"
+  >("frozen");
+  const [comparisonRightRevisionId, setComparisonRightRevisionId] =
+    useState("");
   const [rightProfileId, setRightProfileId] = useState<"frozen" | "configured">(
     "configured",
   );
@@ -179,8 +184,10 @@ export function EvaluationPanel({
             <select
               aria-label="Side A revision"
               className="mt-1 block rounded border p-2"
-              value={revisionId}
-              onChange={(event) => setRevisionId(event.target.value)}
+              value={comparisonLeftRevisionId}
+              onChange={(event) =>
+                setComparisonLeftRevisionId(event.target.value)
+              }
             >
               <option value="">Select revision</option>
               {comparisonRevisions.map((revision) => (
@@ -195,9 +202,11 @@ export function EvaluationPanel({
             <select
               aria-label="Side A profile"
               className="mt-1 block rounded border p-2"
-              value={profileId}
+              value={comparisonLeftProfileId}
               onChange={(event) =>
-                setProfileId(event.target.value as "frozen" | "configured")
+                setComparisonLeftProfileId(
+                  event.target.value as "frozen" | "configured",
+                )
               }
             >
               <option value="frozen">Frozen</option>
@@ -209,8 +218,10 @@ export function EvaluationPanel({
             <select
               aria-label="Side B revision"
               className="mt-1 block rounded border p-2"
-              value={rightRevisionId}
-              onChange={(event) => setRightRevisionId(event.target.value)}
+              value={comparisonRightRevisionId}
+              onChange={(event) =>
+                setComparisonRightRevisionId(event.target.value)
+              }
             >
               <option value="">Select revision</option>
               {comparisonRevisions.map((revision) => (
@@ -239,18 +250,19 @@ export function EvaluationPanel({
             className="bg-primary text-primary-foreground rounded px-3 py-2 disabled:opacity-50"
             disabled={
               !canModify ||
-              !revisionId ||
-              !rightRevisionId ||
+              !comparisonLeftRevisionId ||
+              !comparisonRightRevisionId ||
               evalCases.length === 0 ||
               compare.isPending
             }
             onClick={async () => {
               const result = await compare.mutateAsync({
-                leftRevisionId: revisionId,
-                leftProfileId: profileId,
-                rightRevisionId,
+                leftRevisionId: comparisonLeftRevisionId,
+                leftProfileId: comparisonLeftProfileId,
+                rightRevisionId: comparisonRightRevisionId,
                 rightProfileId,
                 topK,
+                ...(caseSet === "selected" ? { caseIds: selectedCaseIds } : {}),
               });
               setComparisonId(result.id);
             }}
@@ -265,9 +277,23 @@ export function EvaluationPanel({
                 Comparison unavailable: {comparison.data.comparison.reason}
               </p>
             )}
+            <p className="type-supporting text-muted-foreground">
+              Descriptive comparison only; it does not establish single-variable
+              causality.
+            </p>
             {comparison.data.comparison.eligible && (
               <>
                 <p>
+                  A: v{comparison.data.left.revision_no} ·{" "}
+                  {comparison.data.left.profile_id} · manifest{" "}
+                  {comparison.data.left.manifest_hash.slice(0, 8)} · profile{" "}
+                  {comparison.data.left.profile_hash.slice(0, 8)}
+                  <br />
+                  B: v{comparison.data.right.revision_no} ·{" "}
+                  {comparison.data.right.profile_id} · manifest{" "}
+                  {comparison.data.right.manifest_hash.slice(0, 8)} · profile{" "}
+                  {comparison.data.right.profile_hash.slice(0, 8)}
+                  <br />
                   Recall@K Δ{" "}
                   {comparison.data.comparison.delta.recall_at_k?.toFixed(3) ??
                     "—"}
@@ -279,20 +305,28 @@ export function EvaluationPanel({
                     <span>
                       {item.case_id}: {item.outcome}
                     </span>
-                    {item.left?.ranked_items?.[0] && (
-                      <span className="type-supporting ml-2">
-                        A:{" "}
-                        {item.left.ranked_items[0].display_name ??
-                          item.left.ranked_items[0].document_id}
-                      </span>
-                    )}
-                    {item.right?.ranked_items?.[0] && (
-                      <span className="type-supporting ml-2">
-                        B:{" "}
-                        {item.right.ranked_items[0].display_name ??
-                          item.right.ranked_items[0].document_id}
-                      </span>
-                    )}
+                    <div className="type-supporting mt-1">
+                      A:{" "}
+                      {item.left?.ranked_items.length
+                        ? item.left.ranked_items
+                            .map(
+                              (ranked) =>
+                                `#${ranked.rank} ${ranked.display_name ?? ranked.document_id ?? "unknown"}`,
+                            )
+                            .join(" · ")
+                        : "no hits"}
+                    </div>
+                    <div className="type-supporting mt-1">
+                      B:{" "}
+                      {item.right?.ranked_items.length
+                        ? item.right.ranked_items
+                            .map(
+                              (ranked) =>
+                                `#${ranked.rank} ${ranked.display_name ?? ranked.document_id ?? "unknown"}`,
+                            )
+                            .join(" · ")
+                        : "no hits"}
+                    </div>
                   </div>
                 ))}
               </>
