@@ -18,6 +18,8 @@ import {
   getKnowledgeEvaluation,
   retryKnowledgeEvaluation,
   startKnowledgeEvaluation,
+  startKnowledgeEvaluationComparison,
+  getKnowledgeEvaluationComparison,
   publishKnowledgeRevision,
   prepareKnowledgeRevision,
   runRetrievalTest,
@@ -369,5 +371,31 @@ export function useRetryKnowledgeEvaluation(resourceId: string) {
       void queryClient.invalidateQueries({
         queryKey: ["knowledge-evaluations", resourceId],
       }),
+  });
+}
+
+export function useStartKnowledgeEvaluationComparison(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      request: Parameters<typeof startKnowledgeEvaluationComparison>[1],
+    ) => startKnowledgeEvaluationComparison(resourceId, request),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-evaluation-comparisons", resourceId],
+      }),
+  });
+}
+
+export function useKnowledgeEvaluationComparison(
+  resourceId: string | undefined,
+  comparisonId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["knowledge-evaluation-comparisons", resourceId, comparisonId],
+    queryFn: () => getKnowledgeEvaluationComparison(resourceId!, comparisonId!),
+    enabled: Boolean(resourceId && comparisonId),
+    refetchInterval: (current) =>
+      current.state.data?.status === "queued" ? 2000 : false,
   });
 }

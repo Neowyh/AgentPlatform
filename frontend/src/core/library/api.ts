@@ -491,6 +491,39 @@ export interface StartKnowledgeEvaluationRequest {
   caseIds?: string[];
 }
 
+export interface KnowledgeEvaluationComparison {
+  id: string;
+  resource_id: string;
+  status: "queued" | "incomplete" | "completed";
+  top_k: number;
+  metrics_version: string;
+  left: KnowledgeEvaluationRun;
+  right: KnowledgeEvaluationRun;
+  comparison: {
+    eligible: boolean;
+    reason: string | null;
+    delta: Record<
+      "expected_hit_rate" | "recall_at_k" | "mrr_at_k",
+      number | null
+    >;
+    cases: Array<{
+      case_id: string;
+      outcome: "improved" | "regressed" | "unchanged" | "incomplete";
+      left: KnowledgeEvaluationResult | null;
+      right: KnowledgeEvaluationResult | null;
+    }>;
+  };
+}
+
+export interface StartKnowledgeEvaluationComparisonRequest {
+  leftRevisionId: string;
+  leftProfileId: "frozen" | "configured";
+  rightRevisionId: string;
+  rightProfileId: "frozen" | "configured";
+  topK?: number;
+  caseIds?: string[];
+}
+
 export async function startKnowledgeEvaluation(
   resourceId: string,
   request: StartKnowledgeEvaluationRequest,
@@ -544,6 +577,40 @@ export async function retryKnowledgeEvaluation(
   );
   if (!res.ok) await extractError(res, "Failed to retry evaluation");
   return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function startKnowledgeEvaluationComparison(
+  resourceId: string,
+  request: StartKnowledgeEvaluationComparisonRequest,
+): Promise<KnowledgeEvaluationComparison> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-comparisons`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        left_revision_id: request.leftRevisionId,
+        left_profile_id: request.leftProfileId,
+        right_revision_id: request.rightRevisionId,
+        right_profile_id: request.rightProfileId,
+        top_k: request.topK ?? 8,
+        ...(request.caseIds ? { case_ids: request.caseIds } : {}),
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to start evaluation comparison");
+  return (await res.json()) as KnowledgeEvaluationComparison;
+}
+
+export async function getKnowledgeEvaluationComparison(
+  resourceId: string,
+  comparisonId: string,
+): Promise<KnowledgeEvaluationComparison> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-comparisons/${encodeURIComponent(comparisonId)}`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation comparison");
+  return (await res.json()) as KnowledgeEvaluationComparison;
 }
 
 /** Access to the KnowledgeBase or archived record was lost (403/404). */

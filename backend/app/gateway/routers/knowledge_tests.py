@@ -44,6 +44,17 @@ class EvaluationCreateRequest(BaseModel):
     case_ids: list[str] | None = Field(default=None, max_length=1000)
 
 
+class EvaluationComparisonCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    left_revision_id: str = Field(min_length=1, max_length=36)
+    left_profile_id: Literal["frozen", "configured"] = "frozen"
+    right_revision_id: str = Field(min_length=1, max_length=36)
+    right_profile_id: Literal["frozen", "configured"] = "configured"
+    top_k: int = Field(default=8, ge=1, le=20)
+    case_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
 @router.post("/{resource_id}/retrieval-tests", status_code=201)
 @_translate_resource_errors
 async def create_retrieval_test(
@@ -166,3 +177,39 @@ async def retry_evaluation(
         payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).retry(resource_id, run_id)
         await session.commit()
     return payload
+
+
+@router.post("/{resource_id}/evaluation-comparisons", status_code=202)
+@_translate_resource_errors
+async def create_evaluation_comparison(
+    resource_id: str,
+    body: EvaluationComparisonCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        try:
+            payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).start_comparison(
+                resource_id,
+                left_revision_id=body.left_revision_id,
+                left_profile_id=body.left_profile_id,
+                right_revision_id=body.right_revision_id,
+                right_profile_id=body.right_profile_id,
+                top_k=body.top_k,
+                case_ids=body.case_ids,
+            )
+            await session.commit()
+        except KnowledgeEvaluationValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_evaluation_comparison", "message": str(exc)}) from exc
+    await record_audit(str(current_user.id), "knowledge_evaluation_comparison_started", "knowledge_base", resource_id, {"comparison_id": payload["id"]})
+    return payload
+
+
+@router.get("/{resource_id}/evaluation-comparisons/{comparison_id}")
+@_translate_resource_errors
+async def get_evaluation_comparison(
+    resource_id: str,
+    comparison_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).get_comparison(resource_id, comparison_id)

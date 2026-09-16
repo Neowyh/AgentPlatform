@@ -17,7 +17,9 @@ export type {
   RunRetrievalTestRequest,
   KnowledgeEvaluationResult,
   KnowledgeEvaluationRun,
+  KnowledgeEvaluationComparison,
   StartKnowledgeEvaluationRequest,
+  StartKnowledgeEvaluationComparisonRequest,
   UpdateKnowledgeEvalCaseRequest,
 } from "./api";
 export { RetrievalTestAccessError } from "./api";
@@ -43,6 +45,8 @@ export {
   listKnowledgeEvaluations,
   getKnowledgeEvaluation,
   retryKnowledgeEvaluation,
+  startKnowledgeEvaluationComparison,
+  getKnowledgeEvaluationComparison,
   updateKnowledgeEvalCase,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
@@ -65,6 +69,8 @@ export {
   useKnowledgeEvaluations,
   useRetryKnowledgeEvaluation,
   useStartKnowledgeEvaluation,
+  useStartKnowledgeEvaluationComparison,
+  useKnowledgeEvaluationComparison,
   useDocuments,
   useKnowledgeBases,
   useKnowledgeEvalCase,

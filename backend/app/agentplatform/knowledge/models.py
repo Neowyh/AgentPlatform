@@ -319,6 +319,28 @@ class KnowledgeEvalRun(Base):
     )
 
 
+class KnowledgeEvalComparison(Base):
+    """Durable pairing of two independent frozen evaluation runs."""
+
+    __tablename__ = "knowledge_eval_comparisons"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), nullable=False)
+    left_run_id: Mapped[str] = mapped_column(ForeignKey("knowledge_eval_runs.id", ondelete="CASCADE"), nullable=False)
+    right_run_id: Mapped[str] = mapped_column(ForeignKey("knowledge_eval_runs.id", ondelete="CASCADE"), nullable=False)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        CheckConstraint("top_k >= 1", name="ck_knowledge_eval_comparisons_top_k"),
+        CheckConstraint("status in ('queued','running','completed','incomplete')", name="ck_knowledge_eval_comparisons_status"),
+        Index("ix_knowledge_eval_comparisons_kb_created", "knowledge_base_id", "created_at"),
+    )
+
+
 class KnowledgeEvalResult(Base):
     """Immutable per-case evidence and facts from an eval run."""
 

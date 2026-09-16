@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
-from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeEvalCase, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeEvalCase, KnowledgeEvalComparison, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
 from app.agentplatform.knowledge.retrieval_test import (
     DEFAULT_TEST_TOP_K,
     MAX_TEST_TOP_K,
@@ -55,6 +55,30 @@ def calculate_retrieval_metrics(ranked_document_ids: list[str], expected_documen
         "recall_at_k": len(set(ranked_document_ids) & expected) / len(expected) if expected else 0.0,
         "mrr_at_k": 1 / hits[0] if hits else 0.0,
     }
+
+
+def compare_evaluation_runs(left: dict[str, object], right: dict[str, object], left_results: list[KnowledgeEvalResult], right_results: list[KnowledgeEvalResult]) -> dict[str, object]:
+    """Compare two complete runs without treating failed cases as zeroes."""
+    left_aggregate = left.get("aggregate") if isinstance(left.get("aggregate"), dict) else {}
+    right_aggregate = right.get("aggregate") if isinstance(right.get("aggregate"), dict) else {}
+    complete = left.get("status") == right.get("status") == "completed"
+    same_protocol = (left.get("top_k"), left.get("metrics_version")) == (right.get("top_k"), right.get("metrics_version"))
+    left_by_case = {result.case_id: result for result in left_results}
+    right_by_case = {result.case_id: result for result in right_results}
+    cases: list[dict[str, object]] = []
+    for case_id in sorted(set(left_by_case) | set(right_by_case)):
+        left_result, right_result = left_by_case.get(case_id), right_by_case.get(case_id)
+        valid = left_result is not None and right_result is not None and left_result.recall_at_k is not None and right_result.recall_at_k is not None
+        if not valid:
+            outcome = "incomplete"
+        else:
+            left_score = (float(left_result.recall_at_k or 0), float(left_result.mrr_at_k or 0), bool(left_result.expected_hit))
+            right_score = (float(right_result.recall_at_k or 0), float(right_result.mrr_at_k or 0), bool(right_result.expected_hit))
+            outcome = "improved" if right_score > left_score else "regressed" if right_score < left_score else "unchanged"
+        cases.append({"case_id": case_id, "outcome": outcome, "left": _result_payload(left_result) if left_result else None, "right": _result_payload(right_result) if right_result else None})
+    eligible = complete and same_protocol and bool(cases) and all(item["outcome"] != "incomplete" for item in cases)
+    delta = {key: (float(right_aggregate[key]) - float(left_aggregate[key])) if eligible and right_aggregate.get(key) is not None and left_aggregate.get(key) is not None else None for key in ("expected_hit_rate", "recall_at_k", "mrr_at_k")}
+    return {"eligible": eligible, "reason": None if eligible else "Both runs must complete with the same K, metrics version, and case set", "delta": delta, "cases": cases}
 
 
 def _hash(value: object) -> str:
@@ -125,8 +149,8 @@ class KnowledgeEvaluationService:
         revision = await self.session.get(KnowledgeRevision, revision_id)
         if revision is None or revision.knowledge_base_id != resource_id:
             raise ResourceNotFound(f"Knowledge revision {revision_id} not found")
-        if revision.status not in {"published", "superseded"} or revision.integrity_status in UNUSABLE_INTEGRITY or not revision.provider_dataset_id:
-            raise ResourceConflict(f"Revision {revision_id} is not an eligible published revision")
+        if revision.status not in {"published", "superseded", "ready"} or revision.integrity_status in UNUSABLE_INTEGRITY or not revision.provider_dataset_id:
+            raise ResourceConflict(f"Revision {revision_id} is not an eligible published or verified candidate revision")
         return revision
 
     async def _profile(self, revision: KnowledgeRevision, profile_id: str) -> dict[str, object]:
@@ -381,3 +405,48 @@ class KnowledgeEvaluationService:
         self.session.add(clone)
         await self.session.flush()
         return _run_payload(clone)
+
+    async def start_comparison(self, resource_id: str, *, left_revision_id: str, left_profile_id: str, right_revision_id: str, right_profile_id: str, top_k: int = DEFAULT_TEST_TOP_K, case_ids: list[str] | None = None) -> dict[str, object]:
+        """Enqueue two ordinary frozen evaluations under one comparison identity."""
+        left = await self.start(resource_id, left_revision_id, profile_id=left_profile_id, top_k=top_k, case_ids=case_ids)
+        right = await self.start(resource_id, right_revision_id, profile_id=right_profile_id, top_k=top_k, case_ids=list(left["case_ids"]))
+        comparison = KnowledgeEvalComparison(
+            id=str(uuid.uuid4()),
+            knowledge_base_id=resource_id,
+            left_run_id=str(left["id"]),
+            right_run_id=str(right["id"]),
+            top_k=top_k,
+            metrics_version=EVAL_METRICS_VERSION,
+            status="queued",
+            created_by=self.resource_service.actor.user_id,
+        )
+        self.session.add(comparison)
+        await self.session.flush()
+        return await self.get_comparison(resource_id, comparison.id)
+
+    async def get_comparison(self, resource_id: str, comparison_id: str) -> dict[str, object]:
+        await self._kb(resource_id)
+        comparison = await self.session.get(KnowledgeEvalComparison, comparison_id)
+        if comparison is None or comparison.knowledge_base_id != resource_id:
+            raise ResourceNotFound(f"Evaluation comparison {comparison_id} not found")
+        left = await self.session.get(KnowledgeEvalRun, comparison.left_run_id)
+        right = await self.session.get(KnowledgeEvalRun, comparison.right_run_id)
+        if left is None or right is None:
+            raise ResourceConflict("comparison runs are unavailable")
+        left_payload, right_payload = _run_payload(left), _run_payload(right)
+        left_rows = list((await self.session.execute(select(KnowledgeEvalResult).where(KnowledgeEvalResult.run_id == left.id))).scalars())
+        right_rows = list((await self.session.execute(select(KnowledgeEvalResult).where(KnowledgeEvalResult.run_id == right.id))).scalars())
+        result = compare_evaluation_runs(left_payload, right_payload, left_rows, right_rows)
+        comparison_status = "queued" if left.status in {"queued", "running"} or right.status in {"queued", "running"} else "completed" if result["eligible"] else "incomplete"
+        return {
+            "id": comparison.id,
+            "resource_id": resource_id,
+            "status": comparison_status,
+            "top_k": comparison.top_k,
+            "metrics_version": comparison.metrics_version,
+            "left": left_payload,
+            "right": right_payload,
+            "comparison": result,
+            "created_by": comparison.created_by,
+            "created_at": comparison.created_at.isoformat() if comparison.created_at else None,
+        }

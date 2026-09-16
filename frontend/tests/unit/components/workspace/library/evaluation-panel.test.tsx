@@ -21,6 +21,11 @@ vi.mock("@/core/library", () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useStartKnowledgeEvaluationComparison: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useKnowledgeEvaluationComparison: () => ({ data: undefined }),
 }));
 
 import { EvaluationPanel } from "@/components/workspace/library/evaluation-panel";
@@ -32,8 +37,8 @@ describe("EvaluationPanel", () => {
     expect(screen.getByLabelText("Profile")).toBeInTheDocument();
     expect(screen.getByLabelText("Case set")).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "Configured" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("option", { name: "Configured" }),
+    ).not.toHaveLength(0);
     expect(
       screen.getByRole("option", { name: "Selected cases (0)" }),
     ).toBeInTheDocument();

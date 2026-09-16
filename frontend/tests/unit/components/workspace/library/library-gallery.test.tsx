@@ -78,6 +78,11 @@ vi.mock("@/core/library", () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useStartKnowledgeEvaluationComparison: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useKnowledgeEvaluationComparison: () => ({ data: undefined }),
   useRetrievalTests: () => ({ tests: [], isLoading: false, error: null }),
   useRetrievalTest: () => ({ data: undefined, isLoading: false, error: null }),
   useRunRetrievalTest: () => ({

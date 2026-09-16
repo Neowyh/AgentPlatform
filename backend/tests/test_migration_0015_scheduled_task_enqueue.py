@@ -57,7 +57,7 @@ async def test_migration_interrupts_legacy_queue_and_adds_claim_fields(tmp_path:
 
         # Bootstrap always advances to the repository head after exercising
         # the 0015 migration behavior below.
-        assert version == "20260916_knowledge_evaluation"
+        assert version == "20260917_knowledge_eval_comparisons"
         assert {"lease_owner", "lease_expires_at", "attempt_count"} <= columns.keys()
         assert columns["attempt_count"]["nullable"] is False
         assert overlap_policy == "enqueue"

@@ -9,6 +9,8 @@ import {
   useKnowledgeEvalCases,
   useRetryKnowledgeEvaluation,
   useStartKnowledgeEvaluation,
+  useKnowledgeEvaluationComparison,
+  useStartKnowledgeEvaluationComparison,
 } from "@/core/library";
 
 export function EvaluationPanel({
@@ -22,7 +24,11 @@ export function EvaluationPanel({
   const { evalCases } = useKnowledgeEvalCases(knowledgeBaseId);
   const { evaluations } = useKnowledgeEvaluations(knowledgeBaseId);
   const [revisionId, setRevisionId] = useState("");
+  const [rightRevisionId, setRightRevisionId] = useState("");
   const [profileId, setProfileId] = useState<"frozen" | "configured">("frozen");
+  const [rightProfileId, setRightProfileId] = useState<"frozen" | "configured">(
+    "configured",
+  );
   const [caseSet, setCaseSet] = useState<"all" | "selected">("all");
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [topK, setTopK] = useState(8);
@@ -30,8 +36,17 @@ export function EvaluationPanel({
   const start = useStartKnowledgeEvaluation(knowledgeBaseId ?? "");
   const retry = useRetryKnowledgeEvaluation(knowledgeBaseId ?? "");
   const detail = useKnowledgeEvaluation(knowledgeBaseId, selectedId);
+  const [comparisonId, setComparisonId] = useState<string>();
+  const comparison = useKnowledgeEvaluationComparison(
+    knowledgeBaseId,
+    comparisonId,
+  );
+  const compare = useStartKnowledgeEvaluationComparison(knowledgeBaseId ?? "");
   const published = revisions.filter((revision) =>
     ["published", "superseded"].includes(revision.status),
+  );
+  const comparisonRevisions = revisions.filter((revision) =>
+    ["published", "superseded", "ready"].includes(revision.status),
   );
 
   if (!knowledgeBaseId)
@@ -150,6 +165,138 @@ export function EvaluationPanel({
                 {item.question}
               </label>
             ))}
+          </div>
+        )}
+      </div>
+      <div className="rounded-lg border p-4">
+        <h2 className="font-semibold">A/B comparison</h2>
+        <p className="type-supporting text-muted-foreground">
+          Both sides use the same frozen cases, K, and metric version.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="type-supporting">
+            Side A revision
+            <select
+              aria-label="Side A revision"
+              className="mt-1 block rounded border p-2"
+              value={revisionId}
+              onChange={(event) => setRevisionId(event.target.value)}
+            >
+              <option value="">Select revision</option>
+              {comparisonRevisions.map((revision) => (
+                <option key={revision.id} value={revision.id}>
+                  v{revision.revision_no} · {revision.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="type-supporting">
+            Side A profile
+            <select
+              aria-label="Side A profile"
+              className="mt-1 block rounded border p-2"
+              value={profileId}
+              onChange={(event) =>
+                setProfileId(event.target.value as "frozen" | "configured")
+              }
+            >
+              <option value="frozen">Frozen</option>
+              <option value="configured">Configured</option>
+            </select>
+          </label>
+          <label className="type-supporting">
+            Side B revision
+            <select
+              aria-label="Side B revision"
+              className="mt-1 block rounded border p-2"
+              value={rightRevisionId}
+              onChange={(event) => setRightRevisionId(event.target.value)}
+            >
+              <option value="">Select revision</option>
+              {comparisonRevisions.map((revision) => (
+                <option key={revision.id} value={revision.id}>
+                  v{revision.revision_no} · {revision.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="type-supporting">
+            Side B profile
+            <select
+              aria-label="Side B profile"
+              className="mt-1 block rounded border p-2"
+              value={rightProfileId}
+              onChange={(event) =>
+                setRightProfileId(event.target.value as "frozen" | "configured")
+              }
+            >
+              <option value="frozen">Frozen</option>
+              <option value="configured">Configured</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="bg-primary text-primary-foreground rounded px-3 py-2 disabled:opacity-50"
+            disabled={
+              !canModify ||
+              !revisionId ||
+              !rightRevisionId ||
+              evalCases.length === 0 ||
+              compare.isPending
+            }
+            onClick={async () => {
+              const result = await compare.mutateAsync({
+                leftRevisionId: revisionId,
+                leftProfileId: profileId,
+                rightRevisionId,
+                rightProfileId,
+                topK,
+              });
+              setComparisonId(result.id);
+            }}
+          >
+            Compare
+          </button>
+        </div>
+        {comparison.data && (
+          <div className="mt-4 space-y-2" aria-live="polite">
+            {!comparison.data.comparison.eligible && (
+              <p className="text-destructive">
+                Comparison unavailable: {comparison.data.comparison.reason}
+              </p>
+            )}
+            {comparison.data.comparison.eligible && (
+              <>
+                <p>
+                  Recall@K Δ{" "}
+                  {comparison.data.comparison.delta.recall_at_k?.toFixed(3) ??
+                    "—"}
+                  ; MRR@K Δ{" "}
+                  {comparison.data.comparison.delta.mrr_at_k?.toFixed(3) ?? "—"}
+                </p>
+                {comparison.data.comparison.cases.map((item) => (
+                  <div className="rounded border p-2" key={item.case_id}>
+                    <span>
+                      {item.case_id}: {item.outcome}
+                    </span>
+                    {item.left?.ranked_items?.[0] && (
+                      <span className="type-supporting ml-2">
+                        A:{" "}
+                        {item.left.ranked_items[0].display_name ??
+                          item.left.ranked_items[0].document_id}
+                      </span>
+                    )}
+                    {item.right?.ranked_items?.[0] && (
+                      <span className="type-supporting ml-2">
+                        B:{" "}
+                        {item.right.ranked_items[0].display_name ??
+                          item.right.ranked_items[0].document_id}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>

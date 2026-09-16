@@ -12,9 +12,10 @@ from app.agentplatform.knowledge.eval_cases import eval_case_content_hash
 from app.agentplatform.knowledge.evaluation import (
     KnowledgeEvaluationService,
     calculate_retrieval_metrics,
+    compare_evaluation_runs,
     require_evaluation_execution_access,
 )
-from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvalRun, KnowledgeRevision
+from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
 from app.agentplatform.resource_models import Resource
 from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourcePermissionDenied
 from deerflow.persistence.base import Base
@@ -90,6 +91,25 @@ def test_execution_requires_current_use_and_write_permissions() -> None:
     require_evaluation_execution_access(ResourceActor("worker", None, "user", frozenset({ResourceAction.USE, ResourceAction.WRITE})))
     with pytest.raises(ResourcePermissionDenied):
         require_evaluation_execution_access(ResourceActor("viewer", None, "user", frozenset({ResourceAction.READ})))
+
+
+def test_comparison_reports_metric_deltas_and_case_regressions() -> None:
+    left = {"status": "completed", "top_k": 8, "metrics_version": "retrieval-metrics-v1", "aggregate": {"recall_at_k": 0.5, "mrr_at_k": 0.25, "expected_hit_rate": 0.5}}
+    right = {"status": "completed", "top_k": 8, "metrics_version": "retrieval-metrics-v1", "aggregate": {"recall_at_k": 0.75, "mrr_at_k": 0.5, "expected_hit_rate": 1.0}}
+    left_results = [
+        KnowledgeEvalResult(case_id="case-1", status="success", expected_hit=True, recall_at_k=1.0, mrr_at_k=1.0, ranked_items_json=[]),
+        KnowledgeEvalResult(case_id="case-2", status="success", expected_hit=False, recall_at_k=0.0, mrr_at_k=0.0, ranked_items_json=[]),
+    ]
+    right_results = [
+        KnowledgeEvalResult(case_id="case-1", status="success", expected_hit=False, recall_at_k=0.0, mrr_at_k=0.0, ranked_items_json=[]),
+        KnowledgeEvalResult(case_id="case-2", status="success", expected_hit=True, recall_at_k=1.0, mrr_at_k=1.0, ranked_items_json=[]),
+    ]
+
+    comparison = compare_evaluation_runs(left, right, left_results, right_results)
+
+    assert comparison["eligible"] is True
+    assert comparison["delta"] == {"expected_hit_rate": 0.5, "recall_at_k": 0.25, "mrr_at_k": 0.25}
+    assert [(item["case_id"], item["outcome"]) for item in comparison["cases"]] == [("case-1", "regressed"), ("case-2", "improved")]
 
 
 @pytest.mark.asyncio

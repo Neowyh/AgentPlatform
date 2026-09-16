@@ -49,7 +49,7 @@ from deerflow.persistence.migrations._helpers import _normalize_default
 asyncio_test = pytest.mark.asyncio
 
 
-HEAD = "20260916_knowledge_evaluation"
+HEAD = "20260917_knowledge_eval_comparisons"
 BASELINE = "0001_baseline"
 
 
