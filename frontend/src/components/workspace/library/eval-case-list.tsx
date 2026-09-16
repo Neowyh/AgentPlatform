@@ -72,7 +72,6 @@ export function EvalCaseList({
     useKnowledgeEvalCases(knowledgeBaseId);
   const { documents } = useDocuments(knowledgeBaseId);
   const { revisions } = useKnowledgeRevisions(knowledgeBaseId);
-  const create = useCreateKnowledgeEvalCase(knowledgeBaseId ?? "");
   const [expandedId, setExpandedId] = useState<string>();
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>();
 
@@ -100,10 +99,7 @@ export function EvalCaseList({
   return (
     <div className="space-y-6">
       {canModify ? (
-        <CreateEvalCaseForm
-          knowledgeBaseId={knowledgeBaseId}
-          documentNames={documentNames}
-        />
+        <CreateEvalCaseForm knowledgeBaseId={knowledgeBaseId} />
       ) : (
         <div className="text-muted-foreground" role="note">
           {i.restricted}
@@ -187,13 +183,7 @@ export function EvalCaseList({
   );
 }
 
-function CreateEvalCaseForm({
-  knowledgeBaseId,
-  documentNames,
-}: {
-  knowledgeBaseId: string;
-  documentNames: Record<string, string>;
-}) {
+function CreateEvalCaseForm({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   const { t } = useI18n();
   const i = t.library.evalCaseList;
   const { documents } = useDocuments(knowledgeBaseId);
