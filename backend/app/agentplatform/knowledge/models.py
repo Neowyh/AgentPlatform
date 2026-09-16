@@ -285,6 +285,7 @@ class KnowledgeEvalRun(Base):
     __tablename__ = "knowledge_eval_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    retry_of_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), nullable=False)
     revision_id: Mapped[str] = mapped_column(ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"), nullable=False)
     revision_no: Mapped[int] = mapped_column(Integer, nullable=False)

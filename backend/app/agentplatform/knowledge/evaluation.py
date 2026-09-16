@@ -31,10 +31,19 @@ MAX_EVAL_CASES = 1000
 MAX_EVAL_PAGE_SIZE = 100
 EVAL_METRICS_VERSION = "retrieval-metrics-v1"
 EVAL_LEASE_SECONDS = 60
+EVAL_MAX_CONCURRENT_CASES = 4
+EVAL_TOTAL_TIMEOUT_SECONDS = 900
+EVAL_MAX_STORED_CHUNKS = 200
 
 
 class KnowledgeEvaluationValidationError(ValueError):
     """Raised for an invalid evaluation request or frozen input."""
+
+
+def require_evaluation_execution_access(actor: ResourceActor) -> None:
+    """Require the same current maintenance permissions as evaluation start."""
+    if not actor.can(ResourceAction.USE) or not actor.can(ResourceAction.WRITE):
+        raise ResourcePermissionDenied("Evaluation execution permission has been revoked")
 
 
 def calculate_retrieval_metrics(ranked_document_ids: list[str], expected_document_ids: list[str]) -> dict[str, float | bool]:
@@ -55,6 +64,7 @@ def _hash(value: object) -> str:
 def _run_payload(run: KnowledgeEvalRun) -> dict[str, object]:
     return {
         "id": run.id,
+        "retry_of_run_id": run.retry_of_run_id,
         "resource_id": run.knowledge_base_id,
         "revision_id": run.revision_id,
         "revision_no": run.revision_no,
@@ -194,6 +204,17 @@ class KnowledgeEvaluationService:
             return _run_payload(run)
         await self.session.commit()
         await self.session.refresh(run)
+        try:
+            resource = await self._kb(run.knowledge_base_id, use=True)
+            self.resource_service.assert_modify(resource)
+            require_evaluation_execution_access(self.resource_service.actor)
+        except ResourcePermissionDenied:
+            run.status = "failed"
+            run.error_code = "evaluation_authorization_revoked"
+            run.finished_at = datetime.now(UTC)
+            run.lease_owner = run.lease_until = None
+            await self.session.commit()
+            return _run_payload(run)
         revision = await self.session.get(KnowledgeRevision, run.revision_id)
         if revision is None:
             run.status = "failed"
@@ -216,18 +237,26 @@ class KnowledgeEvaluationService:
             await self.session.commit()
             return _run_payload(run)
         retrieval = KnowledgeRetrievalTestService(self.session, self.resource_service.actor, search=self._search, settings_factory=lambda: settings)
-        metadata = retrieval._revision_metadata(revision)
+        metadata = retrieval.revision_metadata(revision)
         provider_ids = [str(value) for value in (revision.provider_doc_map_json or {}).values()]
+        deadline = asyncio.get_running_loop().time() + EVAL_TOTAL_TIMEOUT_SECONDS
+        timed_out = False
         for case in run.case_snapshot_json or []:
+            if asyncio.get_running_loop().time() >= deadline:
+                timed_out = True
+                break
             exists = await self.session.scalar(select(KnowledgeEvalResult.id).where(KnowledgeEvalResult.run_id == run.id, KnowledgeEvalResult.case_id == case["case_id"]))
             if exists:
                 continue
             status, error_code, items = "success", None, []
             try:
-                applied = retrieval._applied_parameters(settings, run.profile_json or {}, run.top_k)
+                applied = retrieval.applied_parameters(settings, run.profile_json or {}, run.top_k)
                 raw = await asyncio.wait_for(_maybe_await(self._search(case["question"], settings=settings, dataset_id=revision.provider_dataset_id, document_ids=provider_ids, applied=applied)), timeout=float(settings.timeout))
                 chunks = raw.get("chunks") if isinstance(raw, dict) and isinstance(raw.get("chunks"), list) else []
-                projected = project_retrieval_items({"chunks": [chunk for chunk in chunks if isinstance(chunk, dict)]}, metadata)
+                projected = project_retrieval_items(
+                    {"chunks": [chunk for chunk in chunks[:EVAL_MAX_STORED_CHUNKS] if isinstance(chunk, dict)]},
+                    metadata,
+                )
                 seen: set[str] = set()
                 raw_items: list[dict[str, object]] = []
                 for item in projected:
@@ -272,7 +301,12 @@ class KnowledgeEvaluationService:
             if status == "provider_error":
                 run.failed_cases += 1
         results = list((await self.session.execute(select(KnowledgeEvalResult).where(KnowledgeEvalResult.run_id == run.id))).scalars())
-        if len(results) >= run.total_cases:
+        if timed_out:
+            run.status = "partial"
+            run.error_code = "evaluation_total_timeout"
+            run.finished_at = datetime.now(UTC)
+            run.lease_owner = run.lease_until = None
+        elif len(results) >= run.total_cases:
             valid = [item for item in results if item.recall_at_k is not None]
             run.status = "completed" if not run.failed_cases else "partial"
             run.aggregate_json = {
@@ -328,6 +362,7 @@ class KnowledgeEvaluationService:
         revision = await self._revision(resource_id, run.revision_id)
         clone = KnowledgeEvalRun(
             id=str(uuid.uuid4()),
+            retry_of_run_id=run.id,
             knowledge_base_id=resource_id,
             revision_id=revision.id,
             revision_no=run.revision_no,

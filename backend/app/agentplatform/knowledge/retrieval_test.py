@@ -171,6 +171,11 @@ class KnowledgeRetrievalTestService:
         return {"documents": documents}
 
     @staticmethod
+    def revision_metadata(revision: KnowledgeRevision) -> dict[str, object]:
+        """Return caller-safe metadata for projecting retrieval evidence."""
+        return KnowledgeRetrievalTestService._revision_metadata(revision)
+
+    @staticmethod
     def _applied_parameters(settings: Any, profile: dict[str, object], top_k: int) -> dict[str, Any]:
         unsupported = set(profile) - _SUPPORTED_PROFILE_KEYS
         if unsupported:
@@ -186,6 +191,11 @@ class KnowledgeRetrievalTestService:
             "top_k": profile_or_setting("top_k"),
             "timeout": settings.timeout,
         }
+
+    @staticmethod
+    def applied_parameters(settings: Any, profile: dict[str, object], top_k: int) -> dict[str, Any]:
+        """Build the official search parameters for a frozen request."""
+        return KnowledgeRetrievalTestService._applied_parameters(settings, profile, top_k)
 
     async def execute(
         self,

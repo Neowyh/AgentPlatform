@@ -460,6 +460,7 @@ export interface KnowledgeEvaluationResult {
 
 export interface KnowledgeEvaluationRun {
   id: string;
+  retry_of_run_id: string | null;
   resource_id: string;
   revision_id: string;
   revision_no: number;

@@ -22,6 +22,9 @@ export function EvaluationPanel({
   const { evalCases } = useKnowledgeEvalCases(knowledgeBaseId);
   const { evaluations } = useKnowledgeEvaluations(knowledgeBaseId);
   const [revisionId, setRevisionId] = useState("");
+  const [profileId, setProfileId] = useState<"frozen" | "configured">("frozen");
+  const [caseSet, setCaseSet] = useState<"all" | "selected">("all");
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [topK, setTopK] = useState(8);
   const [selectedId, setSelectedId] = useState<string>();
   const start = useStartKnowledgeEvaluation(knowledgeBaseId ?? "");
@@ -72,6 +75,34 @@ export function EvaluationPanel({
               onChange={(event) => setTopK(Number(event.target.value))}
             />
           </label>
+          <label className="type-supporting">
+            Profile
+            <select
+              className="mt-1 block rounded border p-2"
+              value={profileId}
+              onChange={(event) =>
+                setProfileId(event.target.value as "frozen" | "configured")
+              }
+            >
+              <option value="frozen">Frozen</option>
+              <option value="configured">Configured</option>
+            </select>
+          </label>
+          <label className="type-supporting">
+            Case set
+            <select
+              className="mt-1 block rounded border p-2"
+              value={caseSet}
+              onChange={(event) =>
+                setCaseSet(event.target.value as "all" | "selected")
+              }
+            >
+              <option value="all">All cases ({evalCases.length})</option>
+              <option value="selected">
+                Selected cases ({selectedCaseIds.length})
+              </option>
+            </select>
+          </label>
           <button
             type="button"
             className="bg-primary text-primary-foreground rounded px-3 py-2 disabled:opacity-50"
@@ -79,19 +110,47 @@ export function EvaluationPanel({
               !canModify ||
               !revisionId ||
               evalCases.length === 0 ||
+              (caseSet === "selected" && selectedCaseIds.length === 0) ||
               start.isPending
             }
-            onClick={() => void start.mutateAsync({ revisionId, topK })}
+            onClick={() =>
+              void start.mutateAsync({
+                revisionId,
+                profileId,
+                topK,
+                ...(caseSet === "selected" ? { caseIds: selectedCaseIds } : {}),
+              })
+            }
           >
             {start.isPending
               ? "Starting…"
-              : `Evaluate ${evalCases.length} cases`}
+              : `Evaluate ${caseSet === "selected" ? selectedCaseIds.length : evalCases.length} cases`}
           </button>
         </div>
         {evalCases.length === 0 && (
           <p className="type-supporting text-muted-foreground mt-2">
             Create at least one evaluation case first.
           </p>
+        )}
+        {caseSet === "selected" && (
+          <div className="type-supporting mt-2 space-y-1">
+            {evalCases.map((item) => (
+              <label key={item.id} className="block">
+                <input
+                  type="checkbox"
+                  checked={selectedCaseIds.includes(item.id)}
+                  onChange={(event) =>
+                    setSelectedCaseIds((current) =>
+                      event.target.checked
+                        ? [...current, item.id]
+                        : current.filter((id) => id !== item.id),
+                    )
+                  }
+                />{" "}
+                {item.question}
+              </label>
+            ))}
+          </div>
         )}
       </div>
       <div className="space-y-2">
