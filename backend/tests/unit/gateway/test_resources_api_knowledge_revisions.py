@@ -184,6 +184,37 @@ async def test_publish_endpoint_transitions_and_schedules_build(
 
 
 @pytest.mark.asyncio
+async def test_prepare_endpoint_is_separate_from_publish_and_does_not_require_eval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import BackgroundTasks
+
+    engine, factory, current_user = await _make_env(tmp_path, monkeypatch)
+    monkeypatch.setenv("IDEER_KNOWLEDGE_EVAL_REQUIRED", "1")
+    monkeypatch.setattr(resources, "configured_ragflow_provider", lambda: object())
+
+    created = await resources.create_resource(
+        resources.ResourceCreateRequest(type="knowledge_base", slug="prepare", display_name="Prepare", storage_kind="database"),
+        current_user,
+    )
+    kb_id = created["id"]
+    async with factory() as session:
+        kb = await session.get(Resource, kb_id)
+        _seed_ready_document(session, tmp_path, kb, "guide.txt", b"bytes")
+        await session.commit()
+    revision = await resources.create_knowledge_revision(kb_id, current_user)
+
+    background = BackgroundTasks()
+    payload = await resources.prepare_knowledge_revision(kb_id, str(revision["id"]), background, current_user)
+
+    assert payload["status"] == "indexing"
+    assert len(background.tasks) == 1
+    assert payload["resource_id"] == kb_id
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_publish_endpoint_reports_unavailable_without_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

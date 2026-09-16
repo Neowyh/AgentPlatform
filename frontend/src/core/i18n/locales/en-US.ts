@@ -1777,6 +1777,7 @@ export const enUS: Translations = {
       createFailed:
         "Unable to create a revision candidate. A candidate requires at least one ready document.",
       publishFailed: "Unable to publish this revision.",
+      prepareFailed: "Unable to prepare this revision.",
       viewDetails: "View details",
       hideDetails: "Hide details",
       documentsAndManifest: (count: number, hash: string) =>
@@ -1787,6 +1788,9 @@ export const enUS: Translations = {
       publish: "Publish",
       publishingAction: "Publishing...",
       publishAria: (no: number) => `Publish v${no}`,
+      prepare: "Prepare index",
+      preparing: "Preparing...",
+      prepareAria: (no: number) => `Prepare index for v${no}`,
     },
     evalCaseList: {
       selectKnowledgeBase: "Select a knowledge base to maintain eval cases",

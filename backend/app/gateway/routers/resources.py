@@ -1072,6 +1072,46 @@ async def create_knowledge_revision(
         return revision
 
 
+@router.post("/{resource_id}/knowledge-revisions/{revision_id}/prepare")
+@_translate_resource_errors
+async def prepare_knowledge_revision(
+    resource_id: str,
+    revision_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Prepare an isolated candidate index without changing the published pointer."""
+    provider = configured_ragflow_provider()
+    if provider is None:
+        raise HTTPException(status_code=503, detail="No knowledge provider is configured")
+    async with _factory()() as session:
+        revision = await KnowledgeRevisionService(session, _resource_actor(current_user)).prepare_revision(
+            resource_id,
+            revision_id,
+            provider=provider,
+        )
+        await session.commit()
+    if revision["status"] == "indexing":
+        background_tasks.add_task(
+            execute_publish,
+            _factory(),
+            resource_id=resource_id,
+            revision_id=revision_id,
+            actor_id=str(current_user.id),
+            provider=provider,
+            execution_token=revision.get("publish_execution_token"),
+            activate=False,
+        )
+    await record_audit(
+        str(current_user.id),
+        "knowledge_revision_prepare_requested",
+        "knowledge_revision",
+        revision_id,
+        {"resource_id": resource_id, "revision_no": revision["revision_no"]},
+    )
+    return revision
+
+
 @router.get("/{resource_id}/knowledge-revisions")
 @_translate_resource_errors
 async def list_knowledge_revisions(

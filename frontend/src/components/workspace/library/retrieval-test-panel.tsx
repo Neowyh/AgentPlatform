@@ -13,7 +13,7 @@ import {
 } from "@/core/library";
 import type { RetrievalTestItem, RetrievalTestRecord } from "@/core/library";
 
-const RETRIEVABLE_STATUSES = new Set(["published", "superseded"]);
+const RETRIEVABLE_STATUSES = new Set(["published", "superseded", "ready"]);
 
 function formatScore(score: number | null): string {
   return score === null ? "—" : String(score);
@@ -39,8 +39,10 @@ function formatPosition(position: Record<string, unknown>): string | null {
 
 export function RetrievalTestPanel({
   knowledgeBaseId,
+  canModify,
 }: {
   knowledgeBaseId?: string;
+  canModify?: boolean;
 }) {
   const { t } = useI18n();
   const i = t.library.retrievalTest;
@@ -48,8 +50,12 @@ export function RetrievalTestPanel({
     useKnowledgeRevisions(knowledgeBaseId);
   const retrievable = useMemo(
     () =>
-      revisions.filter((revision) => RETRIEVABLE_STATUSES.has(revision.status)),
-    [revisions],
+      revisions.filter(
+        (revision) =>
+          RETRIEVABLE_STATUSES.has(revision.status) &&
+          (revision.status !== "ready" || canModify),
+      ),
+    [canModify, revisions],
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>();
   const [profileId, setProfileId] = useState<"frozen" | "configured">("frozen");

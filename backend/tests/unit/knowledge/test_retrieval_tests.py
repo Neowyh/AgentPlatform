@@ -568,6 +568,29 @@ async def test_execute_rejects_non_published_or_unusable_revisions(store, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_candidate_retrieval_is_owner_only_and_not_listed_to_strangers(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session, slug="candidate-owner-only")
+    kb.visibility = "public"
+    _seed_document(session, tmp_path, kb, "guide.txt", b"content")
+    await session.commit()
+    candidate = await KnowledgeRevisionService(session, _actor()).create_revision(kb.id)
+    provider = FakePublishProvider()
+    requested = await KnowledgeRevisionService(session, _actor()).prepare_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, execution_token=requested["publish_execution_token"], poll_interval=0, parse_timeout=5, activate=False)
+
+    owner = KnowledgeRetrievalTestService(session, _actor(), search=_fake_search(_chunk_result([])), settings_factory=lambda: _settings())
+    ready = await session.get(KnowledgeRevision, str(candidate["id"]))
+    assert ready is not None
+    await _execute(owner, ready)
+    stranger = KnowledgeRetrievalTestService(session, _actor("stranger"), search=_fake_search(_chunk_result([])), settings_factory=lambda: _settings())
+    assert (await stranger.list_tests(kb.id))["total"] == 0
+    with pytest.raises(ResourceNotFound):
+        await stranger.execute(kb.id, str(candidate["id"]), query=TEST_QUERY)
+
+
+@pytest.mark.asyncio
 async def test_guessed_revision_or_test_ids_reveal_nothing(store, tmp_path) -> None:
     session, factory = store
     kb = await _seed_kb(session)

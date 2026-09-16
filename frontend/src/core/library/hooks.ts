@@ -15,6 +15,7 @@ import {
   listKnowledgeRevisions,
   listRetrievalTests,
   publishKnowledgeRevision,
+  prepareKnowledgeRevision,
   runRetrievalTest,
   updateKnowledgeEvalCase,
   uploadKnowledgeDocument,
@@ -174,6 +175,18 @@ export function usePublishKnowledgeRevision(resourceId: string) {
   return useMutation({
     mutationFn: (revisionId: string) =>
       publishKnowledgeRevision(resourceId, revisionId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-revisions", resourceId],
+      }),
+  });
+}
+
+export function usePrepareKnowledgeRevision(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (revisionId: string) =>
+      prepareKnowledgeRevision(resourceId, revisionId),
     onSuccess: () =>
       void queryClient.invalidateQueries({
         queryKey: ["knowledge-revisions", resourceId],

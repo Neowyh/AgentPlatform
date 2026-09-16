@@ -26,11 +26,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.knowledge.eval_gate import eval_required, load_eval_evidence
-from app.agentplatform.knowledge.integrity import INTEGRITY_UNVERIFIED
+from app.agentplatform.knowledge.integrity import INTEGRITY_UNVERIFIED, UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeRevision
 from app.agentplatform.knowledge.provider import KnowledgeProvider, KnowledgeProviderError, stable_provider_error
 from app.agentplatform.resource_models import Resource
-from app.agentplatform.resources.service import ResourceActor, ResourceConflict, ResourceNotFound, ResourceService
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceConflict, ResourceNotFound, ResourceService
 from deerflow.config.paths import get_paths
 
 MAX_PUBLISH_ATTEMPTS = 3
@@ -55,6 +55,10 @@ def _lease_is_valid(until: datetime | None) -> bool:
     if until.tzinfo is None:
         until = until.replace(tzinfo=UTC)
     return until > datetime.now(UTC)
+
+
+def can_manage_knowledge_revision(resource: Resource, actor: ResourceActor) -> bool:
+    return actor.can(ResourceAction.WRITE) and resource.owner_id == actor.user_id and not resource.system_owned
 
 
 class KnowledgeRevisionValidationError(ValueError):
@@ -188,15 +192,23 @@ class KnowledgeRevisionService:
         return _revision_payload(revision)
 
     async def list_revisions(self, resource_id: str) -> list[dict[str, object]]:
-        await self._knowledge_base(resource_id)
+        resource = await self._knowledge_base(resource_id)
         rows = await self.session.execute(select(KnowledgeRevision).where(KnowledgeRevision.knowledge_base_id == resource_id).order_by(KnowledgeRevision.revision_no))
-        return [_revision_payload(revision) for revision in rows.scalars()]
+        revisions = list(rows.scalars())
+        can_modify = can_manage_knowledge_revision(resource, self.resource_service.actor)
+        if not can_modify:
+            revisions = [revision for revision in revisions if revision.status in {"published", "superseded"}]
+        return [_revision_payload(revision) for revision in revisions]
 
     async def get_revision(self, resource_id: str, revision_id: str) -> dict[str, object]:
-        await self._knowledge_base(resource_id)
+        resource = await self._knowledge_base(resource_id)
         revision = await self.session.get(KnowledgeRevision, revision_id)
         if revision is None or revision.knowledge_base_id != resource_id:
             raise ResourceNotFound(f"Knowledge revision {revision_id} not found")
+        if revision.status not in {"published", "superseded"} and not can_manage_knowledge_revision(resource, self.resource_service.actor):
+            raise ResourceNotFound(f"Knowledge revision {revision_id} not found")
+        if revision.status not in {"published", "superseded"}:
+            self.resource_service.assert_modify(resource)
         return _revision_payload(revision, documents=list(revision.manifest_json or []))
 
     async def _owned_revision(self, resource_id: str, revision_id: str) -> KnowledgeRevision:
@@ -240,6 +252,8 @@ class KnowledgeRevisionService:
 
         await self._knowledge_base(resource_id, modify=True)
         revision = await self._owned_revision(resource_id, revision_id)
+        if revision.integrity_status in UNUSABLE_INTEGRITY:
+            raise ResourceConflict(f"Revision {revision_id} failed reconciliation and is not publishable")
         if revision.status == "indexing":
             if revision_id in _ACTIVE_PUBLISHES:
                 raise ResourceConflict("This revision is already publishing")
@@ -253,6 +267,19 @@ class KnowledgeRevisionService:
                 revision.publish_execution_token = uuid.uuid4().hex
                 revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
                 await self.session.flush()
+            _ACTIVE_PUBLISHES.add(revision_id)
+            return _revision_payload(revision)
+        if revision.status == "ready":
+            self._verify_frozen_content(revision)
+            if eval_required() and load_eval_evidence(resource_id, revision.manifest_hash) is None:
+                raise ResourceConflict("Publishing requires evaluation evidence matching this revision")
+            revision.status = "indexing"
+            revision.failure_code = None
+            revision.failure_message = None
+            revision.publish_lease_owner = _PUBLISH_OWNER
+            revision.publish_execution_token = uuid.uuid4().hex
+            revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
+            await self.session.flush()
             _ACTIVE_PUBLISHES.add(revision_id)
             return _revision_payload(revision)
         if revision.status != "draft" and revision.status != "failed":
@@ -277,6 +304,50 @@ class KnowledgeRevisionService:
             # per KnowledgeBase, so a concurrent publish loses here.
             await self.session.rollback()
             raise ResourceConflict("Another revision of this KnowledgeBase is already publishing") from exc
+        _ACTIVE_PUBLISHES.add(revision_id)
+        return _revision_payload(revision)
+
+    async def prepare_revision(
+        self,
+        resource_id: str,
+        revision_id: str,
+        *,
+        provider: KnowledgeProvider,
+    ) -> dict[str, object]:
+        """Start building a candidate index without applying the publish gate."""
+
+        await self._knowledge_base(resource_id, modify=True)
+        revision = await self._owned_revision(resource_id, revision_id)
+        if revision.integrity_status in UNUSABLE_INTEGRITY:
+            raise ResourceConflict(f"Revision {revision_id} failed reconciliation and is not preparable")
+        if revision.status == "indexing":
+            if revision_id in _ACTIVE_PUBLISHES:
+                raise ResourceConflict(f"Revision {revision_id} is already preparing")
+            if _lease_is_valid(revision.publish_lease_until) and revision.publish_lease_owner != _PUBLISH_OWNER:
+                raise ResourceConflict(f"Revision {revision_id} is already preparing")
+            self._verify_frozen_content(revision)
+            if not (_lease_is_valid(revision.publish_lease_until) and revision.publish_lease_owner == _PUBLISH_OWNER):
+                revision.publish_lease_owner = _PUBLISH_OWNER
+                revision.publish_execution_token = uuid.uuid4().hex
+                revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
+                await self.session.flush()
+            _ACTIVE_PUBLISHES.add(revision_id)
+            return _revision_payload(revision)
+        if revision.status == "ready":
+            return _revision_payload(revision)
+        if revision.status not in {"draft", "failed"}:
+            raise ResourceConflict(f"Revision {revision_id} is not preparable (status={revision.status})")
+        if revision.publish_attempt >= MAX_PUBLISH_ATTEMPTS:
+            raise ResourceConflict("Preparation attempts exhausted for this revision")
+        self._verify_frozen_content(revision)
+        revision.status = "indexing"
+        revision.publish_attempt += 1
+        revision.failure_code = None
+        revision.failure_message = None
+        revision.publish_lease_owner = _PUBLISH_OWNER
+        revision.publish_execution_token = uuid.uuid4().hex
+        revision.publish_lease_until = datetime.now(UTC) + timedelta(seconds=PUBLISH_LEASE_SECONDS)
+        await self.session.flush()
         _ACTIVE_PUBLISHES.add(revision_id)
         return _revision_payload(revision)
 
@@ -314,6 +385,7 @@ async def execute_publish(
     execution_token: str | None = None,
     poll_interval: float = 2.0,
     parse_timeout: float = 300.0,
+    activate: bool = True,
 ) -> None:
     """Build the immutable provider dataset, verify it, then switch the pointer.
 
@@ -331,6 +403,7 @@ async def execute_publish(
             execution_token=execution_token,
             poll_interval=poll_interval,
             parse_timeout=parse_timeout,
+            activate=activate,
         )
     finally:
         _ACTIVE_PUBLISHES.discard(revision_id)
@@ -346,6 +419,7 @@ async def _run_publish_build(
     execution_token: str | None = None,
     poll_interval: float = 2.0,
     parse_timeout: float = 300.0,
+    activate: bool = True,
 ) -> None:
     """Build the immutable provider dataset, verify it, then switch the pointer.
 
@@ -473,6 +547,24 @@ async def _run_publish_build(
                 raise KnowledgeProviderError("verification_failed")
 
             renew_lease()
+
+            if not activate:
+                revision.status = "ready"
+                revision.failure_code = None
+                revision.failure_message = None
+                revision.integrity_status = INTEGRITY_UNVERIFIED if provider_hash_unverified else None
+                revision.publish_lease_owner = None
+                revision.publish_lease_until = None
+                revision.publish_execution_token = None
+                await session.commit()
+                await record_audit(
+                    actor_id,
+                    "knowledge_revision_prepared",
+                    "knowledge_revision",
+                    revision_id,
+                    {"resource_id": resource_id, "revision_no": revision.revision_no, "document_count": revision.document_count},
+                )
+                return
 
             prior = (
                 (

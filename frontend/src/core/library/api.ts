@@ -142,6 +142,18 @@ export async function publishKnowledgeRevision(
   return (await res.json()) as KnowledgeRevision;
 }
 
+export async function prepareKnowledgeRevision(
+  resourceId: string,
+  revisionId: string,
+): Promise<KnowledgeRevision> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge-revisions/${encodeURIComponent(revisionId)}/prepare`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to prepare revision");
+  return (await res.json()) as KnowledgeRevision;
+}
+
 export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/resources?type=knowledge_base&limit=200`,

@@ -1419,6 +1419,7 @@ export interface Translations {
       creating: string;
       createFailed: string;
       publishFailed: string;
+      prepareFailed: string;
       viewDetails: string;
       hideDetails: string;
       documentsAndManifest: (count: number, hash: string) => string;
@@ -1427,6 +1428,9 @@ export interface Translations {
       publish: string;
       publishingAction: string;
       publishAria: (no: number) => string;
+      prepare: string;
+      preparing: string;
+      prepareAria: (no: number) => string;
     };
     evalCaseList: {
       selectKnowledgeBase: string;

@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRetrievalTest, KnowledgeRevision
+from app.agentplatform.knowledge.revisions import can_manage_knowledge_revision
 from app.agentplatform.resource_models import Resource
 from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceConflict, ResourceNotFound, ResourcePermissionDenied, ResourceService
 
@@ -43,7 +44,7 @@ MAX_TEST_QUERY_CHARS = 500
 MAX_TEST_TOP_K = 20
 DEFAULT_TEST_TOP_K = 8
 MAX_TEST_PAGE_SIZE = 50
-RETRIEVABLE_REVISION_STATUSES = frozenset({"published", "superseded"})
+RETRIEVABLE_REVISION_STATUSES = frozenset({"published", "superseded", "ready"})
 
 _SUPPORTED_PROFILE_KEYS = frozenset(("similarity_threshold", "vector_similarity_weight", "top_k"))
 SUPPORTED_PROFILE_IDS = ("frozen", "configured")
@@ -198,6 +199,11 @@ class KnowledgeRetrievalTestService:
         """Execute and archive one bounded retrieval probe."""
         await self._knowledge_base(resource_id, require_use=True)
         revision = await self._retrievable_revision(resource_id, revision_id)
+        if revision.status == "ready":
+            resource = await self._knowledge_base(resource_id)
+            if not can_manage_knowledge_revision(resource, self.resource_service.actor):
+                raise ResourceNotFound(f"Retrieval revision {revision_id} not found")
+            self.resource_service.assert_modify(resource)
         if profile_id not in SUPPORTED_PROFILE_IDS:
             raise KnowledgeRetrievalTestValidationError("unsupported retrieval profile")
         normalized_query = (query or "").strip()
@@ -269,21 +275,28 @@ class KnowledgeRetrievalTestService:
 
     async def list_tests(self, resource_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, object]:
         """List archived retrieval probes visible to the current actor."""
-        await self._knowledge_base(resource_id)
+        resource = await self._knowledge_base(resource_id)
         if limit < 1 or limit > MAX_TEST_PAGE_SIZE or offset < 0:
             raise KnowledgeRetrievalTestValidationError("pagination is out of bounds")
-        total = await self.session.scalar(select(func.count()).select_from(KnowledgeRetrievalTest).where(KnowledgeRetrievalTest.knowledge_base_id == resource_id))
-        rows = await self.session.execute(
-            select(KnowledgeRetrievalTest).where(KnowledgeRetrievalTest.knowledge_base_id == resource_id).order_by(KnowledgeRetrievalTest.created_at.desc(), KnowledgeRetrievalTest.id.desc()).offset(offset).limit(limit)
-        )
+        query = select(KnowledgeRetrievalTest).where(KnowledgeRetrievalTest.knowledge_base_id == resource_id).order_by(KnowledgeRetrievalTest.created_at.desc(), KnowledgeRetrievalTest.id.desc())
+        can_modify = can_manage_knowledge_revision(resource, self.resource_service.actor)
+        if not can_modify:
+            query = query.join(KnowledgeRevision, KnowledgeRevision.id == KnowledgeRetrievalTest.revision_id).where(KnowledgeRevision.status.in_(("published", "superseded")))
+        total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
+        rows = await self.session.execute(query.offset(offset).limit(limit))
         return {"items": [_test_payload(record, include_items=False) for record in rows.scalars()], "total": int(total or 0), "offset": offset, "limit": limit}
 
     async def get_test(self, resource_id: str, test_id: str) -> dict[str, object]:
         """Load one archived retrieval probe after rechecking visibility."""
-        await self._knowledge_base(resource_id)
+        resource = await self._knowledge_base(resource_id)
         record = await self.session.get(KnowledgeRetrievalTest, test_id)
         if record is None or record.knowledge_base_id != resource_id:
             raise ResourceNotFound(f"Retrieval test {test_id} not found")
+        revision = await self.session.get(KnowledgeRevision, record.revision_id)
+        if revision is not None and revision.status == "ready" and not can_manage_knowledge_revision(resource, self.resource_service.actor):
+            raise ResourceNotFound(f"Retrieval test {test_id} not found")
+        if revision is not None and revision.status == "ready":
+            self.resource_service.assert_modify(resource)
         return _test_payload(record, include_items=True)
 
 

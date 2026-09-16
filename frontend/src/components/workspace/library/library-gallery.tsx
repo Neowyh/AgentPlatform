@@ -101,7 +101,10 @@ export function LibraryGallery() {
         </TabsContent>
 
         <TabsContent value="retrieval-test" className="flex-1">
-          <RetrievalTestPanel knowledgeBaseId={selectedId} />
+          <RetrievalTestPanel
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
         </TabsContent>
       </Tabs>
     </div>

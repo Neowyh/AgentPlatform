@@ -1694,6 +1694,7 @@ export const zhCN: Translations = {
       creating: "创建中...",
       createFailed: "无法创建版本候选：候选至少需要一个就绪文档。",
       publishFailed: "无法发布该版本。",
+      prepareFailed: "无法准备该版本索引。",
       viewDetails: "查看详情",
       hideDetails: "收起详情",
       documentsAndManifest: (count: number, hash: string) =>
@@ -1703,6 +1704,9 @@ export const zhCN: Translations = {
       publish: "发布",
       publishingAction: "发布中...",
       publishAria: (no: number) => `发布 v${no}`,
+      prepare: "准备索引",
+      preparing: "准备中...",
+      prepareAria: (no: number) => `准备 v${no} 索引`,
     },
     evalCaseList: {
       selectKnowledgeBase: "选择一个知识库以维护评测用例",
