@@ -30,7 +30,12 @@ describe("retrieval test API facade", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ revision_id: "rev-1", query: "q", top_k: 5 }),
+        body: JSON.stringify({
+          revision_id: "rev-1",
+          profile_id: "frozen",
+          query: "q",
+          top_k: 5,
+        }),
       },
     );
   });
@@ -41,6 +46,7 @@ describe("retrieval test API facade", () => {
     const init = mockFetch.mock.calls[0]?.[1] as { body: string } | undefined;
     expect(JSON.parse(init?.body ?? "{}")).toEqual({
       revision_id: "rev-1",
+      profile_id: "frozen",
       query: "q",
     });
   });

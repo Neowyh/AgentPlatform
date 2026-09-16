@@ -425,6 +425,7 @@ export interface RetrievalTestRecord {
 
 export interface RunRetrievalTestRequest {
   revisionId: string;
+  profileId?: "frozen";
   query: string;
   topK?: number;
 }
@@ -450,6 +451,7 @@ export async function runRetrievalTest(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         revision_id: request.revisionId,
+        profile_id: request.profileId ?? "frozen",
         query: request.query,
         ...(request.topK === undefined ? {} : { top_k: request.topK }),
       }),

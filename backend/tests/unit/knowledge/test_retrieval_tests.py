@@ -205,7 +205,7 @@ async def test_execute_maps_published_revision_to_dataset_and_documents(store, t
     assert call["query"] == TEST_QUERY
     assert call["dataset_id"] == revision.provider_dataset_id
     assert call["document_ids"] == provider_document_ids
-    assert call["applied"] == {"page_size": 5, "similarity_threshold": 0.2, "vector_similarity_weight": 0.3, "top_k": 256}
+    assert call["applied"] == {"page_size": 5, "similarity_threshold": 0.2, "vector_similarity_weight": 0.3, "top_k": 256, "timeout": 30.0}
 
     assert payload["result_status"] == "success"
     assert payload["returned_count"] == 2
@@ -232,6 +232,36 @@ async def test_execute_maps_published_revision_to_dataset_and_documents(store, t
     assert revision.provider_dataset_id not in serialized
     for provider_document_id in provider_document_ids:
         assert provider_document_id not in serialized
+
+
+@pytest.mark.asyncio
+async def test_execute_applies_frozen_retrieval_profile(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+    entries = [dict(entry) for entry in revision.manifest_json or []]
+    entries[0]["knowledge_profiles"] = {
+        "retrieval": {
+            "top_k": 42,
+            "similarity_threshold": 0.35,
+            "vector_similarity_weight": 0.7,
+        }
+    }
+    revision.manifest_json = entries
+    await session.commit()
+
+    search = _fake_search(_chunk_result([]))
+    service = KnowledgeRetrievalTestService(session, _actor(), search=search, settings_factory=lambda: _settings())
+
+    await _execute(service, revision, top_k=5)
+
+    assert search.calls[0]["applied"] == {
+        "page_size": 5,
+        "similarity_threshold": 0.35,
+        "vector_similarity_weight": 0.7,
+        "top_k": 42,
+        "timeout": 30.0,
+    }
 
 
 @pytest.mark.asyncio
@@ -531,6 +561,20 @@ async def test_service_requires_read_permission(store, tmp_path) -> None:
     revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
     viewer_only = _actor("viewer", permissions={ResourceAction.USE})
     service = KnowledgeRetrievalTestService(session, viewer_only, search=_fake_search(_chunk_result([])), settings_factory=lambda: _settings())
+
+    from app.agentplatform.resources.service import ResourcePermissionDenied
+
+    with pytest.raises(ResourcePermissionDenied):
+        await service.execute(kb.id, revision.id, query=TEST_QUERY)
+
+
+@pytest.mark.asyncio
+async def test_service_requires_use_permission_to_execute(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+    read_only = _actor("owner", permissions={ResourceAction.READ})
+    service = KnowledgeRetrievalTestService(session, read_only, search=_fake_search(_chunk_result([])), settings_factory=lambda: _settings())
 
     from app.agentplatform.resources.service import ResourcePermissionDenied
 

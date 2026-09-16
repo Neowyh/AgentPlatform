@@ -1749,6 +1749,8 @@ export const zhCN: Translations = {
       revisionsLoadFailed: "无法加载版本列表。",
       noPublishedRevision: "该知识库还没有可测试的已发布版本",
       revisionLabel: "版本",
+      profileLabel: "配置",
+      frozenProfile: "版本冻结配置",
       questionLabel: "问题",
       questionPlaceholder: "输入问题以探测该版本",
       topKLabel: "命中数（K）",
@@ -1765,6 +1767,7 @@ export const zhCN: Translations = {
       archivedLoadFailed: "无法加载历史测试记录。",
       viewRecord: "查看记录",
       recordLoadFailed: "该记录已不可访问。",
+      appliedParameters: "实际应用参数",
     },
     dependencySelector: {
       loadError: "知识依赖加载失败，请在重新加载后再保存。",

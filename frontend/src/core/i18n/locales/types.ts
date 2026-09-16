@@ -1472,6 +1472,8 @@ export interface Translations {
       revisionsLoadFailed: string;
       noPublishedRevision: string;
       revisionLabel: string;
+      profileLabel: string;
+      frozenProfile: string;
       questionLabel: string;
       questionPlaceholder: string;
       topKLabel: string;
@@ -1488,6 +1490,7 @@ export interface Translations {
       archivedLoadFailed: string;
       viewRecord: string;
       recordLoadFailed: string;
+      appliedParameters: string;
     };
     dependencySelector: {
       loadError: string;

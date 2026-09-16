@@ -30,6 +30,10 @@ function formatPosition(position: Record<string, unknown>): string | null {
   if (page) return `Page ${page}`;
   const section = position.section;
   if (typeof section === "string" && section.trim()) return section.trim();
+  const rawPosition = position.position;
+  if (typeof rawPosition === "string" && rawPosition.trim())
+    return rawPosition.trim();
+  if (typeof rawPosition === "number") return String(rawPosition);
   return null;
 }
 
@@ -48,6 +52,7 @@ export function RetrievalTestPanel({
     [revisions],
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>();
+  const [profileId, setProfileId] = useState<"frozen">("frozen");
   const revisionId =
     selectedRevisionId ?? retrievable[retrievable.length - 1]?.id;
   const selectedRevision = retrievable.find(
@@ -86,6 +91,7 @@ export function RetrievalTestPanel({
     const parsedK = Number.parseInt(topK, 10);
     void run.mutateAsync({
       revisionId,
+      profileId,
       query: query.trim(),
       topK: Number.isFinite(parsedK) ? parsedK : undefined,
     });
@@ -154,6 +160,18 @@ export function RetrievalTestPanel({
             {run.isPending ? i.running : i.run}
           </Button>
         </div>
+        <label className="flex max-w-xs flex-col gap-1">
+          <span className="type-body text-muted-foreground">
+            {i.profileLabel}
+          </span>
+          <select
+            className="bg-background rounded-md border px-3 py-2"
+            value={profileId}
+            onChange={(event) => setProfileId(event.target.value as "frozen")}
+          >
+            <option value="frozen">{i.frozenProfile}</option>
+          </select>
+        </label>
         {frozenProfile?.retrieval ? (
           <p className="text-muted-foreground type-body">
             {JSON.stringify(frozenProfile.retrieval)}
@@ -233,6 +251,14 @@ function RunResult({ record }: { record: RetrievalTestRecord | undefined }) {
   const items = record.items ?? [];
   return (
     <div className="space-y-2">
+      {record.applied_parameters ? (
+        <p className="text-muted-foreground type-body">
+          {i.appliedParameters}:{" "}
+          {Object.entries(record.applied_parameters)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(" · ")}
+        </p>
+      ) : null}
       <h3 className="type-section-title font-medium">
         {i.hitsTitle(record.returned_count)}
       </h3>

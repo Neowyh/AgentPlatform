@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRetrievalTest, KnowledgeRevision
 from app.agentplatform.resource_models import Resource
-from app.agentplatform.resources.service import ResourceActor, ResourceConflict, ResourceNotFound, ResourceService
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceConflict, ResourceNotFound, ResourcePermissionDenied, ResourceService
 
 MAX_TEST_QUERY_CHARS = 500
 MAX_TEST_TOP_K = 20
@@ -44,7 +44,8 @@ DEFAULT_TEST_TOP_K = 8
 MAX_TEST_PAGE_SIZE = 50
 RETRIEVABLE_REVISION_STATUSES = frozenset({"published", "superseded"})
 
-_APPLIED_PARAMETER_KEYS = ("page_size", "similarity_threshold", "vector_similarity_weight", "top_k")
+_SUPPORTED_PROFILE_KEYS = frozenset(("similarity_threshold", "vector_similarity_weight", "top_k"))
+_APPLIED_PARAMETER_KEYS = ("page_size", "similarity_threshold", "vector_similarity_weight", "top_k", "timeout")
 
 
 class RetrievalTestUnavailable(RuntimeError):
@@ -113,8 +114,10 @@ class KnowledgeRetrievalTestService:
         self._search = search or _ragflow_search
         self._settings_factory = settings_factory or _official_retrieval_settings
 
-    async def _knowledge_base(self, resource_id: str) -> Resource:
+    async def _knowledge_base(self, resource_id: str, *, require_use: bool = False) -> Resource:
         resource = await self.resource_service.get_visible(resource_id)
+        if require_use and not self.resource_service.actor.can(ResourceAction.USE):
+            raise ResourcePermissionDenied(f"Permission denied: {ResourceAction.USE.value}")
         if resource.type != "knowledge_base":
             raise ResourceNotFound(f"KnowledgeBase {resource_id} not found")
         return resource
@@ -162,12 +165,20 @@ class KnowledgeRetrievalTestService:
         return {"documents": documents}
 
     @staticmethod
-    def _applied_parameters(settings: Any, top_k: int) -> dict[str, Any]:
+    def _applied_parameters(settings: Any, profile: dict[str, object], top_k: int) -> dict[str, Any]:
+        unsupported = set(profile) - _SUPPORTED_PROFILE_KEYS
+        if unsupported:
+            raise KnowledgeRetrievalTestValidationError(f"unsupported retrieval profile parameters: {', '.join(sorted(unsupported))}")
+
+        def profile_or_setting(name: str) -> Any:
+            return profile[name] if name in profile else getattr(settings, name)
+
         return {
             "page_size": top_k,
-            "similarity_threshold": settings.similarity_threshold,
-            "vector_similarity_weight": settings.vector_similarity_weight,
-            "top_k": settings.top_k,
+            "similarity_threshold": profile_or_setting("similarity_threshold"),
+            "vector_similarity_weight": profile_or_setting("vector_similarity_weight"),
+            "top_k": profile_or_setting("top_k"),
+            "timeout": settings.timeout,
         }
 
     async def execute(
@@ -177,9 +188,13 @@ class KnowledgeRetrievalTestService:
         *,
         query: str,
         top_k: int | None = None,
+        profile_id: str = "frozen",
     ) -> dict[str, object]:
-        await self._knowledge_base(resource_id)
+        """Execute and archive one bounded retrieval probe."""
+        await self._knowledge_base(resource_id, require_use=True)
         revision = await self._retrievable_revision(resource_id, revision_id)
+        if profile_id != "frozen":
+            raise KnowledgeRetrievalTestValidationError("unsupported retrieval profile")
         normalized_query = (query or "").strip()
         if not normalized_query:
             raise KnowledgeRetrievalTestValidationError("query must not be empty")
@@ -195,8 +210,8 @@ class KnowledgeRetrievalTestService:
             raise RetrievalTestUnavailable("knowledge retrieval is not available in this deployment") from exc
         if settings is None:
             raise RetrievalTestUnavailable("knowledge retrieval is not configured in this deployment")
-        applied = self._applied_parameters(settings, requested_top_k)
         profile = await self._resolved_profile(revision)
+        applied = self._applied_parameters(settings, profile, requested_top_k)
 
         document_ids = [str(provider_document_id) for provider_document_id in (revision.provider_doc_map_json or {}).values()]
         started = time.monotonic()
@@ -242,6 +257,7 @@ class KnowledgeRetrievalTestService:
         return _test_payload(record, include_items=True)
 
     async def list_tests(self, resource_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, object]:
+        """List archived retrieval probes visible to the current actor."""
         await self._knowledge_base(resource_id)
         if limit < 1 or limit > MAX_TEST_PAGE_SIZE or offset < 0:
             raise KnowledgeRetrievalTestValidationError("pagination is out of bounds")
@@ -252,6 +268,7 @@ class KnowledgeRetrievalTestService:
         return {"items": [_test_payload(record, include_items=False) for record in rows.scalars()], "total": int(total or 0), "offset": offset, "limit": limit}
 
     async def get_test(self, resource_id: str, test_id: str) -> dict[str, object]:
+        """Load one archived retrieval probe after rechecking visibility."""
         await self._knowledge_base(resource_id)
         record = await self.session.get(KnowledgeRetrievalTest, test_id)
         if record is None or record.knowledge_base_id != resource_id:

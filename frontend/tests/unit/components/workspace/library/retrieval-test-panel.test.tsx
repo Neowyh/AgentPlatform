@@ -31,6 +31,9 @@ vi.mock("@/core/i18n/hooks", () => ({
           archivedLoadFailed: "Unable to load archived tests.",
           viewRecord: "View record",
           recordLoadFailed: "This record is no longer accessible.",
+          appliedParameters: "Applied parameters",
+          profileLabel: "Profile",
+          frozenProfile: "Frozen revision profile",
         },
       },
     },
@@ -51,6 +54,12 @@ const archivedRecord = {
   returned_count: 1,
   truncated: false,
   duration_ms: 120,
+  applied_parameters: {
+    page_size: 8,
+    similarity_threshold: 0.35,
+    vector_similarity_weight: 0.7,
+    top_k: 42,
+  },
   created_by: "owner",
   created_at: "2026-09-15T10:00:00Z",
   items: [
@@ -211,6 +220,7 @@ describe("RetrievalTestPanel", () => {
 
     expect(runRetrievalTest).toHaveBeenCalledWith({
       revisionId: "rev-2",
+      profileId: "frozen",
       query: "What is the retry policy?",
       topK: 5,
     });
@@ -233,6 +243,14 @@ describe("RetrievalTestPanel", () => {
     expect(container.textContent).toContain("Page 3");
     expect(container.textContent).toContain("0.91");
     expect(container.textContent).toContain("Retry with exponential backoff.");
+  });
+
+  test("shows the parameters actually applied to the retrieval", async () => {
+    mockState.runData = archivedRecord;
+    const { container } = await renderPanel();
+    expect(container.textContent).toContain("Applied parameters");
+    expect(container.textContent).toContain("similarity_threshold: 0.35");
+    expect(container.textContent).toContain("top_k: 42");
   });
 
   test("renders untrusted snippet content as text, never markup", async () => {

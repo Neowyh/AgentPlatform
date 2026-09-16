@@ -7,13 +7,13 @@ visibility, error translation, and audit semantics cannot drift.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, RetrievalTestUnavailable
+from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, KnowledgeRetrievalTestValidationError, RetrievalTestUnavailable
 from app.agentplatform.rbac_models import UserModel
 from app.gateway.audit import record_audit
 from app.gateway.authz import get_current_rbac_user
@@ -29,6 +29,7 @@ class RetrievalTestCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revision_id: str = Field(min_length=1, max_length=36)
+    profile_id: Literal["frozen"] = "frozen"
     query: str = Field(min_length=1, max_length=500)
     top_k: int | None = Field(default=None, ge=1, le=20)
 
@@ -40,13 +41,16 @@ async def create_retrieval_test(
     body: RetrievalTestCreateRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """Run and archive a bounded retrieval test."""
     async with _factory()() as session:
         service = KnowledgeRetrievalTestService(session, _resource_actor(current_user))
         try:
-            payload = await service.execute(resource_id, body.revision_id, query=body.query, top_k=body.top_k)
+            payload = await service.execute(resource_id, body.revision_id, query=body.query, top_k=body.top_k, profile_id=body.profile_id)
             await session.commit()
         except RetrievalTestUnavailable as exc:
             raise HTTPException(status_code=503, detail={"code": "retrieval_test_unavailable", "message": str(exc)}) from exc
+        except KnowledgeRetrievalTestValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_retrieval_test", "message": str(exc)}) from exc
         except SQLAlchemyError as exc:
             raise HTTPException(
                 status_code=503,
@@ -75,6 +79,7 @@ async def list_retrieval_tests(
     limit: int = Query(default=20, ge=1, le=50),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """List archived retrieval tests for a visible knowledge base."""
     async with _factory()() as session:
         return await KnowledgeRetrievalTestService(session, _resource_actor(current_user)).list_tests(resource_id, offset=offset, limit=limit)
 
@@ -86,5 +91,6 @@ async def get_retrieval_test(
     test_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """Read one archived retrieval test after rechecking access."""
     async with _factory()() as session:
         return await KnowledgeRetrievalTestService(session, _resource_actor(current_user)).get_test(resource_id, test_id)

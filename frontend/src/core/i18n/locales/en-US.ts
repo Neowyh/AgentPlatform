@@ -1836,6 +1836,8 @@ export const enUS: Translations = {
       noPublishedRevision:
         "This knowledge base has no published revision to test yet",
       revisionLabel: "Revision",
+      profileLabel: "Profile",
+      frozenProfile: "Frozen revision profile",
       questionLabel: "Question",
       questionPlaceholder: "Ask a question to probe this revision",
       topKLabel: "Hits (K)",
@@ -1852,6 +1854,7 @@ export const enUS: Translations = {
       archivedLoadFailed: "Unable to load archived tests.",
       viewRecord: "View record",
       recordLoadFailed: "This record is no longer accessible.",
+      appliedParameters: "Applied parameters",
     },
     dependencySelector: {
       loadError:
