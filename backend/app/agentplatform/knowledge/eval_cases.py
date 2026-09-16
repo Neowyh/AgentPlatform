@@ -155,6 +155,7 @@ class KnowledgeEvalCaseService:
         expected_document_ids: list[str],
         tags: list[str] | None = None,
     ) -> dict[str, object]:
+        """Create a validated regression case and its first immutable version."""
         await self._knowledge_base(resource_id, modify=True)
         normalized_question = _normalized_question(question)
         normalized_tags = _normalized_tags(tags)
@@ -188,11 +189,13 @@ class KnowledgeEvalCaseService:
         return _case_payload(case)
 
     async def list_cases(self, resource_id: str) -> list[dict[str, object]]:
+        """List regression cases visible to the current actor."""
         await self._knowledge_base(resource_id)
         rows = await self.session.execute(select(KnowledgeEvalCase).where(KnowledgeEvalCase.knowledge_base_id == resource_id).order_by(KnowledgeEvalCase.created_at, KnowledgeEvalCase.id))
         return [_case_payload(case) for case in rows.scalars()]
 
     async def get_case(self, resource_id: str, case_id: str) -> dict[str, object]:
+        """Load a case together with its immutable version history."""
         await self._knowledge_base(resource_id)
         case = await self._owned_case(resource_id, case_id)
         payload = _case_payload(case)
@@ -209,6 +212,7 @@ class KnowledgeEvalCaseService:
         expected_document_ids: list[str] | None = None,
         tags: list[str] | None = None,
     ) -> dict[str, object]:
+        """Update changed case content and append a new immutable version."""
         await self._knowledge_base(resource_id, modify=True)
         case = await self._owned_case(resource_id, case_id)
         normalized_question = _normalized_question(case.question if question is None else question)
@@ -243,6 +247,7 @@ class KnowledgeEvalCaseService:
         return _case_payload(case)
 
     async def delete_case(self, resource_id: str, case_id: str) -> None:
+        """Delete a case and its version history after authorization."""
         await self._knowledge_base(resource_id, modify=True)
         case = await self._owned_case(resource_id, case_id)
         await self.session.execute(KnowledgeEvalCaseVersion.__table__.delete().where(KnowledgeEvalCaseVersion.case_id == case.id))

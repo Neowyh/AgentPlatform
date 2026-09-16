@@ -18,6 +18,7 @@ from deerflow_extension_api import (
     ExtensionData,
     ExtensionService,
     MiddlewareContributor,
+    RuntimeEvidenceHooks,
     SystemModelCallObserver,
     TaskLifecycleContributor,
     ToolContributor,
@@ -39,6 +40,7 @@ class LoadedExtensions:
     middleware_contributors: tuple[tuple[str, MiddlewareContributor], ...] = ()
     tool_contributors: tuple[tuple[str, ToolContributor], ...] = ()
     task_lifecycle: tuple[tuple[str, TaskLifecycleContributor], ...] = ()
+    runtime_evidence_hooks: tuple[tuple[str, RuntimeEvidenceHooks], ...] = ()
     system_model_observers: tuple[tuple[str, SystemModelCallObserver], ...] = ()
     agent_assembly_observers: tuple[tuple[str, AgentAssemblyObserver], ...] = ()
     # No has_context_compaction_observers precomputed flag: unlike agent-assembly
@@ -75,6 +77,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
         self._middlewares: list[_Entry] = []
         self._tools: list[_Entry] = []
         self._task_lifecycle: list[_Entry] = []
+        self._runtime_evidence_hooks: list[_Entry] = []
         self._system_model_observers: list[_Entry] = []
         self._agent_assembly_observers: list[_Entry] = []
         self._context_compaction_observers: list[_Entry] = []
@@ -105,6 +108,9 @@ class ExtensionRegistry(ExtensionRegistryContract):
 
     def task_lifecycle(self, contributor: TaskLifecycleContributor) -> None:
         self._task_lifecycle.append((self._source(), contributor))
+
+    def runtime_evidence(self, hooks: RuntimeEvidenceHooks) -> None:
+        self._runtime_evidence_hooks.append((self._source(), hooks))
 
     def system_model_observer(self, observer: SystemModelCallObserver) -> None:
         self._system_model_observers.append((self._source(), observer))
@@ -139,6 +145,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
             self._middlewares,
             self._tools,
             self._task_lifecycle,
+            self._runtime_evidence_hooks,
             self._system_model_observers,
             self._agent_assembly_observers,
             self._context_compaction_observers,
@@ -147,12 +154,13 @@ class ExtensionRegistry(ExtensionRegistryContract):
         ):
             bucket[:] = [entry for entry in bucket if entry[0] != source]
 
-    def mark(self) -> tuple[int, int, int, int, int, int, int, int]:
+    def mark(self) -> tuple[int, int, int, int, int, int, int, int, int]:
         """Snapshot bucket lengths so one install() can be undone positionally."""
         return (
             len(self._middlewares),
             len(self._tools),
             len(self._task_lifecycle),
+            len(self._runtime_evidence_hooks),
             len(self._system_model_observers),
             len(self._agent_assembly_observers),
             len(self._context_compaction_observers),
@@ -160,7 +168,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
             len(self._routers),
         )
 
-    def rollback_to(self, mark: tuple[int, int, int, int, int, int, int, int]) -> None:
+    def rollback_to(self, mark: tuple[int, int, int, int, int, int, int, int, int]) -> None:
         """Undo every registration made since ``mark``.
 
         Positional rather than source-keyed: two specs may legitimately share
@@ -172,6 +180,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
                 self._middlewares,
                 self._tools,
                 self._task_lifecycle,
+                self._runtime_evidence_hooks,
                 self._system_model_observers,
                 self._agent_assembly_observers,
                 self._context_compaction_observers,
@@ -189,6 +198,7 @@ class ExtensionRegistry(ExtensionRegistryContract):
             middleware_contributors=tuple(self._middlewares),
             tool_contributors=tuple(self._tools),
             task_lifecycle=tuple(self._task_lifecycle),
+            runtime_evidence_hooks=tuple(self._runtime_evidence_hooks),
             system_model_observers=tuple(self._system_model_observers),
             agent_assembly_observers=tuple(self._agent_assembly_observers),
             context_compaction_observers=tuple(self._context_compaction_observers),

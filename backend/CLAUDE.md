@@ -626,6 +626,15 @@ Multi-file upload with automatic document conversion:
 
 See [docs/FILE_UPLOAD.md](docs/FILE_UPLOAD.md) for details.
 
+### Knowledge retrieval tests and eval cases
+
+Knowledge Center Retrieval Tests use published Knowledge Revisions and either
+their frozen or current configured retrieval profile; actual applied
+parameters, timeout budget, and bounded canonical hits are archived under the
+resource API. Eval Cases use canonical document IDs and append immutable
+content versions. Both services enforce Resource Governance, and historical
+reads re-check current visibility.
+
 ### Plan Mode
 
 TodoList middleware for complex multi-step tasks:

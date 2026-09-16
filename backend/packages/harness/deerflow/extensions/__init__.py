@@ -75,6 +75,15 @@ def resolve_run_extensions(context: Any | None) -> LoadedExtensions | None:
     return snapshot if isinstance(snapshot, LoadedExtensions) else None
 
 
+def resolve_runtime_evidence_hooks(extensions: LoadedExtensions | None) -> Any | None:
+    """Return the latest optional evidence hook provider for a run."""
+    if extensions is not None and extensions.runtime_evidence_hooks:
+        return extensions.runtime_evidence_hooks[-1][1]
+    from deerflow_extension_api import get_runtime_evidence_hooks
+
+    return get_runtime_evidence_hooks()
+
+
 def set_loaded_extensions(loaded: LoadedExtensions) -> None:
     global _loaded
     _loaded = loaded
@@ -154,5 +163,6 @@ __all__ = [
     "reset_loaded_extensions",
     "reset_runtime_diagnostics",
     "resolve_run_extensions",
+    "resolve_runtime_evidence_hooks",
     "set_loaded_extensions",
 ]

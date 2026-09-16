@@ -425,7 +425,7 @@ export interface RetrievalTestRecord {
 
 export interface RunRetrievalTestRequest {
   revisionId: string;
-  profileId?: "frozen";
+  profileId?: "frozen" | "configured";
   query: string;
   topK?: number;
 }

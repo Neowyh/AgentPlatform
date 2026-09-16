@@ -29,7 +29,7 @@ class RetrievalTestCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revision_id: str = Field(min_length=1, max_length=36)
-    profile_id: Literal["frozen"] = "frozen"
+    profile_id: Literal["frozen", "configured"] = "frozen"
     query: str = Field(min_length=1, max_length=500)
     top_k: int | None = Field(default=None, ge=1, le=20)
 

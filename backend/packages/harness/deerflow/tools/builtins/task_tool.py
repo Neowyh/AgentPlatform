@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 import uuid
+from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
@@ -20,7 +21,7 @@ from langgraph.types import Command
 from deerflow.agents.middlewares.receipt_verification import verify_receipt_citations
 from deerflow.authz.principal import normalize_authz_attributes
 from deerflow.config import get_app_config
-from deerflow.extensions import resolve_run_extensions
+from deerflow.extensions import resolve_run_extensions, resolve_runtime_evidence_hooks
 from deerflow.runtime.user_context import resolve_runtime_user_id
 from deerflow.sandbox.security import LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE, is_host_bash_allowed
 from deerflow.subagents import SubagentExecutor, get_available_subagent_names, get_subagent_config
@@ -633,18 +634,17 @@ def _task_result_command(
 
 def _record_run_evidence_verification(
     *,
+    evidence_hooks: Any | None,
     task_id: str,
     receipts: list[dict] | None,
     verdict: dict | None,
 ) -> None:
     """Project the terminal sub-agent receipt verdict into Run Evidence."""
 
-    try:
-        from agentplatform_extension.evidence import record_subagent_verification
-    except ImportError:
+    if evidence_hooks is None:
         return
     verified = receipts is not None and isinstance(verdict, dict) and verdict.get("citation_resolved") is True
-    record_subagent_verification(
+    evidence_hooks.record_subagent_verification(
         {
             "task_id": task_id,
             "status": "VERIFIED" if verified else "UNVERIFIED",
@@ -654,14 +654,12 @@ def _record_run_evidence_verification(
     )
 
 
-def _record_delegated_retrieval_evidence(*, parent_tool_call_id: str, child_task_id: str, agent_id: str, receipts: list[dict] | None) -> None:
+def _record_delegated_retrieval_evidence(*, evidence_hooks: Any | None, parent_tool_call_id: str, child_task_id: str, agent_id: str, receipts: list[dict] | None) -> None:
     """Merge child retrieval evidence only after the child has terminated."""
 
-    try:
-        from agentplatform_extension.evidence import record_delegated_retrieval_receipts
-    except ImportError:
+    if evidence_hooks is None:
         return
-    record_delegated_retrieval_receipts(
+    evidence_hooks.record_delegated_retrieval_receipts(
         receipts or [],
         parent_tool_receipt_id=parent_tool_call_id,
         child_task_id=child_task_id,
@@ -947,13 +945,10 @@ async def task_tool(
 
     # Keep the provider tool-call ID for stream/message correlation, but use a
     # server-generated execution ID for process-wide background task control.
-    try:
-        from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
-    except ImportError:
+    evidence_hooks = resolve_runtime_evidence_hooks(run_extensions)
+    evidence_context = evidence_hooks.bind_delegation_evidence(tool_call_id, subagent_type) if evidence_hooks is not None else nullcontext()
+    with evidence_context:
         execution_id = executor.execute_async(prompt, task_id=tool_call_id)
-    else:
-        with bind_delegation_evidence(DelegationEvidenceContext(tool_call_id, subagent_type)):
-            execution_id = executor.execute_async(prompt, task_id=tool_call_id)
 
     # Poll for task completion in backend (removes need for LLM to poll)
     poll_count = 0
@@ -1056,6 +1051,7 @@ async def task_tool(
                 # harvest (zero stamped calls) and still gets a verdict.
                 receipts = getattr(result, "tool_receipts", None)
                 _record_delegated_retrieval_evidence(
+                    evidence_hooks=resolve_runtime_evidence_hooks(run_extensions),
                     parent_tool_call_id=tool_call_id,
                     child_task_id=str(getattr(result, "task_id", tool_call_id)),
                     agent_id=subagent_type,
@@ -1063,6 +1059,7 @@ async def task_tool(
                 )
                 receipt_verdict = verify_receipt_citations(result.result or "", receipts) if receipts is not None else None
                 _record_run_evidence_verification(
+                    evidence_hooks=resolve_runtime_evidence_hooks(run_extensions),
                     task_id=tool_call_id,
                     receipts=receipts,
                     verdict=receipt_verdict,

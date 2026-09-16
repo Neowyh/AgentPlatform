@@ -52,7 +52,7 @@ export function RetrievalTestPanel({
     [revisions],
   );
   const [selectedRevisionId, setSelectedRevisionId] = useState<string>();
-  const [profileId, setProfileId] = useState<"frozen">("frozen");
+  const [profileId, setProfileId] = useState<"frozen" | "configured">("frozen");
   const revisionId =
     selectedRevisionId ?? retrievable[retrievable.length - 1]?.id;
   const selectedRevision = retrievable.find(
@@ -167,12 +167,15 @@ export function RetrievalTestPanel({
           <select
             className="bg-background rounded-md border px-3 py-2"
             value={profileId}
-            onChange={(event) => setProfileId(event.target.value as "frozen")}
+            onChange={(event) =>
+              setProfileId(event.target.value as "frozen" | "configured")
+            }
           >
             <option value="frozen">{i.frozenProfile}</option>
+            <option value="configured">{i.configuredProfile}</option>
           </select>
         </label>
-        {frozenProfile?.retrieval ? (
+        {profileId === "frozen" && frozenProfile?.retrieval ? (
           <p className="text-muted-foreground type-body">
             {JSON.stringify(frozenProfile.retrieval)}
           </p>

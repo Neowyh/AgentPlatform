@@ -394,6 +394,7 @@ def _resource_payload(
     current_user: UserModel | None = None,
     is_favorited: bool = False,
 ) -> dict[str, Any]:
+    """Create one knowledge regression case."""
     can_modify = bool(
         current_user is not None
         and str(resource.owner_id) == str(current_user.id)
@@ -557,6 +558,7 @@ async def list_resources(
     limit: int = Query(default=50, ge=1, le=200),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """List knowledge regression cases."""
     async with _factory()() as session:
         page = await ResourceService(session, _resource_actor(current_user)).list_visible(
             resource_type=resource_type,
@@ -612,6 +614,7 @@ async def list_resource_notifications(
     limit: int = Query(default=50, ge=1, le=200),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """Report case applicability for one knowledge revision."""
     async with _factory()() as session:
         condition = ResourceNotification.recipient_id == str(current_user.id)
         total = int((await session.execute(select(func.count()).select_from(ResourceNotification).where(condition))).scalar_one())
@@ -694,6 +697,7 @@ async def import_agent_resource(
     archive: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """Read one knowledge regression case and its versions."""
     storage = ResourceStorage(get_paths().base_dir)
     archive_path: Path | None = None
     try:
@@ -787,6 +791,7 @@ async def import_skill_resource(
     archive: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
+    """Update one knowledge regression case."""
     """Import a validated .skill archive into the canonical catalog."""
     from deerflow.skills.parser import parse_skill_file
     from deerflow.skills.types import SkillCategory
@@ -1229,6 +1234,7 @@ async def delete_eval_case(
     case_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> Response:
+    """Delete one knowledge regression case."""
     async with _factory()() as session:
         await KnowledgeEvalCaseService(session, _resource_actor(current_user)).delete_case(resource_id, case_id)
         await session.commit()

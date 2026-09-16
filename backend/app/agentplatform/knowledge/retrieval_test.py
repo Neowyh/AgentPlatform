@@ -23,6 +23,7 @@ fabricated.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import time
 import uuid
@@ -45,6 +46,7 @@ MAX_TEST_PAGE_SIZE = 50
 RETRIEVABLE_REVISION_STATUSES = frozenset({"published", "superseded"})
 
 _SUPPORTED_PROFILE_KEYS = frozenset(("similarity_threshold", "vector_similarity_weight", "top_k"))
+SUPPORTED_PROFILE_IDS = ("frozen", "configured")
 _APPLIED_PARAMETER_KEYS = ("page_size", "similarity_threshold", "vector_similarity_weight", "top_k", "timeout")
 
 
@@ -85,6 +87,8 @@ async def _ragflow_search(query: str, *, settings: Any, dataset_id: str, documen
 
 
 def _provider_error_code(exc: Exception) -> str:
+    if isinstance(exc, TimeoutError):
+        return "timeout"
     from deerflow.community.ragflow.client import RAGFlowAPIError, RAGFlowConnectionError, RAGFlowProtocolError
 
     if isinstance(exc, RAGFlowConnectionError):
@@ -122,10 +126,12 @@ class KnowledgeRetrievalTestService:
             raise ResourceNotFound(f"KnowledgeBase {resource_id} not found")
         return resource
 
-    async def _resolved_profile(self, revision: KnowledgeRevision) -> dict[str, object]:
-        """Selected retrieval profile: frozen manifest value when present —
-        otherwise the KnowledgeBase row, for revisions created before profile
-        freezing. Same resolution order as the run freeze."""
+    async def _resolved_profile(self, revision: KnowledgeRevision, profile_id: str) -> dict[str, object]:
+        """Resolve either the revision-frozen or current configured profile."""
+
+        kb_row = await self.session.get(KnowledgeBase, revision.knowledge_base_id)
+        if profile_id == "configured":
+            return dict(kb_row.retrieval_profile_json or {}) if kb_row and isinstance(kb_row.retrieval_profile_json, dict) else {}
 
         profiles = next(
             (entry.get("knowledge_profiles") for entry in revision.manifest_json or [] if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
@@ -134,7 +140,6 @@ class KnowledgeRetrievalTestService:
         if profiles:
             retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
             return dict(retrieval) if isinstance(retrieval, dict) else {}
-        kb_row = await self.session.get(KnowledgeBase, revision.knowledge_base_id)
         if kb_row is not None and isinstance(kb_row.retrieval_profile_json, dict):
             return dict(kb_row.retrieval_profile_json)
         return {}
@@ -193,7 +198,7 @@ class KnowledgeRetrievalTestService:
         """Execute and archive one bounded retrieval probe."""
         await self._knowledge_base(resource_id, require_use=True)
         revision = await self._retrievable_revision(resource_id, revision_id)
-        if profile_id != "frozen":
+        if profile_id not in SUPPORTED_PROFILE_IDS:
             raise KnowledgeRetrievalTestValidationError("unsupported retrieval profile")
         normalized_query = (query or "").strip()
         if not normalized_query:
@@ -210,14 +215,20 @@ class KnowledgeRetrievalTestService:
             raise RetrievalTestUnavailable("knowledge retrieval is not available in this deployment") from exc
         if settings is None:
             raise RetrievalTestUnavailable("knowledge retrieval is not configured in this deployment")
-        profile = await self._resolved_profile(revision)
+        profile = await self._resolved_profile(revision, profile_id)
         applied = self._applied_parameters(settings, profile, requested_top_k)
 
         document_ids = [str(provider_document_id) for provider_document_id in (revision.provider_doc_map_json or {}).values()]
         started = time.monotonic()
         error_code: str | None = None
         try:
-            result = await _maybe_await(self._search(normalized_query, settings=settings, dataset_id=revision.provider_dataset_id, document_ids=document_ids, applied=applied))
+            result = await asyncio.wait_for(
+                _maybe_await(self._search(normalized_query, settings=settings, dataset_id=revision.provider_dataset_id, document_ids=document_ids, applied=applied)),
+                timeout=float(settings.timeout),
+            )
+        except TimeoutError as exc:
+            result = {"chunks": []}
+            error_code = _provider_error_code(exc)
         except Exception as exc:
             result = {"chunks": []}
             error_code = _provider_error_code(exc)

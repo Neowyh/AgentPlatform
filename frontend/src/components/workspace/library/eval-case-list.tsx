@@ -17,6 +17,7 @@ import {
 import type {
   EvalCaseRevisionApplicability,
   KnowledgeEvalCase,
+  KnowledgeDocument,
 } from "@/core/library";
 
 function parseTags(raw: string): string[] {
@@ -31,6 +32,31 @@ function documentLabel(
   names: Record<string, string>,
 ): string {
   return names[documentId] ?? documentId;
+}
+
+function DocumentCheckboxList({
+  documents,
+  selectedIds,
+  onToggle,
+}: {
+  documents: KnowledgeDocument[];
+  selectedIds: string[];
+  onToggle: (documentId: string) => void;
+}) {
+  return (
+    <div className="mt-1 space-y-1">
+      {documents.map((document) => (
+        <label key={document.id} className="type-body flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(document.id)}
+            onChange={() => onToggle(document.id)}
+          />
+          {document.name}
+        </label>
+      ))}
+    </div>
+  );
 }
 
 export function EvalCaseList({
@@ -237,21 +263,11 @@ function CreateEvalCaseForm({
             {i.expectedDocsEmpty}
           </div>
         ) : (
-          <div className="mt-1 space-y-1">
-            {documents.map((document) => (
-              <label
-                key={document.id}
-                className="type-body flex items-center gap-2"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(document.id)}
-                  onChange={() => toggleDocument(document.id)}
-                />
-                {document.name}
-              </label>
-            ))}
-          </div>
+          <DocumentCheckboxList
+            documents={documents}
+            selectedIds={selectedIds}
+            onToggle={toggleDocument}
+          />
         )}
       </fieldset>
       <div>
@@ -357,27 +373,17 @@ function EvalCaseActions({
         />
         <fieldset>
           <legend className="type-body">{i.expectedDocsLabel}</legend>
-          <div className="mt-1 space-y-1">
-            {documents.map((document) => (
-              <label
-                key={document.id}
-                className="type-body flex items-center gap-2"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(document.id)}
-                  onChange={() =>
-                    setSelectedIds((current) =>
-                      current.includes(document.id)
-                        ? current.filter((id) => id !== document.id)
-                        : [...current, document.id],
-                    )
-                  }
-                />
-                {document.name}
-              </label>
-            ))}
-          </div>
+          <DocumentCheckboxList
+            documents={documents}
+            selectedIds={selectedIds}
+            onToggle={(documentId) =>
+              setSelectedIds((current) =>
+                current.includes(documentId)
+                  ? current.filter((id) => id !== documentId)
+                  : [...current, documentId],
+              )
+            }
+          />
         </fieldset>
         <label
           htmlFor={`eval-case-edit-tags-${evalCase.id}`}

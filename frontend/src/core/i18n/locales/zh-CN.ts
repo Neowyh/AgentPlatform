@@ -1751,6 +1751,7 @@ export const zhCN: Translations = {
       revisionLabel: "版本",
       profileLabel: "配置",
       frozenProfile: "版本冻结配置",
+      configuredProfile: "当前配置",
       questionLabel: "问题",
       questionPlaceholder: "输入问题以探测该版本",
       topKLabel: "命中数（K）",

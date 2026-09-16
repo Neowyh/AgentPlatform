@@ -1838,6 +1838,7 @@ export const enUS: Translations = {
       revisionLabel: "Revision",
       profileLabel: "Profile",
       frozenProfile: "Frozen revision profile",
+      configuredProfile: "Current configured profile",
       questionLabel: "Question",
       questionPlaceholder: "Ask a question to probe this revision",
       topKLabel: "Hits (K)",

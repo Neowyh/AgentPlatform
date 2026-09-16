@@ -9,6 +9,7 @@ replay. Tests never fabricate Runs, Tool Calls, or chat citations.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -178,8 +179,15 @@ def _chunk_result(chunks: list[dict]) -> dict:
     return {"chunks": chunks, "total": len(chunks)}
 
 
-async def _execute(service: KnowledgeRetrievalTestService, revision: KnowledgeRevision, *, query: str = TEST_QUERY, top_k: int | None = None) -> dict:
-    return await service.execute(revision.knowledge_base_id, revision.id, query=query, top_k=top_k)
+async def _execute(
+    service: KnowledgeRetrievalTestService,
+    revision: KnowledgeRevision,
+    *,
+    query: str = TEST_QUERY,
+    top_k: int | None = None,
+    profile_id: str = "frozen",
+) -> dict:
+    return await service.execute(revision.knowledge_base_id, revision.id, query=query, top_k=top_k, profile_id=profile_id)
 
 
 @pytest.mark.asyncio
@@ -350,6 +358,51 @@ async def test_execute_falls_back_to_kb_profile_for_legacy_revision(store, tmp_p
     payload = await _execute(service, revision)
 
     assert payload["retrieval_profile"] == {"top_k": 64}
+
+
+@pytest.mark.asyncio
+async def test_execute_can_select_current_configured_profile_without_mutating_revision(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+    entries = [dict(entry) for entry in revision.manifest_json or []]
+    entries[0]["knowledge_profiles"] = {"retrieval": {"top_k": 42}}
+    revision.manifest_json = entries
+    kb_row = await session.get(KnowledgeBase, kb.id)
+    assert kb_row is not None
+    kb_row.retrieval_profile_json = {"top_k": 64}
+    await session.commit()
+
+    search = _fake_search(_chunk_result([]))
+    service = KnowledgeRetrievalTestService(session, _actor(), search=search, settings_factory=lambda: _settings())
+
+    payload = await _execute(service, revision, profile_id="configured")
+
+    assert payload["retrieval_profile"] == {"top_k": 64}
+    assert search.calls[0]["applied"]["top_k"] == 64
+    await session.refresh(revision)
+    assert revision.manifest_json[0]["knowledge_profiles"]["retrieval"] == {"top_k": 42}
+
+
+@pytest.mark.asyncio
+async def test_execute_archives_timeout_state_when_provider_exceeds_budget(store, tmp_path) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    revision = await _publish_revision(session, factory, tmp_path, kb, documents=1)
+
+    async def slow_search(query, **kwargs):
+        await asyncio.sleep(0.02)
+        return _chunk_result([])
+
+    service = KnowledgeRetrievalTestService(session, _actor(), search=slow_search, settings_factory=lambda: _settings(timeout=0.001))
+
+    payload = await _execute(service, revision)
+
+    assert payload["result_status"] == "provider_error"
+    assert payload["error_code"] == "timeout"
+    record = await session.get(KnowledgeRetrievalTest, payload["id"])
+    assert record is not None
+    assert record.applied_parameters_json["timeout"] == 0.001
 
 
 @pytest.mark.asyncio

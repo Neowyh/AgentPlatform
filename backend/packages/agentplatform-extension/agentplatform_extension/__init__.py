@@ -17,6 +17,7 @@ from agentplatform_extension.evidence import (
     EvidenceLifecycleContributor,
     ResourceSnapshotRef,
     RunEvidenceBinding,
+    RuntimeEvidenceHooks,
     bind_run_evidence,
     build_run_evidence_envelope,
     current_run_evidence,
@@ -38,6 +39,7 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
     never contain caller credentials or private owner state.
     """
 
+    registry.runtime_evidence(RuntimeEvidenceHooks())
     authorization = config.get("authorization")
     if config.get("dynamic_context") is True:
         registry.task_lifecycle(EvidenceLifecycleContributor())
@@ -67,6 +69,7 @@ __all__ = [
     "EvidenceLifecycleContributor",
     "NetworkPolicy",
     "ResourceSnapshotRef",
+    "RuntimeEvidenceHooks",
     "RunEvidenceBinding",
     "build_run_evidence_envelope",
     "bind_run_evidence",

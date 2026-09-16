@@ -1346,7 +1346,7 @@ class SubagentExecutor:
         execution_context: dict[str, Any] | None = None
         from deerflow_extension_api import ExtensionData, TaskInfo
 
-        from deerflow.extensions import get_loaded_extensions
+        from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
         from deerflow.extensions.notify import (
             lead_task_id,
             notify_task_start,
@@ -1408,11 +1408,8 @@ class SubagentExecutor:
             return _harvest_bash_executions(final_state)
 
         def current_retrieval_receipts() -> list[dict[str, Any]] | None:
-            try:
-                from agentplatform_extension.evidence import current_run_evidence
-            except ImportError:
-                return None
-            binding = current_run_evidence()
+            hooks = resolve_runtime_evidence_hooks(loaded_extensions)
+            binding = hooks.current_run_evidence() if hooks is not None else None
             if binding is None:
                 return None
             return [dict(receipt) for receipt in binding.retrieval_receipts]

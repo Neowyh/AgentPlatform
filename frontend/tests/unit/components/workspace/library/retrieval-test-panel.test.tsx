@@ -34,6 +34,7 @@ vi.mock("@/core/i18n/hooks", () => ({
           appliedParameters: "Applied parameters",
           profileLabel: "Profile",
           frozenProfile: "Frozen revision profile",
+          configuredProfile: "Current configured profile",
         },
       },
     },
@@ -233,6 +234,26 @@ describe("RetrievalTestPanel", () => {
     await renderPanel();
     await user.type(screen.getByLabelText("Question"), "hello{Enter}");
     expect(runRetrievalTest).toHaveBeenCalledTimes(1);
+  });
+
+  test("allows selecting the current configured profile", async () => {
+    const user = userEvent.setup();
+    await renderPanel();
+    await user.selectOptions(screen.getByLabelText("Profile"), "configured");
+    await user.type(screen.getByLabelText("Question"), "hello");
+    await user.click(screen.getByRole("button", { name: "Run test" }));
+
+    expect(runRetrievalTest).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "configured" }),
+    );
+  });
+
+  test("does not show frozen profile details for the configured profile", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderPanel();
+    await user.selectOptions(screen.getByLabelText("Profile"), "configured");
+
+    expect(container.textContent).not.toContain('"top_k":42');
   });
 
   test("renders hits with rank, document, page, scores, and plain-text snippet", async () => {

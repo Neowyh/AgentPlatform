@@ -9,7 +9,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from typing import Any
 
-from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome
+from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome, set_runtime_evidence_hooks
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _KNOWLEDGE_CITATION_RE = re.compile(r"\[citation:[^\]]+\]\(evidence://([A-Za-z0-9_-]+)\)")
@@ -166,6 +166,43 @@ def bind_run_evidence(binding: RunEvidenceBinding) -> Iterator[None]:
 def current_run_evidence() -> RunEvidenceBinding | None:
     """Return the binding inherited by the current async task, if any."""
     return _run_evidence_binding.get()
+
+
+class RuntimeEvidenceHooks:
+    """Adapt AgentPlatform evidence functions to the DeerFlow host contract."""
+
+    def current_run_evidence(self) -> RunEvidenceBinding | None:
+        return current_run_evidence()
+
+    def record_subagent_verification(self, verification: Mapping[str, Any]) -> None:
+        record_subagent_verification(verification)
+
+    def record_tool_receipt(self, receipt: Mapping[str, Any]) -> None:
+        record_tool_receipt(receipt)
+
+    def record_retrieval_citations(self, content: str) -> None:
+        record_retrieval_citations(content)
+
+    def bind_delegation_evidence(self, parent_tool_receipt_id: str, child_agent_id: str | None = None):
+        return bind_delegation_evidence(DelegationEvidenceContext(parent_tool_receipt_id, child_agent_id))
+
+    def record_delegated_retrieval_receipts(
+        self,
+        receipts: Iterable[Mapping[str, Any]],
+        *,
+        parent_tool_receipt_id: str,
+        child_task_id: str,
+        child_agent_id: str | None = None,
+    ) -> int:
+        return record_delegated_retrieval_receipts(
+            receipts,
+            parent_tool_receipt_id=parent_tool_receipt_id,
+            child_task_id=child_task_id,
+            child_agent_id=child_agent_id,
+        )
+
+
+set_runtime_evidence_hooks(RuntimeEvidenceHooks())
 
 
 def _append_evidence_item(field: str, item: Mapping[str, Any]) -> None:

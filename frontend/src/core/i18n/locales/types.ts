@@ -1474,6 +1474,7 @@ export interface Translations {
       revisionLabel: string;
       profileLabel: string;
       frozenProfile: string;
+      configuredProfile: string;
       questionLabel: string;
       questionPlaceholder: string;
       topKLabel: string;
