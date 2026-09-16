@@ -580,6 +580,11 @@ async def _run_publish_build(
                 )
                 return
 
+            # Re-read policy/profile evidence after the provider build and
+            # immediately before the atomic LIVE pointer update. A policy
+            # change during the build must invalidate this publish attempt.
+            await _require_eval_evidence(session, resource_id, revision)
+
             prior = (
                 (
                     await session.execute(

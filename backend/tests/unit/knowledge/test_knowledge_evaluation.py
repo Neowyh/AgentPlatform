@@ -15,7 +15,7 @@ from app.agentplatform.knowledge.evaluation import (
     compare_evaluation_runs,
     require_evaluation_execution_access,
 )
-from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
+from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeEvaluationPolicy, KnowledgeRevision
 from app.agentplatform.resource_models import Resource
 from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourcePermissionDenied
 from deerflow.persistence.base import Base
@@ -143,6 +143,44 @@ async def test_start_freezes_selected_case_and_profile_for_historical_reads(eval
     historical = await service.get_run(kb.id, run.id)
     assert historical["results"] == []
     assert historical["revision_id"] == payload["revision_id"]
+
+
+@pytest.mark.asyncio
+async def test_start_accepts_policy_case_ids_in_a_different_input_order(evaluation_session: AsyncSession) -> None:
+    kb, first_case = await _evaluation_fixture(evaluation_session)
+    second_case = KnowledgeEvalCase(
+        id=str(uuid.uuid4()),
+        knowledge_base_id=kb.id,
+        question="What else is in the guide?",
+        expected_document_ids_json=first_case.expected_document_ids_json,
+        tags_json=[],
+        content_hash=eval_case_content_hash("What else is in the guide?", first_case.expected_document_ids_json, []),
+        version_no=1,
+        created_by="owner",
+    )
+    evaluation_session.add(second_case)
+    evaluation_session.add(
+        KnowledgeEvaluationPolicy(
+            knowledge_base_id=kb.id,
+            version=1,
+            profile_id="frozen",
+            top_k=8,
+            case_ids_json=[second_case.id, first_case.id],
+            min_expected_hit_rate=0.5,
+            min_recall_at_k=0.5,
+            min_mrr_at_k=0.5,
+            updated_by="owner",
+        )
+    )
+    await evaluation_session.commit()
+
+    revision = (await evaluation_session.execute(select(KnowledgeRevision))).scalar_one()
+    payload = await KnowledgeEvaluationService(evaluation_session, _owner()).start(kb.id, revision.id)
+    run = await evaluation_session.get(KnowledgeEvalRun, payload["id"])
+
+    assert run is not None
+    assert run.policy_version == 1
+    assert set(run.case_ids_json) == {first_case.id, second_case.id}
 
 
 @pytest.mark.asyncio

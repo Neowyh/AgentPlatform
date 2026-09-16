@@ -14,7 +14,7 @@ from agentplatform_extension.knowledge.retrieval_receipts import project_retriev
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agentplatform.knowledge.eval_gate import load_eval_policy, policy_payload
+from app.agentplatform.knowledge.eval_gate import load_eval_policy, normalize_case_ids, policy_payload, retrieval_profile_for_revision
 from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeEvalCase, KnowledgeEvalComparison, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
 from app.agentplatform.knowledge.retrieval_test import (
@@ -163,13 +163,7 @@ class KnowledgeEvaluationService:
         if profile_id not in {"frozen", "configured"}:
             raise KnowledgeEvaluationValidationError("unsupported retrieval profile")
         kb = await self.session.get(KnowledgeBase, revision.knowledge_base_id)
-        if profile_id == "configured":
-            return dict(kb.retrieval_profile_json or {}) if kb and isinstance(kb.retrieval_profile_json, dict) else {}
-        profiles = next((entry.get("knowledge_profiles") for entry in revision.manifest_json or [] if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)), None)
-        retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
-        if isinstance(retrieval, dict):
-            return dict(retrieval)
-        return dict(kb.retrieval_profile_json or {}) if kb and isinstance(kb.retrieval_profile_json, dict) else {}
+        return retrieval_profile_for_revision(kb.retrieval_profile_json if kb and isinstance(kb.retrieval_profile_json, dict) else {}, revision.manifest_json, profile_id)
 
     async def start(self, resource_id: str, revision_id: str, *, profile_id: str = "frozen", top_k: int = DEFAULT_TEST_TOP_K, case_ids: list[str] | None = None) -> dict[str, object]:
         resource = await self._kb(resource_id, use=True)
@@ -201,7 +195,7 @@ class KnowledgeEvaluationService:
             raise KnowledgeEvaluationValidationError(f"unsupported retrieval profile parameters: {', '.join(sorted(unsupported))}")
         policy = await load_eval_policy(self.session, resource_id)
         frozen_policy = policy_payload(policy)
-        if frozen_policy is not None and (profile_id != policy.profile_id or top_k != policy.top_k or [item["case_id"] for item in snapshot] != list(policy.case_ids_json or [])):
+        if frozen_policy is not None and (profile_id != policy.profile_id or top_k != policy.top_k or normalize_case_ids([item["case_id"] for item in snapshot]) != normalize_case_ids(policy.case_ids_json or [])):
             # Evaluation remains allowed for exploration, but it cannot be
             # mistaken for publish evidence for a different contract.
             frozen_policy = None

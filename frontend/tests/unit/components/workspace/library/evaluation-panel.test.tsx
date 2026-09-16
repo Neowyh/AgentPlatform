@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   comparisonStart: vi.fn(),
   comparisonData: undefined as unknown,
+  evaluations: [] as unknown[],
   savePolicy: vi.fn(),
 }));
 
@@ -19,7 +20,7 @@ vi.mock("@/core/library", () => ({
       { id: "case-2", question: "Why?" },
     ],
   }),
-  useKnowledgeEvaluations: () => ({ evaluations: [] }),
+  useKnowledgeEvaluations: () => ({ evaluations: mocks.evaluations }),
   useKnowledgeEvaluation: () => ({ data: undefined }),
   useStartKnowledgeEvaluation: () => ({
     mutateAsync: mocks.start,
@@ -150,5 +151,33 @@ describe("EvaluationPanel", () => {
     expect(
       screen.getByText(/does not establish single-variable causality/),
     ).toBeInTheDocument();
+  });
+
+  test("explains rejected qualification and the revision lifecycle state", () => {
+    mocks.evaluations = [
+      {
+        id: "run-1",
+        revision_id: "rev-1",
+        revision_no: 3,
+        top_k: 8,
+        status: "completed",
+        completed_cases: 2,
+        total_cases: 2,
+        aggregate: { denominator: 2, recall_at_k: 0.25 },
+        qualification_status: "rejected",
+        qualification_reason:
+          "evaluation did not meet the versioned publish thresholds",
+      },
+    ];
+
+    render(<EvaluationPanel knowledgeBaseId="kb-1" canModify />);
+
+    expect(screen.getByText(/gate rejected/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /evaluation did not meet the versioned publish thresholds/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/revision published/)).toBeInTheDocument();
   });
 });

@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.agentplatform.knowledge.eval_gate import policy_payload
+from app.agentplatform.knowledge.eval_gate import normalize_case_ids, policy_payload
 from app.agentplatform.knowledge.evaluation import KnowledgeEvaluationService, KnowledgeEvaluationValidationError
 from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvaluationPolicy
 from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, KnowledgeRetrievalTestValidationError, RetrievalTestUnavailable
@@ -91,7 +91,7 @@ async def put_evaluation_policy(resource_id: str, body: EvaluationPolicyRequest,
         if resource.type != "knowledge_base":
             raise ResourceConflict("KnowledgeBase not found")
         service.assert_modify(resource)
-        case_ids = list(dict.fromkeys(body.case_ids))
+        case_ids = normalize_case_ids(body.case_ids)
         count = await session.scalar(select(func.count()).select_from(KnowledgeEvalCase).where(KnowledgeEvalCase.knowledge_base_id == resource_id, KnowledgeEvalCase.id.in_(case_ids)))
         if int(count or 0) != len(case_ids):
             raise KnowledgeEvaluationValidationError("one or more evaluation cases were not found")

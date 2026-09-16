@@ -24,7 +24,7 @@ def policy_payload(policy: KnowledgeEvaluationPolicy | None) -> dict | None:
         "version": policy.version,
         "profile_id": policy.profile_id,
         "top_k": policy.top_k,
-        "case_ids": list(policy.case_ids_json or []),
+        "case_ids": normalize_case_ids(policy.case_ids_json or []),
         "min_expected_hit_rate": policy.min_expected_hit_rate,
         "min_recall_at_k": policy.min_recall_at_k,
         "min_mrr_at_k": policy.min_mrr_at_k,
@@ -32,7 +32,24 @@ def policy_payload(policy: KnowledgeEvaluationPolicy | None) -> dict | None:
 
 
 async def load_eval_policy(session: AsyncSession, knowledge_base_id: str) -> KnowledgeEvaluationPolicy | None:
-    return await session.get(KnowledgeEvaluationPolicy, knowledge_base_id)
+    result = await session.execute(select(KnowledgeEvaluationPolicy).where(KnowledgeEvaluationPolicy.knowledge_base_id == knowledge_base_id).execution_options(populate_existing=True))
+    return result.scalar_one_or_none()
+
+
+def normalize_case_ids(case_ids: list[str]) -> list[str]:
+    """Treat a policy's case set as an order-independent, stable identity."""
+    return sorted(set(case_ids))
+
+
+def retrieval_profile_for_revision(retrieval_profile: dict | None, manifest_json: list | None, profile_id: str) -> dict:
+    if profile_id == "configured":
+        return dict(retrieval_profile or {})
+    profiles = next(
+        (entry.get("knowledge_profiles") for entry in manifest_json or [] if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
+        None,
+    )
+    retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
+    return dict(retrieval) if isinstance(retrieval, dict) else dict(retrieval_profile or {})
 
 
 def _profile_hash(profile: object) -> str:
@@ -41,18 +58,11 @@ def _profile_hash(profile: object) -> str:
 
 async def load_eval_evidence(session: AsyncSession, knowledge_base_id: str, manifest_hash: str, *, revision_id: str, policy: KnowledgeEvaluationPolicy) -> dict | None:
     """Return only a completed run matching every current publish identity."""
-    revision = await session.get(KnowledgeRevision, revision_id)
-    knowledge_base = await session.get(KnowledgeBase, knowledge_base_id)
+    revision = (await session.execute(select(KnowledgeRevision).where(KnowledgeRevision.id == revision_id).execution_options(populate_existing=True))).scalar_one_or_none()
+    knowledge_base = (await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id == knowledge_base_id).execution_options(populate_existing=True))).scalar_one_or_none()
     if revision is None or knowledge_base is None or revision.knowledge_base_id != knowledge_base_id:
         return None
-    if policy.profile_id == "configured":
-        profile = knowledge_base.retrieval_profile_json or {}
-    else:
-        profiles = next(
-            (entry.get("knowledge_profiles") for entry in revision.manifest_json or [] if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
-            None,
-        )
-        profile = profiles.get("retrieval") if isinstance(profiles, dict) else knowledge_base.retrieval_profile_json or {}
+    profile = retrieval_profile_for_revision(knowledge_base.retrieval_profile_json, revision.manifest_json, policy.profile_id)
     expected_profile_hash = _profile_hash(profile)
     result = await session.execute(
         select(KnowledgeEvalRun)
@@ -69,7 +79,7 @@ async def load_eval_evidence(session: AsyncSession, knowledge_base_id: str, mani
         .order_by(KnowledgeEvalRun.finished_at.desc(), KnowledgeEvalRun.id.desc())
     )
     for run in result.scalars():
-        if run.policy_json != policy_payload(policy) or list(run.case_ids_json or []) != list(policy.case_ids_json or []):
+        if run.policy_json != policy_payload(policy) or normalize_case_ids(run.case_ids_json or []) != normalize_case_ids(policy.case_ids_json or []):
             continue
         return {"run_id": run.id, "policy_version": policy.version, "profile_id": run.profile_id}
     return None

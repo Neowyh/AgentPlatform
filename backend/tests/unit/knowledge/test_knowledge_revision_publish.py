@@ -471,6 +471,45 @@ async def test_duplicate_and_concurrent_publish_are_rejected(
 
 
 @pytest.mark.asyncio
+async def test_execute_publish_rechecks_evaluation_before_switching_live_pointer(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    provider = FakePublishProvider()
+    requested = await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+
+    checks = 0
+
+    async def gate(*args, **kwargs) -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise ResourceConflict("evaluation policy changed during publish")
+
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions._require_eval_evidence", gate)
+    await execute_publish(
+        factory,
+        resource_id=kb.id,
+        revision_id=str(candidate["id"]),
+        actor_id="owner",
+        provider=provider,
+        execution_token=requested["publish_execution_token"],
+        poll_interval=0,
+        parse_timeout=5,
+    )
+
+    revision = await _revision(factory, str(candidate["id"]))
+    assert checks == 2
+    assert revision.status == "failed"
+
+
+@pytest.mark.asyncio
 async def test_publish_gates_reject_before_side_effects(
     store: tuple[AsyncSession, async_sessionmaker],
     tmp_path,

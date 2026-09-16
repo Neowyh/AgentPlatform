@@ -426,31 +426,40 @@ export function EvaluationPanel({
         )}
       </div>
       <div className="space-y-2">
-        {evaluations.map((run) => (
-          <button
-            type="button"
-            key={run.id}
-            className={`w-full rounded border p-3 text-left ${selectedId === run.id ? "border-primary" : ""}`}
-            onClick={() => setSelectedId(run.id)}
-          >
-            <div className="flex justify-between">
-              <span>
-                v{run.revision_no} · K{run.top_k}
-              </span>
-              <span>{run.status}</span>
-            </div>
-            <div className="type-supporting text-muted-foreground">
-              {run.completed_cases}/{run.total_cases} cases · denominator{" "}
-              {run.aggregate.denominator ?? "—"} · Recall@K{" "}
-              {run.aggregate.recall_at_k == null
-                ? "—"
-                : run.aggregate.recall_at_k.toFixed(3)}
-              {run.qualification_status
-                ? ` · gate ${run.qualification_status}`
-                : ""}
-            </div>
-          </button>
-        ))}
+        {evaluations.map((run) => {
+          const revision = revisions.find(
+            (item) => item.id === run.revision_id,
+          );
+          return (
+            <button
+              type="button"
+              key={run.id}
+              className={`w-full rounded border p-3 text-left ${selectedId === run.id ? "border-primary" : ""}`}
+              onClick={() => setSelectedId(run.id)}
+            >
+              <div className="flex justify-between">
+                <span>
+                  v{run.revision_no} · K{run.top_k}
+                </span>
+                <span>evaluation {run.status}</span>
+              </div>
+              <div className="type-supporting text-muted-foreground">
+                revision {revision?.status ?? "unknown"} · gate{" "}
+                {run.qualification_status ?? "pending"} · {run.completed_cases}/
+                {run.total_cases} cases · denominator{" "}
+                {run.aggregate.denominator ?? "—"} · Recall@K{" "}
+                {run.aggregate.recall_at_k == null
+                  ? "—"
+                  : run.aggregate.recall_at_k.toFixed(3)}
+              </div>
+              {run.qualification_reason ? (
+                <div className="type-supporting text-destructive mt-1">
+                  {run.qualification_reason}
+                </div>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
       {detail.data && (
         <div className="rounded-lg border p-4">
