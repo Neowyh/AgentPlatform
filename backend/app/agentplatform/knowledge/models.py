@@ -292,6 +292,10 @@ class KnowledgeEvalRun(Base):
     manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     profile_id: Mapped[str] = mapped_column(String(32), nullable=False)
     profile_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    policy_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    qualification_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default=text("'pending'"))
+    qualification_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     profile_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     case_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     case_snapshot_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
@@ -314,8 +318,35 @@ class KnowledgeEvalRun(Base):
         CheckConstraint("profile_id in ('frozen','configured')", name="ck_knowledge_eval_runs_profile"),
         CheckConstraint("top_k >= 1", name="ck_knowledge_eval_runs_top_k"),
         CheckConstraint("status in ('queued','running','completed','partial','failed')", name="ck_knowledge_eval_runs_status"),
+        CheckConstraint("qualification_status in ('pending','passed','rejected')", name="ck_knowledge_eval_runs_qualification"),
         Index("ix_knowledge_eval_runs_kb_created", "knowledge_base_id", "created_at"),
         Index("ix_knowledge_eval_runs_status_lease", "status", "lease_until"),
+    )
+
+
+class KnowledgeEvaluationPolicy(Base):
+    """The versioned publish-evaluation contract for one KnowledgeBase."""
+
+    __tablename__ = "knowledge_evaluation_policies"
+
+    knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    profile_id: Mapped[str] = mapped_column(String(32), nullable=False, default="frozen")
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    min_expected_hit_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    min_recall_at_k: Mapped[float] = mapped_column(Float, nullable=False)
+    min_mrr_at_k: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        CheckConstraint("profile_id in ('frozen','configured')", name="ck_knowledge_eval_policies_profile"),
+        CheckConstraint("top_k >= 1", name="ck_knowledge_eval_policies_top_k"),
+        CheckConstraint("min_expected_hit_rate >= 0 and min_expected_hit_rate <= 1", name="ck_knowledge_eval_policies_hit_rate"),
+        CheckConstraint("min_recall_at_k >= 0 and min_recall_at_k <= 1", name="ck_knowledge_eval_policies_recall"),
+        CheckConstraint("min_mrr_at_k >= 0 and min_mrr_at_k <= 1", name="ck_knowledge_eval_policies_mrr"),
     )
 
 

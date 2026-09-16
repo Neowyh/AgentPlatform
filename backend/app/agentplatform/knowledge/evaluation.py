@@ -14,6 +14,7 @@ from agentplatform_extension.knowledge.retrieval_receipts import project_retriev
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agentplatform.knowledge.eval_gate import load_eval_policy, policy_payload
 from app.agentplatform.knowledge.integrity import UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeEvalCase, KnowledgeEvalComparison, KnowledgeEvalResult, KnowledgeEvalRun, KnowledgeRevision
 from app.agentplatform.knowledge.retrieval_test import (
@@ -95,6 +96,10 @@ def _run_payload(run: KnowledgeEvalRun) -> dict[str, object]:
         "manifest_hash": run.manifest_hash,
         "profile_id": run.profile_id,
         "profile_hash": run.profile_hash,
+        "policy_version": run.policy_version,
+        "policy": dict(run.policy_json or {}) if run.policy_json else None,
+        "qualification_status": run.qualification_status,
+        "qualification_reason": run.qualification_reason,
         "profile": dict(run.profile_json or {}),
         "top_k": run.top_k,
         "metrics_version": run.metrics_version,
@@ -194,6 +199,12 @@ class KnowledgeEvaluationService:
         unsupported = set(profile) - {"similarity_threshold", "vector_similarity_weight", "top_k"}
         if unsupported:
             raise KnowledgeEvaluationValidationError(f"unsupported retrieval profile parameters: {', '.join(sorted(unsupported))}")
+        policy = await load_eval_policy(self.session, resource_id)
+        frozen_policy = policy_payload(policy)
+        if frozen_policy is not None and (profile_id != policy.profile_id or top_k != policy.top_k or [item["case_id"] for item in snapshot] != list(policy.case_ids_json or [])):
+            # Evaluation remains allowed for exploration, but it cannot be
+            # mistaken for publish evidence for a different contract.
+            frozen_policy = None
         run = KnowledgeEvalRun(
             id=str(uuid.uuid4()),
             knowledge_base_id=resource_id,
@@ -202,6 +213,8 @@ class KnowledgeEvaluationService:
             manifest_hash=revision.manifest_hash,
             profile_id=profile_id,
             profile_hash=_hash(profile),
+            policy_version=policy.version if frozen_policy is not None else None,
+            policy_json=frozen_policy,
             profile_json=profile,
             case_ids_json=[item["case_id"] for item in snapshot],
             case_snapshot_json=snapshot,
@@ -342,6 +355,20 @@ class KnowledgeEvaluationService:
                 "top_k": run.top_k,
                 "metrics_version": run.metrics_version,
             }
+            policy = run.policy_json or {}
+            metrics = run.aggregate_json
+            qualified = (
+                (
+                    run.failed_cases == 0
+                    and metrics["denominator"] == run.total_cases
+                    and all(metrics.get(key) is not None for key in ("expected_hit_rate", "recall_at_k", "mrr_at_k"))
+                    and all(float(metrics[key]) >= float(policy[key]) for key in ("min_expected_hit_rate", "min_recall_at_k", "min_mrr_at_k"))
+                )
+                if policy
+                else False
+            )
+            run.qualification_status = "passed" if qualified else "rejected"
+            run.qualification_reason = None if qualified else ("evaluation did not meet the versioned publish thresholds" if policy else "run was not created for the current publish policy")
             run.finished_at = datetime.now(UTC)
             run.lease_owner = run.lease_until = None
         else:
@@ -399,6 +426,8 @@ class KnowledgeEvaluationService:
             case_snapshot_json=list(run.case_snapshot_json or []),
             top_k=run.top_k,
             metrics_version=run.metrics_version,
+            policy_version=run.policy_version,
+            policy_json=dict(run.policy_json or {}) if run.policy_json else None,
             status="queued",
             total_cases=run.total_cases,
             created_by=self.resource_service.actor.user_id,

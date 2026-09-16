@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   useKnowledgeEvaluation,
@@ -11,6 +11,8 @@ import {
   useStartKnowledgeEvaluation,
   useKnowledgeEvaluationComparison,
   useStartKnowledgeEvaluationComparison,
+  useKnowledgeEvaluationPolicy,
+  useUpdateKnowledgeEvaluationPolicy,
 } from "@/core/library";
 
 export function EvaluationPanel({
@@ -47,6 +49,22 @@ export function EvaluationPanel({
     comparisonId,
   );
   const compare = useStartKnowledgeEvaluationComparison(knowledgeBaseId ?? "");
+  const policy = useKnowledgeEvaluationPolicy(knowledgeBaseId);
+  const savePolicy = useUpdateKnowledgeEvaluationPolicy(knowledgeBaseId ?? "");
+  const [thresholds, setThresholds] = useState({
+    hit: "",
+    recall: "",
+    mrr: "",
+  });
+  useEffect(() => {
+    if (policy.data && !policy.data.configured) return;
+    if (policy.data)
+      setThresholds({
+        hit: String(policy.data.min_expected_hit_rate),
+        recall: String(policy.data.min_recall_at_k),
+        mrr: String(policy.data.min_mrr_at_k),
+      });
+  }, [policy.data]);
   const published = revisions.filter((revision) =>
     ["published", "superseded"].includes(revision.status),
   );
@@ -62,6 +80,79 @@ export function EvaluationPanel({
     );
   return (
     <div className="space-y-4 p-4">
+      <form
+        className="rounded-lg border p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void savePolicy.mutateAsync({
+            profileId,
+            topK,
+            caseIds: selectedCaseIds.length
+              ? selectedCaseIds
+              : evalCases.map((item) => item.id),
+            minExpectedHitRate: Number(thresholds.hit),
+            minRecallAtK: Number(thresholds.recall),
+            minMrrAtK: Number(thresholds.mrr),
+          });
+        }}
+      >
+        <h2 className="font-semibold">Publish evaluation gate</h2>
+        <p className="type-supporting text-muted-foreground">
+          Set explicit lower bounds and the case set required for publishing.
+          Saving creates a new policy version.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          {(
+            [
+              ["Expected hit", "hit"],
+              ["Recall@K", "recall"],
+              ["MRR@K", "mrr"],
+            ] as const
+          ).map(([label, key]) => (
+            <label className="type-supporting" key={key}>
+              {label}
+              <input
+                aria-label={label}
+                className="mt-1 block w-24 rounded border p-2"
+                type="number"
+                min="0"
+                max="1"
+                step="0.001"
+                required
+                value={thresholds[key]}
+                onChange={(event) =>
+                  setThresholds((current) => ({
+                    ...current,
+                    [key]: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          ))}
+          <button
+            type="submit"
+            disabled={!canModify || !evalCases.length || savePolicy.isPending}
+            className="bg-primary text-primary-foreground rounded px-3 py-2"
+          >
+            {savePolicy.isPending ? "Saving…" : "Save gate"}
+          </button>
+        </div>
+        {policy.data?.configured ? (
+          <p className="type-supporting text-muted-foreground mt-2">
+            Policy v{policy.data.version} · {policy.data.case_ids.length} cases
+            · profile {policy.data.profile_id} · K{policy.data.top_k}
+          </p>
+        ) : (
+          <p className="type-supporting text-muted-foreground mt-2">
+            No publish policy configured.
+          </p>
+        )}
+        {savePolicy.error ? (
+          <p role="alert" className="text-destructive mt-2">
+            Unable to save the publish policy.
+          </p>
+        ) : null}
+      </form>
       <div className="rounded-lg border p-4">
         <h2 className="font-semibold">Single-profile evaluation</h2>
         <p className="type-supporting text-muted-foreground">
@@ -354,6 +445,9 @@ export function EvaluationPanel({
               {run.aggregate.recall_at_k == null
                 ? "—"
                 : run.aggregate.recall_at_k.toFixed(3)}
+              {run.qualification_status
+                ? ` · gate ${run.qualification_status}`
+                : ""}
             </div>
           </button>
         ))}

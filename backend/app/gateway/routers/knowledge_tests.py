@@ -11,11 +11,15 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.agentplatform.knowledge.eval_gate import policy_payload
 from app.agentplatform.knowledge.evaluation import KnowledgeEvaluationService, KnowledgeEvaluationValidationError
+from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvaluationPolicy
 from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, KnowledgeRetrievalTestValidationError, RetrievalTestUnavailable
 from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resources.service import ResourceConflict, ResourceService
 from app.gateway.audit import record_audit
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers.resources import _factory, _resource_actor, _translate_resource_errors
@@ -53,6 +57,59 @@ class EvaluationComparisonCreateRequest(BaseModel):
     right_profile_id: Literal["frozen", "configured"] = "configured"
     top_k: int = Field(default=8, ge=1, le=20)
     case_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
+class EvaluationPolicyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: Literal["frozen", "configured"] = "frozen"
+    top_k: int = Field(ge=1, le=20)
+    case_ids: list[str] = Field(min_length=1, max_length=1000)
+    min_expected_hit_rate: float = Field(ge=0, le=1)
+    min_recall_at_k: float = Field(ge=0, le=1)
+    min_mrr_at_k: float = Field(ge=0, le=1)
+
+
+@router.get("/{resource_id}/evaluation-policy")
+@_translate_resource_errors
+async def get_evaluation_policy(resource_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> dict[str, Any]:
+    async with _factory()() as session:
+        resource = await ResourceService(session, _resource_actor(current_user)).get_visible(resource_id)
+        if resource.type != "knowledge_base":
+            raise ResourceConflict("KnowledgeBase not found")
+        policy = await session.get(KnowledgeEvaluationPolicy, resource_id)
+        return policy_payload(policy) or {"configured": False}
+
+
+@router.put("/{resource_id}/evaluation-policy")
+@_translate_resource_errors
+async def put_evaluation_policy(resource_id: str, body: EvaluationPolicyRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> dict[str, Any]:
+    async with _factory()() as session:
+        actor = _resource_actor(current_user)
+        service = ResourceService(session, actor)
+        resource = await service.get_visible(resource_id)
+        if resource.type != "knowledge_base":
+            raise ResourceConflict("KnowledgeBase not found")
+        service.assert_modify(resource)
+        case_ids = list(dict.fromkeys(body.case_ids))
+        count = await session.scalar(select(func.count()).select_from(KnowledgeEvalCase).where(KnowledgeEvalCase.knowledge_base_id == resource_id, KnowledgeEvalCase.id.in_(case_ids)))
+        if int(count or 0) != len(case_ids):
+            raise KnowledgeEvaluationValidationError("one or more evaluation cases were not found")
+        policy = await session.get(KnowledgeEvaluationPolicy, resource_id)
+        if policy is None:
+            policy = KnowledgeEvaluationPolicy(knowledge_base_id=resource_id, version=1, updated_by=str(current_user.id))
+            session.add(policy)
+        else:
+            policy.version += 1
+            policy.updated_by = str(current_user.id)
+        policy.profile_id = body.profile_id
+        policy.top_k = body.top_k
+        policy.case_ids_json = case_ids
+        policy.min_expected_hit_rate = body.min_expected_hit_rate
+        policy.min_recall_at_k = body.min_recall_at_k
+        policy.min_mrr_at_k = body.min_mrr_at_k
+        await session.commit()
+        return policy_payload(policy) or {}
 
 
 @router.post("/{resource_id}/retrieval-tests", status_code=201)

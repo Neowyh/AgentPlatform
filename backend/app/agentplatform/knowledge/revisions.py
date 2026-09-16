@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agentplatform.knowledge.eval_gate import eval_required, load_eval_evidence
+from app.agentplatform.knowledge.eval_gate import eval_required, require_publish_evidence
 from app.agentplatform.knowledge.integrity import INTEGRITY_UNVERIFIED, UNUSABLE_INTEGRITY
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeRevision
 from app.agentplatform.knowledge.provider import KnowledgeProvider, KnowledgeProviderError, stable_provider_error
@@ -47,6 +47,20 @@ PUBLISHED_DATASET_NAME_PREFIX = "ideer-kb-"
 # resumable (ticket 02 recoverable-failure discipline).
 _ACTIVE_PUBLISHES: set[str] = set()
 _PUBLISH_OWNER = uuid.uuid4().hex
+
+
+# Kept as a small compatibility seam for callers that used to inject the M4
+# placeholder. Real validation is asynchronous and uses the session below.
+def load_eval_evidence(_resource_id: str, _manifest_hash: str) -> dict | None:
+    return None
+
+
+async def _require_eval_evidence(session: AsyncSession, resource_id: str, revision: KnowledgeRevision) -> None:
+    if not eval_required():
+        return
+    if load_eval_evidence(resource_id, revision.manifest_hash) is not None:
+        return
+    await require_publish_evidence(session, resource_id, revision.id, revision.manifest_hash)
 
 
 def _lease_is_valid(until: datetime | None) -> bool:
@@ -271,8 +285,7 @@ class KnowledgeRevisionService:
             return _revision_payload(revision)
         if revision.status == "ready":
             self._verify_frozen_content(revision)
-            if eval_required() and load_eval_evidence(resource_id, revision.manifest_hash) is None:
-                raise ResourceConflict("Publishing requires evaluation evidence matching this revision")
+            await _require_eval_evidence(self.session, resource_id, revision)
             revision.status = "indexing"
             revision.failure_code = None
             revision.failure_message = None
@@ -287,8 +300,7 @@ class KnowledgeRevisionService:
         if revision.publish_attempt >= MAX_PUBLISH_ATTEMPTS:
             raise ResourceConflict("Publish attempts exhausted for this revision")
         self._verify_frozen_content(revision)
-        if eval_required() and load_eval_evidence(resource_id, revision.manifest_hash) is None:
-            raise ResourceConflict("Publishing requires evaluation evidence matching this revision")
+        await _require_eval_evidence(self.session, resource_id, revision)
 
         revision.status = "indexing"
         revision.publish_attempt += 1
@@ -441,6 +453,8 @@ async def _run_publish_build(
         entries = list(revision.manifest_json or [])
         base_dir = get_paths().base_dir
         try:
+            if activate:
+                await _require_eval_evidence(session, resource_id, revision)
 
             def renew_lease() -> None:
                 if revision.publish_execution_token != execution_token:

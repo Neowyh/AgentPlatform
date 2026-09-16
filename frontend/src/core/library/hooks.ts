@@ -20,10 +20,12 @@ import {
   startKnowledgeEvaluation,
   startKnowledgeEvaluationComparison,
   getKnowledgeEvaluationComparison,
+  getKnowledgeEvaluationPolicy,
   publishKnowledgeRevision,
   prepareKnowledgeRevision,
   runRetrievalTest,
   updateKnowledgeEvalCase,
+  updateKnowledgeEvaluationPolicy,
   uploadKnowledgeDocument,
   retryKnowledgeDocument,
   rebuildKnowledgeDocumentIndex,
@@ -31,6 +33,7 @@ import {
   editKnowledgeDocument,
 } from "./api";
 import type { RunRetrievalTestRequest } from "./api";
+import type { UpdateKnowledgeEvaluationPolicyRequest } from "./api";
 import type {
   CreateKnowledgeBaseRequest,
   CreateKnowledgeEvalCaseRequest,
@@ -124,6 +127,26 @@ export function useKnowledgeRevisions(resourceId: string | undefined) {
     },
   });
   return { revisions: query.data ?? [], ...query };
+}
+
+export function useKnowledgeEvaluationPolicy(resourceId: string | undefined) {
+  return useQuery({
+    queryKey: ["knowledge-evaluation-policy", resourceId],
+    queryFn: () => getKnowledgeEvaluationPolicy(resourceId!),
+    enabled: Boolean(resourceId),
+  });
+}
+
+export function useUpdateKnowledgeEvaluationPolicy(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateKnowledgeEvaluationPolicyRequest) =>
+      updateKnowledgeEvaluationPolicy(resourceId, request),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-evaluation-policy", resourceId],
+      }),
+  });
 }
 
 export function useKnowledgeRevision(

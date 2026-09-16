@@ -483,6 +483,63 @@ export interface KnowledgeEvaluationRun {
   };
   results?: KnowledgeEvaluationResult[];
   results_total?: number;
+  policy_version?: number | null;
+  policy?: KnowledgeEvaluationPolicy | null;
+  qualification_status?: "pending" | "passed" | "rejected";
+  qualification_reason?: string | null;
+}
+
+export interface KnowledgeEvaluationPolicy {
+  configured?: boolean;
+  version: number;
+  profile_id: "frozen" | "configured";
+  top_k: number;
+  case_ids: string[];
+  min_expected_hit_rate: number;
+  min_recall_at_k: number;
+  min_mrr_at_k: number;
+}
+
+export interface UpdateKnowledgeEvaluationPolicyRequest {
+  profileId: "frozen" | "configured";
+  topK: number;
+  caseIds: string[];
+  minExpectedHitRate: number;
+  minRecallAtK: number;
+  minMrrAtK: number;
+}
+
+export async function getKnowledgeEvaluationPolicy(
+  resourceId: string,
+): Promise<KnowledgeEvaluationPolicy> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-policy`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation policy");
+  return (await res.json()) as KnowledgeEvaluationPolicy;
+}
+
+export async function updateKnowledgeEvaluationPolicy(
+  resourceId: string,
+  request: UpdateKnowledgeEvaluationPolicyRequest,
+): Promise<KnowledgeEvaluationPolicy> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-policy`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile_id: request.profileId,
+        top_k: request.topK,
+        case_ids: request.caseIds,
+        min_expected_hit_rate: request.minExpectedHitRate,
+        min_recall_at_k: request.minRecallAtK,
+        min_mrr_at_k: request.minMrrAtK,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to save evaluation policy");
+  return (await res.json()) as KnowledgeEvaluationPolicy;
 }
 
 export interface StartKnowledgeEvaluationRequest {

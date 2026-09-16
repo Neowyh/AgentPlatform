@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   comparisonStart: vi.fn(),
   comparisonData: undefined as unknown,
+  savePolicy: vi.fn(),
 }));
 
 vi.mock("@/core/library", () => ({
@@ -33,6 +34,12 @@ vi.mock("@/core/library", () => ({
     isPending: false,
   }),
   useKnowledgeEvaluationComparison: () => ({ data: mocks.comparisonData }),
+  useKnowledgeEvaluationPolicy: () => ({ data: { configured: false } }),
+  useUpdateKnowledgeEvaluationPolicy: () => ({
+    mutateAsync: mocks.savePolicy,
+    isPending: false,
+    error: null,
+  }),
 }));
 
 import { EvaluationPanel } from "@/components/workspace/library/evaluation-panel";
