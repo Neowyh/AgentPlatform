@@ -8,6 +8,7 @@ import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
 import { EvalCaseList } from "./eval-case-list";
+import { EvaluationPanel } from "./evaluation-panel";
 import { KnowledgeBaseList } from "./knowledge-base-list";
 import { RetrievalTestPanel } from "./retrieval-test-panel";
 import { RevisionList } from "./revision-list";
@@ -76,6 +77,7 @@ export function LibraryGallery() {
           <TabsTrigger value="retrieval-test">
             {t.library.retrievalTestTab}
           </TabsTrigger>
+          <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
@@ -102,6 +104,13 @@ export function LibraryGallery() {
 
         <TabsContent value="retrieval-test" className="flex-1">
           <RetrievalTestPanel
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
+        </TabsContent>
+
+        <TabsContent value="evaluation" className="flex-1">
+          <EvaluationPanel
             knowledgeBaseId={selectedId}
             canModify={selectedKnowledgeBase?.can_modify}
           />

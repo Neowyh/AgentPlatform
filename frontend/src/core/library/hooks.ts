@@ -14,6 +14,10 @@ import {
   listKnowledgeEvalCases,
   listKnowledgeRevisions,
   listRetrievalTests,
+  listKnowledgeEvaluations,
+  getKnowledgeEvaluation,
+  retryKnowledgeEvaluation,
+  startKnowledgeEvaluation,
   publishKnowledgeRevision,
   prepareKnowledgeRevision,
   runRetrievalTest,
@@ -311,6 +315,59 @@ export function useRunRetrievalTest(resourceId: string) {
     onSuccess: () =>
       void queryClient.invalidateQueries({
         queryKey: ["knowledge-retrieval-tests", resourceId],
+      }),
+  });
+}
+
+export function useKnowledgeEvaluations(resourceId: string | undefined) {
+  const query = useQuery({
+    queryKey: ["knowledge-evaluations", resourceId],
+    queryFn: () => listKnowledgeEvaluations(resourceId!),
+    enabled: Boolean(resourceId),
+    refetchInterval: (current) =>
+      current.state.data?.some(
+        (run) => run.status === "queued" || run.status === "running",
+      )
+        ? 2000
+        : false,
+  });
+  return { evaluations: query.data ?? [], ...query };
+}
+
+export function useKnowledgeEvaluation(
+  resourceId: string | undefined,
+  runId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["knowledge-evaluations", resourceId, runId],
+    queryFn: () => getKnowledgeEvaluation(resourceId!, runId!),
+    enabled: Boolean(resourceId && runId),
+    refetchInterval: (current) =>
+      current.state.data?.status === "queued" ||
+      current.state.data?.status === "running"
+        ? 2000
+        : false,
+  });
+}
+
+export function useStartKnowledgeEvaluation(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: startKnowledgeEvaluation.bind(null, resourceId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-evaluations", resourceId],
+      }),
+  });
+}
+
+export function useRetryKnowledgeEvaluation(resourceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => retryKnowledgeEvaluation(resourceId, runId),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ["knowledge-evaluations", resourceId],
       }),
   });
 }

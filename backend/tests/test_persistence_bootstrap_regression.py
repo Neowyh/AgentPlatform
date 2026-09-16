@@ -111,7 +111,7 @@ async def test_legacy_database_recovers_token_usage_column(tmp_path: Path) -> No
             cols = {row[1] for row in raw.execute("PRAGMA table_info(runs)").fetchall()}
             assert "token_usage_by_model" in cols
             version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
-            assert version_row[0] == "20260915_knowledge_retrieval_tests"
+        assert version_row[0] == "20260916_knowledge_evaluation"
 
         # And the read path that originally 500'd must now succeed.
         sf = get_session_factory()

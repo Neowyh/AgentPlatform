@@ -11,7 +11,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import or_, select, update
 
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
-from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument
+from app.agentplatform.knowledge.evaluation import KnowledgeEvaluationService
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeEvalRun
 from app.agentplatform.knowledge.ragflow import configured_ragflow_provider
 from app.agentplatform.resource_models import Resource
 from app.agentplatform.resources.service import ResourceAction, ResourceActor
@@ -56,6 +57,15 @@ class KnowledgeWorker:
         if factory is None:
             return
         async with factory() as session:
+            evaluation = (await session.execute(select(KnowledgeEvalRun.id).where(KnowledgeEvalRun.status.in_(["queued", "running"])).order_by(KnowledgeEvalRun.created_at).limit(1))).scalar_one_or_none()
+            if evaluation:
+                run = await session.get(KnowledgeEvalRun, evaluation)
+                if run is not None:
+                    resource = await session.get(Resource, run.knowledge_base_id)
+                    if resource is not None:
+                        actor = ResourceActor(user_id=str(run.created_by), department_id=None, role="user", permissions=frozenset({ResourceAction.READ, ResourceAction.USE, ResourceAction.WRITE}))
+                        await KnowledgeEvaluationService(session, actor).process_run(run.id, owner=self._owner)
+                        return
             if provider is None:
                 rows = list((await session.execute(select(KnowledgeBase).where(KnowledgeBase.initialization_status == "initializing"))).scalars())
                 for binding in rows:

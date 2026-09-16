@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.agentplatform.knowledge.evaluation import KnowledgeEvaluationService, KnowledgeEvaluationValidationError
 from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, KnowledgeRetrievalTestValidationError, RetrievalTestUnavailable
 from app.agentplatform.rbac_models import UserModel
 from app.gateway.audit import record_audit
@@ -32,6 +33,15 @@ class RetrievalTestCreateRequest(BaseModel):
     profile_id: Literal["frozen", "configured"] = "frozen"
     query: str = Field(min_length=1, max_length=500)
     top_k: int | None = Field(default=None, ge=1, le=20)
+
+
+class EvaluationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: str = Field(min_length=1, max_length=36)
+    profile_id: Literal["frozen", "configured"] = "frozen"
+    top_k: int = Field(default=8, ge=1, le=20)
+    case_ids: list[str] | None = Field(default=None, max_length=1000)
 
 
 @router.post("/{resource_id}/retrieval-tests", status_code=201)
@@ -94,3 +104,65 @@ async def get_retrieval_test(
     """Read one archived retrieval test after rechecking access."""
     async with _factory()() as session:
         return await KnowledgeRetrievalTestService(session, _resource_actor(current_user)).get_test(resource_id, test_id)
+
+
+@router.post("/{resource_id}/evaluations", status_code=202)
+@_translate_resource_errors
+async def create_evaluation(
+    resource_id: str,
+    body: EvaluationCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Freeze and enqueue one bounded profile evaluation."""
+    async with _factory()() as session:
+        try:
+            payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).start(
+                resource_id,
+                body.revision_id,
+                profile_id=body.profile_id,
+                top_k=body.top_k,
+                case_ids=body.case_ids,
+            )
+            await session.commit()
+        except KnowledgeEvaluationValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_evaluation", "message": str(exc)}) from exc
+    await record_audit(str(current_user.id), "knowledge_evaluation_started", "knowledge_base", resource_id, {"run_id": payload["id"], "revision_id": payload["revision_id"]})
+    return payload
+
+
+@router.get("/{resource_id}/evaluations")
+@_translate_resource_errors
+async def list_evaluations(
+    resource_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).list_runs(resource_id, offset=offset, limit=limit)
+
+
+@router.get("/{resource_id}/evaluations/{run_id}")
+@_translate_resource_errors
+async def get_evaluation(
+    resource_id: str,
+    run_id: str,
+    result_offset: int = Query(default=0, ge=0),
+    result_limit: int = Query(default=20, ge=1, le=100),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).get_run(resource_id, run_id, result_offset=result_offset, result_limit=result_limit)
+
+
+@router.post("/{resource_id}/evaluations/{run_id}/retry", status_code=202)
+@_translate_resource_errors
+async def retry_evaluation(
+    resource_id: str,
+    run_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).retry(resource_id, run_id)
+        await session.commit()
+    return payload

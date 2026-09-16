@@ -442,6 +442,109 @@ export interface RunRetrievalTestRequest {
   topK?: number;
 }
 
+export interface KnowledgeEvaluationResult {
+  id: string;
+  run_id: string;
+  case_id: string;
+  case_version_no: number;
+  case_content_hash: string;
+  query: string;
+  expected_document_ids: string[];
+  status: "success" | "empty_hit" | "provider_error" | "invalid";
+  error_code: string | null;
+  ranked_items: RetrievalTestItem[];
+  expected_hit: boolean;
+  recall_at_k: number | null;
+  mrr_at_k: number | null;
+}
+
+export interface KnowledgeEvaluationRun {
+  id: string;
+  resource_id: string;
+  revision_id: string;
+  revision_no: number;
+  manifest_hash: string;
+  profile_id: "frozen" | "configured";
+  profile_hash: string;
+  profile: Record<string, unknown>;
+  top_k: number;
+  metrics_version: string;
+  status: "queued" | "running" | "completed" | "partial" | "failed";
+  total_cases: number;
+  completed_cases: number;
+  failed_cases: number;
+  aggregate: {
+    denominator?: number;
+    expected_hit_rate?: number | null;
+    recall_at_k?: number | null;
+    mrr_at_k?: number | null;
+  };
+  results?: KnowledgeEvaluationResult[];
+  results_total?: number;
+}
+
+export interface StartKnowledgeEvaluationRequest {
+  revisionId: string;
+  profileId?: "frozen" | "configured";
+  topK?: number;
+  caseIds?: string[];
+}
+
+export async function startKnowledgeEvaluation(
+  resourceId: string,
+  request: StartKnowledgeEvaluationRequest,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        revision_id: request.revisionId,
+        profile_id: request.profileId ?? "frozen",
+        top_k: request.topK ?? 8,
+        ...(request.caseIds ? { case_ids: request.caseIds } : {}),
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to start evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function listKnowledgeEvaluations(
+  resourceId: string,
+): Promise<KnowledgeEvaluationRun[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations?limit=100`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluations");
+  return ((await res.json()) as { items: KnowledgeEvaluationRun[] }).items;
+}
+
+export async function getKnowledgeEvaluation(
+  resourceId: string,
+  runId: string,
+  resultOffset = 0,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations/${encodeURIComponent(runId)}?result_offset=${resultOffset}&result_limit=100`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function retryKnowledgeEvaluation(
+  resourceId: string,
+  runId: string,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations/${encodeURIComponent(runId)}/retry`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to retry evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
 /** Access to the KnowledgeBase or archived record was lost (403/404). */
 export class RetrievalTestAccessError extends Error {
   readonly status: number;
