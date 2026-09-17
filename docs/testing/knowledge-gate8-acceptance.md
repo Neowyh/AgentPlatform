@@ -13,7 +13,9 @@ addresses, API keys, or secrets in that artifact.
 
 Use separate isolated assets for this run. `RAGFLOW_GATE8_DATASET_ID` is
 required for the backend provider probe. The browser lane additionally needs
-`E2E_GATE8_KB_SLUG` and `E2E_GATE8_EXPECTED_SNIPPET`.
+`E2E_GATE8_KB_SLUG`, `E2E_GATE8_EXPECTED_SNIPPET`,
+`E2E_GATE8_EXPECTED_EVIDENCE`, `E2E_GATE8_EXPECTED_COMPARISON`, and
+`E2E_GATE8_EXPECTED_GATE_FEEDBACK`.
 
 ## Exact commands
 
@@ -34,6 +36,9 @@ When real browser assets and credentials are present, also run:
 ```bash
 E2E_GATE8_KB_SLUG=<isolated-kb-slug> \
 E2E_GATE8_EXPECTED_SNIPPET=<canonical-marker> \
+E2E_GATE8_EXPECTED_EVIDENCE=<evidence-marker> \
+E2E_GATE8_EXPECTED_COMPARISON=<comparison-marker> \
+E2E_GATE8_EXPECTED_GATE_FEEDBACK=<gate-feedback-marker> \
   bash scripts/run-test-lane.sh frontend-real
 ```
 
@@ -50,9 +55,24 @@ real RAGFlow environment, isolated assets, and passed evidence for candidate
 preparation, trial retrieval, eval-case maintenance, Profile A/B comparison,
 matching-candidate evaluation, formal publish, run snapshot freeze, RBAC and
 secrecy, failure/retry/restart recovery, and browser review. Every scenario
-records its exact command, zero exit status, and evidence path. The validator
-rejects missing scenarios, mocked environments, stale/unexecuted steps, and
-provider identity or secret fields.
+records its exact command, executed status, zero exit status, ISO timestamps,
+non-negative duration, non-empty assertions, and scenario-specific
+`observations`. The validator checks evidence files exist, Gate 7 names the
+same candidate commit, and the current checkout commit matches the artifact.
+Each evidence JSON must itself contain the same `candidate_commit`, its
+`scenario` name, `real_execution: true`, and a non-empty `observed_steps`
+list, so a copied or hand-written summary cannot stand in for an execution
+record.
+It rejects missing scenarios, mocked environments, stale/unexecuted steps,
+placeholders, provider identity/address/secret fields, and sensitive values
+embedded in ordinary strings.
+
+The observations must show the revision and manifest trace, applied Profile
+parameters, expected documents and de-duplicated rankings, recomputable
+metrics, publish/latest pointer behavior, frozen old/new run snapshots,
+two-user/two-KB RBAC checks, failure/retry/restart/history outcomes, and
+browser evidence/comparison/gate feedback plus loading/empty/error/restricted
+and keyboard-focus coverage.
 
 ## Verdict and cleanup
 

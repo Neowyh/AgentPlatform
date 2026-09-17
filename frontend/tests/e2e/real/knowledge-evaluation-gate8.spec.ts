@@ -8,12 +8,22 @@ import {
 
 const knowledgeBaseSlug = process.env.E2E_GATE8_KB_SLUG;
 const expectedSnippet = process.env.E2E_GATE8_EXPECTED_SNIPPET;
+const expectedEvidence = process.env.E2E_GATE8_EXPECTED_EVIDENCE;
+const expectedComparison = process.env.E2E_GATE8_EXPECTED_COMPARISON;
+const expectedGateFeedback = process.env.E2E_GATE8_EXPECTED_GATE_FEEDBACK;
 const hasGate8Environment =
-  hasRealE2EEnvironment() && Boolean(knowledgeBaseSlug && expectedSnippet);
+  hasRealE2EEnvironment() &&
+  Boolean(
+    knowledgeBaseSlug &&
+    expectedSnippet &&
+    expectedEvidence &&
+    expectedComparison &&
+    expectedGateFeedback,
+  );
 
 test.skip(
   !hasGate8Environment,
-  "requires an isolated Gate 8 KB with E2E_GATE8_KB_SLUG and E2E_GATE8_EXPECTED_SNIPPET",
+  "requires isolated Gate 8 data and evidence/comparison/gate markers",
 );
 
 test.describe("real Knowledge Center Gate 8", () => {
@@ -29,6 +39,7 @@ test.describe("real Knowledge Center Gate 8", () => {
 
     await page.getByRole("tab", { name: /Retrieval|检索/i }).click();
     await expect(page.locator("body")).toContainText(expectedSnippet!);
+    await expect(page.locator("body")).toContainText(expectedEvidence!);
 
     const evaluationTab = page.getByRole("tab", { name: /Evaluation|评估/i });
     await evaluationTab.focus();
@@ -39,6 +50,8 @@ test.describe("real Knowledge Center Gate 8", () => {
     await expect(
       page.getByRole("heading", { name: /A\/B comparison/i }),
     ).toBeVisible();
+    await expect(page.locator("body")).toContainText(expectedComparison!);
+    await expect(page.locator("body")).toContainText(expectedGateFeedback!);
 
     const firstControl = page.locator("button, input, select").first();
     await firstControl.focus();

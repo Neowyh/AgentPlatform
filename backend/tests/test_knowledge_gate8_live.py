@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -61,7 +62,15 @@ def test_gate8_real_artifact_is_required_for_a_passed_acceptance() -> None:
     path = os.environ.get("RAGFLOW_GATE8_ARTIFACT_JSON")
     if not path:
         pytest.skip("Set RAGFLOW_GATE8_ARTIFACT_JSON to the recorded Gate 8 artifact")
-    validate_gate8_artifact(json.loads(Path(path).read_text(encoding="utf-8")))
+    settings, error = ragflow_tools._settings_or_error()
+    assert settings is not None, error
+    api_key = settings.api_key.get_secret_value() if settings.api_key is not None else ""
+    current_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    validate_gate8_artifact(
+        json.loads(Path(path).read_text(encoding="utf-8")),
+        current_commit=current_commit,
+        forbidden_values={os.environ["RAGFLOW_GATE8_DATASET_ID"], str(settings.base_url), api_key},
+    )
 
 
 async def _wait_for(predicate, *, timeout: float = 180) -> None:
