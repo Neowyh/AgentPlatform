@@ -41,7 +41,7 @@ Python 3.8 compatibility candidate.
 | `frontend-a11y` | passed: 3 passed, 177s |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
-| `local-runtime` | passed on the integrated candidate: 192 passed, 4 skipped, 9s |
+| `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 9s; sandboxed retry was blocked by local socket permissions |
 | TTFT diagnostic unit tests | passed: 4 benchmark tests; timing/journal/upload focus 108 passed |
 
 ## Gate status
