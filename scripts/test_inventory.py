@@ -85,7 +85,8 @@ def _markers(path: Path) -> list[str]:
     return sorted(
         item
         for item in found
-        if item in {"serial", "live", "requires_llm", "external", "smoke", "skip", "skipif"}
+        if item
+        in {"serial", "live", "requires_llm", "external", "smoke", "skip", "skipif"}
     )
 
 
@@ -153,6 +154,8 @@ def _lanes(path: Path) -> list[str]:
     """
     parts = {p.lower() for p in path.parts}
     name = path.name.lower()
+    if "local-runtime" in parts:
+        return ["local-runtime"]
     if "e2e" in parts or any(part.startswith("e2e-") for part in parts):
         if "auth" in parts or any(part.startswith("e2e-auth") for part in parts):
             return ["frontend-auth"]
@@ -189,7 +192,9 @@ def _pytest_collected_nodes(root: Path) -> tuple[set[str], str | None]:
     try:
         env = os.environ.copy()
         env.setdefault("UV_CACHE_DIR", "/tmp/deer-flow-uv-cache")
-        env["PYTHONPATH"] = ".:tests" if not env.get("PYTHONPATH") else f".:tests:{env['PYTHONPATH']}"
+        env["PYTHONPATH"] = (
+            ".:tests" if not env.get("PYTHONPATH") else f".:tests:{env['PYTHONPATH']}"
+        )
         result = subprocess.run(
             command,
             cwd=backend,
@@ -207,7 +212,9 @@ def _pytest_collected_nodes(root: Path) -> tuple[set[str], str | None]:
         if line.startswith("tests/") and "::" in line
     }
     if result.returncode:
-        detail = result.stderr.strip().splitlines()[-1:] or ["pytest collect-only failed"]
+        detail = result.stderr.strip().splitlines()[-1:] or [
+            "pytest collect-only failed"
+        ]
         return nodes, detail[0]
     return nodes, None
 
@@ -215,7 +222,9 @@ def _pytest_collected_nodes(root: Path) -> tuple[set[str], str | None]:
 def build_inventory(root: Path, *, collect: bool = False) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     root = root.resolve()
-    collected_nodes, collection_error = _pytest_collected_nodes(root) if collect else (set(), None)
+    collected_nodes, collection_error = (
+        _pytest_collected_nodes(root) if collect else (set(), None)
+    )
     for path in _iter_test_files(root):
         if path.suffix == ".py":
             tests, imports = _python_inventory(path)
@@ -231,13 +240,19 @@ def build_inventory(root: Path, *, collect: bool = False) -> list[dict[str, obje
         relative_path = path.relative_to(root).as_posix()
         static_nodes = [f"{relative_path}::{name}" for name in tests]
         if collect and path.suffix == ".py":
-            backend_nodes = {node for node in collected_nodes if node.startswith("tests/")}
+            backend_nodes = {
+                node for node in collected_nodes if node.startswith("tests/")
+            }
             actual_nodes = [
                 f"backend/{node}"
                 for node in sorted(backend_nodes)
                 if node.startswith(relative_path.removeprefix("backend/"))
             ]
-            collection_status = "collected" if actual_nodes else ("collection-error" if collection_error else "not-collected")
+            collection_status = (
+                "collected"
+                if actual_nodes
+                else ("collection-error" if collection_error else "not-collected")
+            )
         else:
             actual_nodes = static_nodes
             collection_status = "static-only"
@@ -289,7 +304,9 @@ def main() -> None:
         "--baseline", type=Path, help="Compare against a prior JSON inventory"
     )
     parser.add_argument(
-        "--collect", action="store_true", help="Run pytest collection and mark backend nodes collected"
+        "--collect",
+        action="store_true",
+        help="Run pytest collection and mark backend nodes collected",
     )
     args = parser.parse_args()
 

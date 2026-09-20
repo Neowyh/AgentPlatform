@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agentplatform_extension.knowledge.scope import KnowledgeScope
+from agentplatform_extension.local_runtime import LocalAuthorization, LocalToolExecutor
 from langchain_core.tools import BaseTool
 
 from app.agentplatform.runtime_adapter import build_canonical_agent_factory
@@ -109,7 +110,9 @@ def test_canonical_factory_binds_one_immutable_closure(monkeypatch) -> None:
     assert seen[0] is seen[1]
 
 
-def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(monkeypatch) -> None:
+def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(
+    monkeypatch,
+) -> None:
     import deerflow.tools as deerflow_tools
 
     observed: list[list[object]] = []
@@ -124,7 +127,9 @@ def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(monkeypatch)
         observed.append(deerflow_tools.get_available_tools())
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
+    monkeypatch.setattr(
+        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
+    )
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
 
     factory = build_canonical_agent_factory(
@@ -139,14 +144,18 @@ def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(monkeypatch)
     assert isinstance(observed[0][0], BaseTool)
 
 
-def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(monkeypatch) -> None:
+def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(
+    monkeypatch,
+) -> None:
     captured: dict = {}
 
     def fake_assemble(config, *, app_config=None, frozen=None):
         captured["frozen"] = frozen
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
+    monkeypatch.setattr(
+        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
+    )
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
 
     factory = build_canonical_agent_factory(
@@ -160,3 +169,105 @@ def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(monkeyp
     resource = captured["frozen"].resource
     assert resource["knowledge_scope"] == {"logical_selectors": ["docs"]}
     assert "opaque-dataset" not in repr(resource)
+
+
+def test_canonical_factory_adds_executable_local_tools(monkeypatch) -> None:
+    import deerflow.tools as deerflow_tools
+
+    observed: list[list[object]] = []
+
+    monkeypatch.setattr(
+        deerflow_tools, "get_available_tools", lambda *args, **kwargs: []
+    )
+
+    def fake_assemble(config, *, app_config=None, frozen=None):
+        observed.append(deerflow_tools.get_available_tools())
+        return SimpleNamespace(graph="graph")
+
+    monkeypatch.setattr(
+        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
+    )
+    definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
+    authorization = LocalAuthorization.from_capabilities(
+        {"local.files.read"}, device_online=True
+    )
+
+    class Route:
+        def revalidate(self, value):
+            self.authorization = value
+
+        async def dispatch(self, capability, payload, sender):
+            return await sender("device", capability, payload)
+
+    async def sender(device_id, capability, payload):
+        return {"capability": capability, "payload": dict(payload)}
+
+    executor = LocalToolExecutor(authorization, Route(), sender)
+    factory = build_canonical_agent_factory(
+        definition,
+        [],
+        runner_tool_groups=None,
+        local_authorization=authorization,
+        local_tool_executor=executor,
+    )
+    factory({"configurable": {}})
+
+    assert observed and observed[0][0].name == "local.files.read"
+    assert isinstance(observed[0][0], BaseTool)
+
+
+def test_canonical_factory_preserves_announced_mcp_schema(monkeypatch) -> None:
+    import deerflow.tools as deerflow_tools
+
+    observed: list[list[object]] = []
+    monkeypatch.setattr(
+        deerflow_tools, "get_available_tools", lambda *args, **kwargs: []
+    )
+
+    def fake_assemble(config, *, app_config=None, frozen=None):
+        observed.append(deerflow_tools.get_available_tools())
+        return SimpleNamespace(graph="graph")
+
+    monkeypatch.setattr(
+        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
+    )
+    definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
+    capability = "local.mcp.fs.read_file"
+    authorization = LocalAuthorization.from_capabilities(
+        {capability}, device_online=True
+    )
+
+    class Route:
+        def revalidate(self, value):
+            self.authorization = value
+
+        async def dispatch(self, capability, payload, sender):
+            return await sender("device", capability, payload)
+
+    async def sender(device_id, capability, payload):
+        return payload
+
+    executor = LocalToolExecutor(authorization, Route(), sender)
+    factory = build_canonical_agent_factory(
+        definition,
+        [],
+        runner_tool_groups=None,
+        local_authorization=authorization,
+        local_tool_executor=executor,
+        local_tool_descriptors={
+            capability: {
+                "description": "read a file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            }
+        },
+    )
+    factory({"configurable": {}})
+
+    tool = next(tool for tool in observed[0] if tool.name == capability)
+    assert (
+        tool.args_schema.model_json_schema()["properties"]["path"]["type"] == "string"
+    )

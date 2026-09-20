@@ -18,17 +18,18 @@ import socket
 import subprocess
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from .compat import StrEnum
 from .consent import ConsentStore, request_hash
 from .policy import LocalPolicy, PolicyDecision
 from .receipts import LocalExecutionReceipt, content_hash
 from .secrets import SecretRedactor
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
+SUPPORTED_MCP_PROTOCOL_VERSIONS = frozenset({MCP_PROTOCOL_VERSION})
 CLIENT_INFO = {"name": "ideer-local-runtime", "version": "0.1.0"}
 SERVER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 SECRET_REFERENCE_PREFIX = "local:"
@@ -67,7 +68,9 @@ class MCPSpec:
 
     def __post_init__(self) -> None:
         if not SERVER_NAME_PATTERN.fullmatch(self.name):
-            raise MCPError("INVALID_SERVER_NAME", "server name must be letters, digits, '-' or '_'")
+            raise MCPError(
+                "INVALID_SERVER_NAME", "server name must be letters, digits, '-' or '_'"
+            )
         if self.transport not in {"stdio", "http"}:
             raise MCPError("INVALID_TRANSPORT", "transport must be stdio or http")
         if self.transport == "stdio" and not self.command:
@@ -77,7 +80,9 @@ class MCPSpec:
         if self.tool_timeout_seconds <= 0 or self.start_timeout_seconds <= 0:
             raise MCPError("INVALID_TIMEOUT", "timeouts must be positive")
         if self.max_restarts < 0 or self.restart_backoff_seconds < 0:
-            raise MCPError("INVALID_RESTART_POLICY", "restart policy values must not be negative")
+            raise MCPError(
+                "INVALID_RESTART_POLICY", "restart policy values must not be negative"
+            )
 
     @property
     def capability_prefix(self) -> str:
@@ -91,18 +96,32 @@ def parse_mcp_config(data: Mapping[str, Any]) -> list[MCPSpec]:
     for entry in data.get("servers", ()):
         if not isinstance(entry, Mapping):
             raise MCPError("INVALID_CONFIG", "each MCP server entry must be an object")
-        known = {name: entry[name] for name in (
-            "name", "transport", "command", "url", "env", "headers", "enabled",
-            "tool_timeout_seconds", "start_timeout_seconds", "max_restarts",
-            "restart_backoff_seconds",
-        ) if name in entry}
+        known = {
+            name: entry[name]
+            for name in (
+                "name",
+                "transport",
+                "command",
+                "url",
+                "env",
+                "headers",
+                "enabled",
+                "tool_timeout_seconds",
+                "start_timeout_seconds",
+                "max_restarts",
+                "restart_backoff_seconds",
+            )
+            if name in entry
+        }
         spec = MCPSpec(
             name=str(known.get("name", "")),
             transport=str(known.get("transport", "")),
             command=tuple(str(part) for part in known.get("command", ()) or ()),
             url=str(known["url"]) if known.get("url") else None,
             env={str(k): str(v) for k, v in dict(known.get("env") or {}).items()},
-            headers={str(k): str(v) for k, v in dict(known.get("headers") or {}).items()},
+            headers={
+                str(k): str(v) for k, v in dict(known.get("headers") or {}).items()
+            },
             enabled=bool(known.get("enabled", True)),
             tool_timeout_seconds=float(known.get("tool_timeout_seconds", 30.0)),
             start_timeout_seconds=float(known.get("start_timeout_seconds", 10.0)),
@@ -110,7 +129,9 @@ def parse_mcp_config(data: Mapping[str, Any]) -> list[MCPSpec]:
             restart_backoff_seconds=float(known.get("restart_backoff_seconds", 1.0)),
         )
         if spec.name in names:
-            raise MCPError("DUPLICATE_SERVER", f"server name is duplicated: {spec.name}")
+            raise MCPError(
+                "DUPLICATE_SERVER", f"server name is duplicated: {spec.name}"
+            )
         names.add(spec.name)
         specs.append(spec)
     return specs
@@ -142,11 +163,16 @@ class MCPNetworkPolicy:
         if _is_literal_ip(host):
             if self._address_allowed(host):
                 return
-            raise MCPError("NETWORK_DENIED", "the MCP server URL is outside the local network policy")
+            raise MCPError(
+                "NETWORK_DENIED",
+                "the MCP server URL is outside the local network policy",
+            )
         addresses = _resolve_hosts(host)
         if addresses and all(self._address_allowed(address) for address in addresses):
             return
-        raise MCPError("NETWORK_DENIED", "the MCP server URL is outside the local network policy")
+        raise MCPError(
+            "NETWORK_DENIED", "the MCP server URL is outside the local network policy"
+        )
 
     def _address_allowed(self, address: str) -> bool:
         parsed = ipaddress.ip_address(address)
@@ -379,7 +405,9 @@ class MCPSupervisor:
         self._connection_factory = connection_factory or self._default_connection
         self._records: dict[str, _ServerRecord] = {}
         for spec in specs:
-            initial = MCPServerState.DISABLED if not spec.enabled else MCPServerState.STOPPED
+            initial = (
+                MCPServerState.DISABLED if not spec.enabled else MCPServerState.STOPPED
+            )
             self._records[spec.name] = _ServerRecord(spec, initial, spec.enabled)
         self._background: set[asyncio.Task[None]] = set()
 
@@ -405,7 +433,11 @@ class MCPSupervisor:
         record = self._record(name)
         if not record.enabled:
             raise MCPError("SERVER_DISABLED", "the MCP server is disabled")
-        if record.state in {MCPServerState.RUNNING, MCPServerState.STARTING, MCPServerState.RESTARTING}:
+        if record.state in {
+            MCPServerState.RUNNING,
+            MCPServerState.STARTING,
+            MCPServerState.RESTARTING,
+        }:
             return
         record.restarts = 0
         await self._start_record(record)
@@ -414,7 +446,8 @@ class MCPSupervisor:
         pending = [
             asyncio.create_task(self._start_enabled_record(record))
             for record in self._records.values()
-            if record.enabled and record.state in {MCPServerState.STOPPED, MCPServerState.FAILED}
+            if record.enabled
+            and record.state in {MCPServerState.STOPPED, MCPServerState.FAILED}
         ]
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
@@ -465,8 +498,14 @@ class MCPSupervisor:
             record = self._records[name]
             if record.state is not MCPServerState.RUNNING:
                 continue
-            projected.extend(record.spec.capability_prefix + tool.name for tool in record.tools)
+            projected.extend(
+                record.spec.capability_prefix + tool.name for tool in record.tools
+            )
         return tuple(projected)
+
+    def tools(self, name: str) -> tuple[MCPTool, ...]:
+        """Return the last authorized schema snapshot for a running server."""
+        return self._record(name).tools
 
     def ensure_callable(self, capability: str) -> tuple[_ServerRecord, str]:
         """Validate ``capability`` and return its record and tool name.
@@ -487,14 +526,21 @@ class MCPSupervisor:
         return record, tool_name
 
     async def call_tool(
-        self, capability: str, arguments: Mapping[str, Any], *, timeout: float | None = None
+        self,
+        capability: str,
+        arguments: Mapping[str, Any],
+        *,
+        timeout: float | None = None,
     ) -> MCPToolCallResult:
         record, tool_name = self.ensure_callable(capability)
         effective_timeout = timeout or record.spec.tool_timeout_seconds
         try:
             return _redact_result(
                 await call_tool(
-                    record.connection, tool_name, dict(arguments), timeout=effective_timeout
+                    record.connection,
+                    tool_name,
+                    dict(arguments),
+                    timeout=effective_timeout,
                 ),
                 self.redactor_for(capability),
             )
@@ -517,7 +563,9 @@ class MCPSupervisor:
             return
         try:
             tools = tuple(
-                await list_tools(record.connection, timeout=record.spec.start_timeout_seconds)
+                await list_tools(
+                    record.connection, timeout=record.spec.start_timeout_seconds
+                )
             )
         except MCPError:
             # Schema refresh is best-effort; the last known tool list stays
@@ -550,9 +598,11 @@ class MCPSupervisor:
                 record.spec,
                 env=env,
                 headers=headers,
-                on_exit=lambda server_name=record.spec.name: self._handle_exit(server_name),
-                on_tools_changed=lambda server_name=record.spec.name: self._schedule_refresh(
+                on_exit=lambda server_name=record.spec.name: self._handle_exit(
                     server_name
+                ),
+                on_tools_changed=lambda server_name=record.spec.name: (
+                    self._schedule_refresh(server_name)
                 ),
             )
             await connection.start()
@@ -572,7 +622,9 @@ class MCPSupervisor:
         record.connection = connection
         record.state = MCPServerState.RUNNING
 
-    async def _shutdown_record(self, record: _ServerRecord, final_state: MCPServerState) -> None:
+    async def _shutdown_record(
+        self, record: _ServerRecord, final_state: MCPServerState
+    ) -> None:
         record.stopping = True
         if record.restart_task is not None:
             record.restart_task.cancel()
@@ -588,7 +640,10 @@ class MCPSupervisor:
 
     def _handle_exit(self, name: str) -> None:
         record = self._records.get(name)
-        if record is None or record.state in {MCPServerState.DISABLED, MCPServerState.STOPPED}:
+        if record is None or record.state in {
+            MCPServerState.DISABLED,
+            MCPServerState.STOPPED,
+        }:
             return
         record.connection = None
         if record.stopping:
@@ -598,7 +653,9 @@ class MCPSupervisor:
             record.restarts += 1
             record.state = MCPServerState.RESTARTING
             delay = record.spec.restart_backoff_seconds * (2 ** (record.restarts - 1))
-            record.restart_task = asyncio.create_task(self._restart_after(record, delay))
+            record.restart_task = asyncio.create_task(
+                self._restart_after(record, delay)
+            )
         else:
             record.state = MCPServerState.FAILED
             record.last_error = record.last_error or "SERVER_CRASHED"
@@ -626,7 +683,9 @@ class MCPSupervisor:
         for key, value in values.items():
             if isinstance(value, str) and value.startswith(SECRET_REFERENCE_PREFIX):
                 secret_name = value[len(SECRET_REFERENCE_PREFIX) :]
-                secret = self.secret_resolver(secret_name) if self.secret_resolver else None
+                secret = (
+                    self.secret_resolver(secret_name) if self.secret_resolver else None
+                )
                 if not isinstance(secret, str) or not secret:
                     raise MCPError(
                         "SECRET_UNAVAILABLE",
@@ -654,7 +713,9 @@ def _redact_value(value: Any, redactor: SecretRedactor) -> Any:
     return value
 
 
-def _redact_result(result: MCPToolCallResult, redactor: SecretRedactor) -> MCPToolCallResult:
+def _redact_result(
+    result: MCPToolCallResult, redactor: SecretRedactor
+) -> MCPToolCallResult:
     """Scrub resolved credential values out of tool output before it travels."""
     if redactor.longest == 0:
         return result
@@ -682,7 +743,9 @@ def _safe_environment(extra: Mapping[str, str]) -> dict[str, str]:
     }
     for name, value in extra.items():
         if not name or "=" in name or "\x00" in name or "\x00" in value:
-            raise MCPError("INVALID_ENVIRONMENT", "environment references must be valid")
+            raise MCPError(
+                "INVALID_ENVIRONMENT", "environment references must be valid"
+            )
         env[name] = value
     return env
 
@@ -704,7 +767,7 @@ class StdioMCPConnection:
         self.env = _safe_environment(dict(env or {}))
         self.on_exit = on_exit
         self.on_tools_changed = on_tools_changed
-        self.process: subprocess.Popen[bytes] | None = None
+        self.process: asyncio.subprocess.Process | None = None
         self.last_error: str | None = None
         self._pending: dict[int, asyncio.Future[Any]] = {}
         self._next_id = 0
@@ -715,25 +778,36 @@ class StdioMCPConnection:
 
     async def start(self) -> None:
         try:
-            self.process = subprocess.Popen(  # noqa: ASYNC220
-                self.command,
+            self.process = await asyncio.create_subprocess_exec(
+                *self.command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=self.env,
                 start_new_session=os.name != "nt",
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                if os.name == "nt"
+                else 0,
             )
         except OSError as exc:
             # The OS error text embeds the absolute command path; only the
             # stable code and a generic message may cross the boundary.
-            raise MCPError("SERVER_START_FAILED", "the MCP server command failed to start") from exc
-        assert self.process is not None and self.process.stdout and self.process.stderr and self.process.stdin
+            raise MCPError(
+                "SERVER_START_FAILED", "the MCP server command failed to start"
+            ) from exc
+        assert (
+            self.process is not None
+            and self.process.stdout
+            and self.process.stderr
+            and self.process.stdin
+        )
         self._stderr_task = asyncio.create_task(self._drain_stderr())
         self._reader_task = asyncio.create_task(self._read_messages())
 
-    async def request(self, method: str, params: Mapping[str, Any], *, timeout: float) -> Any:
-        if self.process is None or self.process.poll() is not None:
+    async def request(
+        self, method: str, params: Mapping[str, Any], *, timeout: float
+    ) -> Any:
+        if self.process is None or self.process.returncode is not None:
             raise MCPError("SERVER_UNAVAILABLE", "the MCP server is not running")
         self._next_id += 1
         message = {
@@ -750,7 +824,7 @@ class StdioMCPConnection:
                 self.process.stdin.write(
                     (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
                 )
-                self.process.stdin.flush()
+                await self.process.stdin.drain()
             return await asyncio.wait_for(future, timeout)
         except TimeoutError:
             self._pending.pop(message["id"], None)
@@ -759,7 +833,9 @@ class StdioMCPConnection:
             self._pending.pop(message["id"], None)
             raise MCPError("SERVER_UNAVAILABLE", "the MCP server pipe failed") from exc
 
-    async def notify(self, method: str, params: Mapping[str, Any] | None = None) -> None:
+    async def notify(
+        self, method: str, params: Mapping[str, Any] | None = None
+    ) -> None:
         if self.process is None or self.process.stdin is None:
             return
         message = {"jsonrpc": "2.0", "method": method, "params": dict(params or {})}
@@ -768,7 +844,7 @@ class StdioMCPConnection:
                 self.process.stdin.write(
                     (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
                 )
-                self.process.stdin.flush()
+                await self.process.stdin.drain()
         except (OSError, ValueError):
             pass
 
@@ -781,16 +857,17 @@ class StdioMCPConnection:
                 await asyncio.gather(self._reader_task, return_exceptions=True)
             return
         try:
-            if process.stdin is not None and not process.stdin.closed:
+            if process.stdin is not None and not process.stdin.is_closing():
                 process.stdin.close()
         except OSError:
             pass
         for _ in range(50):
-            if process.poll() is not None:
+            if process.returncode is not None:
                 break
             await asyncio.sleep(0.02)
-        if process.poll() is None:
-            _terminate(process)
+        if process.returncode is None:
+            process.kill()
+        await process.wait()
         if self._reader_task is not None:
             self._reader_task.cancel()
             await asyncio.gather(self._reader_task, return_exceptions=True)
@@ -809,13 +886,15 @@ class StdioMCPConnection:
         assert self.process is not None and self.process.stdout is not None
         try:
             while True:
-                line = await asyncio.to_thread(self.process.stdout.readline)
+                line = await self.process.stdout.readline()
                 if not line:
                     break
                 await self._dispatch(line)
         finally:
             if not self._closing:
-                self.last_error = (self.last_error or "the MCP server exited unexpectedly")
+                self.last_error = (
+                    self.last_error or "the MCP server exited unexpectedly"
+                )
                 self._fail_pending(MCPError("SERVER_CRASHED", self.last_error))
                 if self.on_exit is not None:
                     self.on_exit()
@@ -834,13 +913,19 @@ class StdioMCPConnection:
             if "error" in message:
                 error = message["error"]
                 future.set_exception(
-                    MCPError("MCP_REQUEST_FAILED", str(error.get("message", "request failed")))
+                    MCPError(
+                        "MCP_REQUEST_FAILED",
+                        str(error.get("message", "request failed")),
+                    )
                 )
             else:
                 future.set_result(message.get("result"))
             return
         method = message.get("method")
-        if method == "notifications/tools/list_changed" and self.on_tools_changed is not None:
+        if (
+            method == "notifications/tools/list_changed"
+            and self.on_tools_changed is not None
+        ):
             self.on_tools_changed()
 
     async def _drain_stderr(self) -> None:
@@ -848,7 +933,7 @@ class StdioMCPConnection:
         collected: list[bytes] = []
         total = 0
         while True:
-            line = await asyncio.to_thread(self.process.stderr.readline)
+            line = await self.process.stderr.readline()
             if not line:
                 break
             collected.append(line)
@@ -857,7 +942,9 @@ class StdioMCPConnection:
                 collected = collected[-4:]
                 total = sum(len(part) for part in collected)
         if collected:
-            self.last_error = b"".join(collected).decode("utf-8", errors="replace")[-4096:]
+            self.last_error = b"".join(collected).decode("utf-8", errors="replace")[
+                -4096:
+            ]
 
 
 def _coerce_id(value: Any) -> int:
@@ -895,11 +982,14 @@ class HTTPMCPConnection:
         self.headers = dict(headers or {})
         self.last_error: str | None = None
         self._next_id = 0
+        self._session_id: str | None = None
 
     async def start(self) -> None:
         return None
 
-    async def request(self, method: str, params: Mapping[str, Any], *, timeout: float) -> Any:
+    async def request(
+        self, method: str, params: Mapping[str, Any], *, timeout: float
+    ) -> Any:
         self._next_id += 1
         body = {
             "jsonrpc": "2.0",
@@ -908,15 +998,28 @@ class HTTPMCPConnection:
             "params": dict(params),
         }
         try:
-            status, content_type, payload = await asyncio.wait_for(
+            status, content_type, payload, session_id = await asyncio.wait_for(
                 self._post(body), timeout
             )
+            if session_id:
+                self._session_id = session_id
         except TimeoutError:
             raise MCPError("MCP_TIMEOUT", f"{method} timed out") from None
         except (OSError, ValueError) as exc:
-            raise MCPError("SERVER_UNAVAILABLE", "the MCP HTTP endpoint failed") from exc
+            raise MCPError(
+                "SERVER_UNAVAILABLE", "the MCP HTTP endpoint failed"
+            ) from exc
+        if status in {400, 401, 403, 404, 405, 409, 410} and self._session_id:
+            # A Streamable HTTP server uses these responses to indicate that
+            # the negotiated session is no longer valid. Clear it so a later
+            # explicit restart can negotiate a fresh session; never replay
+            # this request because tools/call may have side effects.
+            self._session_id = None
+            raise MCPError("MCP_SESSION_EXPIRED", "the MCP session is no longer valid")
         if status != 200:
-            raise MCPError("SERVER_UNAVAILABLE", f"the MCP HTTP endpoint returned {status}")
+            raise MCPError(
+                "SERVER_UNAVAILABLE", f"the MCP HTTP endpoint returned {status}"
+            )
         if "text/event-stream" in content_type:
             payload = _sse_payload(payload, self._next_id)
             if payload is None:
@@ -924,24 +1027,44 @@ class HTTPMCPConnection:
         try:
             message = json.loads(payload)
         except json.JSONDecodeError as exc:
-            raise MCPError("SERVER_UNAVAILABLE", "the MCP response is not JSON") from exc
+            raise MCPError(
+                "SERVER_UNAVAILABLE", "the MCP response is not JSON"
+            ) from exc
         if "error" in message:
             raise MCPError(
-                "MCP_REQUEST_FAILED", str(message["error"].get("message", "request failed"))
+                "MCP_REQUEST_FAILED",
+                str(message["error"].get("message", "request failed")),
             )
-        return message.get("result")
+        result = message.get("result")
+        if method == "initialize":
+            version = (
+                result.get("protocolVersion") if isinstance(result, dict) else None
+            )
+            if version not in SUPPORTED_MCP_PROTOCOL_VERSIONS:
+                self._session_id = None
+                raise MCPError(
+                    "MCP_PROTOCOL_UNSUPPORTED",
+                    "the MCP server selected an unsupported protocol version",
+                )
+        return result
 
-    async def notify(self, method: str, params: Mapping[str, Any] | None = None) -> None:
+    async def notify(
+        self, method: str, params: Mapping[str, Any] | None = None
+    ) -> None:
         body = {"jsonrpc": "2.0", "method": method, "params": dict(params or {})}
         try:
-            await asyncio.wait_for(self._post(body), timeout=10)
+            _, _, _, session_id = await asyncio.wait_for(self._post(body), timeout=10)
+            if session_id:
+                self._session_id = session_id
         except (TimeoutError, MCPError, OSError):
             pass
 
     async def close(self) -> None:
         return None
 
-    async def _post(self, body: Mapping[str, Any]) -> tuple[int, str, bytes]:
+    async def _post(
+        self, body: Mapping[str, Any]
+    ) -> tuple[int, str, bytes, str | None]:
         writer = None
         try:
             reader, writer = await asyncio.open_connection(self.host, self.port)
@@ -954,9 +1077,13 @@ class HTTPMCPConnection:
                 "Connection": "close",
                 **self.headers,
             }
-            head = f"POST {self.path} HTTP/1.1\r\n" + "".join(
-                f"{name}: {value}\r\n" for name, value in headers.items()
-            ) + "\r\n"
+            if self._session_id:
+                headers["Mcp-Session-Id"] = self._session_id
+            head = (
+                f"POST {self.path} HTTP/1.1\r\n"
+                + "".join(f"{name}: {value}\r\n" for name, value in headers.items())
+                + "\r\n"
+            )
             writer.write(head.encode("latin-1") + payload)
             await writer.drain()
             status_line = await reader.readline()
@@ -965,6 +1092,7 @@ class HTTPMCPConnection:
             content_type = ""
             content_length = -1
             chunked = False
+            session_id: str | None = None
             while True:
                 line = await reader.readline()
                 if line in (b"\r\n", b"\n", b""):
@@ -978,13 +1106,15 @@ class HTTPMCPConnection:
                     content_length = int(value)
                 elif name == "transfer-encoding" and "chunked" in value.lower():
                     chunked = True
+                elif name == "mcp-session-id":
+                    session_id = value
             if chunked:
                 response = await _read_chunked(reader)
             elif content_length >= 0:
                 response = await reader.readexactly(content_length)
             else:
                 response = await reader.read()
-            return status, content_type, response
+            return status, content_type, response, session_id
         finally:
             if writer is not None:
                 writer.close()
@@ -1079,11 +1209,14 @@ async def list_tools(connection: Any, *, timeout: float) -> list[MCPTool]:
 async def call_tool(
     connection: Any, name: str, arguments: Mapping[str, Any], *, timeout: float
 ) -> MCPToolCallResult:
-    result = await connection.request(
-        "tools/call",
-        {"name": name, "arguments": dict(arguments)},
-        timeout=timeout,
-    ) or {}
+    result = (
+        await connection.request(
+            "tools/call",
+            {"name": name, "arguments": dict(arguments)},
+            timeout=timeout,
+        )
+        or {}
+    )
     content = tuple(
         entry for entry in result.get("content", ()) if isinstance(entry, dict)
     )

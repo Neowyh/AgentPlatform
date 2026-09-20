@@ -29,7 +29,7 @@ from .secrets import (
     is_secret_ref,
     secret_ref,
 )
-from .transport import LocalRuntimeClient
+from .transport import LocalRuntimeClient, RePairRequired
 
 __all__ = [
     "ArtifactUploadError",
@@ -54,6 +54,7 @@ __all__ = [
     "PythonExecutor",
     "PythonResult",
     "PythonTaskStatus",
+    "RePairRequired",
     "ResolvedSecrets",
     "RiskLevel",
     "RootConfig",

@@ -84,9 +84,7 @@ def test_stdio_call_timeout_is_contained_and_connection_stays_usable(
             with pytest.raises(MCPError) as exc_info:
                 await call_tool(connection, "slow", {}, timeout=0.2)
             assert exc_info.value.code == "MCP_TIMEOUT"
-            result = await call_tool(
-                connection, "read_file", {}, timeout=10
-            )
+            result = await call_tool(connection, "read_file", {}, timeout=10)
             assert result.is_error is False
             assert result.content[0]["text"] == "late"
         finally:
@@ -124,7 +122,9 @@ def test_stdio_tool_error_and_unknown_method_surface_as_structured_failures(
 def test_http_client_completes_initialize_list_and_call(tmp_path: Path) -> None:
     (tmp_path / "hello.txt").write_text("over localhost", encoding="utf-8")
 
-    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def handle(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         try:
             while True:
                 request = await _read_http_request(reader)
@@ -165,6 +165,71 @@ def test_http_client_completes_initialize_list_and_call(tmp_path: Path) -> None:
 
     ports: list[int] = []
     asyncio.run(scenario(ports))
+
+
+def test_http_client_replays_mcp_session_header() -> None:
+    async def scenario() -> None:
+        connection = HTTPMCPConnection("http://127.0.0.1:80/mcp")
+        seen: list[dict[str, str]] = []
+
+        async def post(body):
+            seen.append({"session": connection._session_id or ""})
+            if len(seen) == 1:
+                return (
+                    200,
+                    "application/json",
+                    b'{"result": {"protocolVersion": "2024-11-05"}}',
+                    "session-1",
+                )
+            return 200, "application/json", b'{"result": {}}', None
+
+        connection._post = post
+        await connection.request("initialize", {}, timeout=1)
+        await connection.request("tools/list", {}, timeout=1)
+        assert seen == [{"session": ""}, {"session": "session-1"}]
+
+    asyncio.run(scenario())
+
+
+def test_http_client_rejects_expired_session_without_replaying_call() -> None:
+    async def scenario() -> None:
+        connection = HTTPMCPConnection("http://127.0.0.1:80/mcp")
+        connection._session_id = "expired"
+        seen: list[str] = []
+
+        async def post(body):
+            seen.append(connection._session_id or "")
+            return 404, "application/json", b"{}", None
+
+        connection._post = post
+        with pytest.raises(MCPError) as exc_info:
+            await connection.request("tools/call", {"name": "write_file"}, timeout=1)
+        assert exc_info.value.code == "MCP_SESSION_EXPIRED"
+        assert seen == ["expired"]
+        assert connection._session_id is None
+
+    asyncio.run(scenario())
+
+
+def test_http_client_rejects_unsupported_initialize_version() -> None:
+    async def scenario() -> None:
+        connection = HTTPMCPConnection("http://127.0.0.1:80/mcp")
+
+        async def post(body):
+            return (
+                200,
+                "application/json",
+                b'{"result": {"protocolVersion": "future"}}',
+                "s1",
+            )
+
+        connection._post = post
+        with pytest.raises(MCPError) as exc_info:
+            await connection.request("initialize", {}, timeout=1)
+        assert exc_info.value.code == "MCP_PROTOCOL_UNSUPPORTED"
+        assert connection._session_id is None
+
+    asyncio.run(scenario())
 
 
 def _fixture_response(message: dict, root: Path) -> dict:
@@ -227,8 +292,18 @@ def test_parse_mcp_config_reads_server_list_and_rejects_duplicates() -> None:
     specs = parse_mcp_config(
         {
             "servers": [
-                {"name": "fs", "transport": "stdio", "command": ["mcp-server-fs"], "env": {"MCP_ROOT": "local:fs_root"}},
-                {"name": "intranet", "transport": "http", "url": "http://10.0.0.5:8080/mcp", "enabled": False},
+                {
+                    "name": "fs",
+                    "transport": "stdio",
+                    "command": ["mcp-server-fs"],
+                    "env": {"MCP_ROOT": "local:fs_root"},
+                },
+                {
+                    "name": "intranet",
+                    "transport": "http",
+                    "url": "http://10.0.0.5:8080/mcp",
+                    "enabled": False,
+                },
             ]
         }
     )
@@ -262,7 +337,9 @@ def test_network_policy_allows_loopback_and_denies_public_by_default() -> None:
 def test_network_policy_allows_approved_intranet_and_dns_resolution_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    policy = MCPNetworkPolicy(approved_hosts=frozenset({"10.0.0.0/8", "files.intranet"}))
+    policy = MCPNetworkPolicy(
+        approved_hosts=frozenset({"10.0.0.0/8", "files.intranet"})
+    )
     policy.validate_url("http://10.1.2.3:9000/mcp")
     policy.validate_url("http://files.intranet:9000/mcp")
 
@@ -275,7 +352,12 @@ def test_network_policy_allows_approved_intranet_and_dns_resolution_check(
     with pytest.raises(MCPError) as denied:
         policy.validate_url("http://rebind.internal/mcp")
     assert denied.value.code == "NETWORK_DENIED"
-    assert MCPNetworkPolicy(allow_public_internet=True).validate_url("http://example.com/mcp") is None
+    assert (
+        MCPNetworkPolicy(allow_public_internet=True).validate_url(
+            "http://example.com/mcp"
+        )
+        is None
+    )
 
 
 class FakeMCPConnection:
@@ -347,24 +429,32 @@ class FakeMCPConnection:
             self.on_exit()
 
 
-def make_supervisor(specs, *, factory=None, fake_kwargs=None, **kwargs) -> tuple[MCPSupervisor, dict[str, list[FakeMCPConnection]]]:
+def make_supervisor(
+    specs, *, factory=None, fake_kwargs=None, **kwargs
+) -> tuple[MCPSupervisor, dict[str, list[FakeMCPConnection]]]:
     connections: dict[str, list[FakeMCPConnection]] = {}
     fake_kwargs = fake_kwargs or {}
     if factory is None:
+
         def factory(spec, *, env, headers, on_exit, on_tools_changed):
             connection = FakeMCPConnection(**fake_kwargs.get(spec.name, {}))
             connection.on_exit = on_exit
             connection.on_tools_changed = on_tools_changed
             connections.setdefault(spec.name, []).append(connection)
             return connection
+
     return MCPSupervisor(specs, connection_factory=factory, **kwargs), connections
 
 
-async def wait_for_state(supervisor: MCPSupervisor, name: str, state: str, timeout: float = 2.0) -> None:
+async def wait_for_state(
+    supervisor: MCPSupervisor, name: str, state: str, timeout: float = 2.0
+) -> None:
     deadline = asyncio.get_running_loop().time() + timeout
     while supervisor.state_of(name) != state:
         if asyncio.get_running_loop().time() > deadline:
-            raise AssertionError(f"{name} never reached {state}; last={supervisor.state_of(name)}")
+            raise AssertionError(
+                f"{name} never reached {state}; last={supervisor.state_of(name)}"
+            )
         await asyncio.sleep(0.01)
 
 
@@ -384,7 +474,9 @@ def test_supervisor_discovers_tools_and_projects_capabilities() -> None:
         "local.mcp.fs.read_file",
         "local.mcp.fs.write_file",
     )
-    assert not any(name.startswith("local.mcp.off.") for name in supervisor.capabilities())
+    assert not any(
+        name.startswith("local.mcp.off.") for name in supervisor.capabilities()
+    )
 
 
 def test_disabled_server_refuses_start_and_stays_invisible() -> None:
@@ -405,7 +497,15 @@ def test_disabled_server_refuses_start_and_stays_invisible() -> None:
 
 def test_crash_restarts_with_backoff_then_marks_failed() -> None:
     supervisor, connections = make_supervisor(
-        [MCPSpec(name="fs", transport="stdio", command=("x",), max_restarts=1, restart_backoff_seconds=0)]
+        [
+            MCPSpec(
+                name="fs",
+                transport="stdio",
+                command=("x",),
+                max_restarts=1,
+                restart_backoff_seconds=0,
+            )
+        ]
     )
 
     async def scenario() -> None:
@@ -423,7 +523,15 @@ def test_crash_restarts_with_backoff_then_marks_failed() -> None:
 
 def test_manual_stop_does_not_schedule_a_restart() -> None:
     supervisor, connections = make_supervisor(
-        [MCPSpec(name="fs", transport="stdio", command=("x",), max_restarts=3, restart_backoff_seconds=0)]
+        [
+            MCPSpec(
+                name="fs",
+                transport="stdio",
+                command=("x",),
+                max_restarts=3,
+                restart_backoff_seconds=0,
+            )
+        ]
     )
 
     async def scenario() -> None:
@@ -454,7 +562,10 @@ def test_crash_is_isolated_from_other_servers() -> None:
 
     asyncio.run(scenario())
     assert supervisor.state_of("b") == "running"
-    assert supervisor.capabilities() == ("local.mcp.b.read_file", "local.mcp.b.write_file")
+    assert supervisor.capabilities() == (
+        "local.mcp.b.read_file",
+        "local.mcp.b.write_file",
+    )
 
 
 def test_in_flight_call_fails_structured_and_other_servers_survive() -> None:
@@ -514,7 +625,12 @@ def test_tool_list_change_refreshes_and_survives_discovery_failure() -> None:
 
 def test_unresolved_secret_fails_closed_without_touching_other_servers() -> None:
     specs = [
-        MCPSpec(name="secured", transport="stdio", command=("x",), env={"TOKEN": "local:api_token"}),
+        MCPSpec(
+            name="secured",
+            transport="stdio",
+            command=("x",),
+            env={"TOKEN": "local:api_token"},
+        ),
         MCPSpec(name="plain", transport="stdio", command=("y",)),
     ]
     supervisor, connections = make_supervisor(specs, secret_resolver=lambda name: None)
@@ -531,7 +647,9 @@ def test_unresolved_secret_fails_closed_without_touching_other_servers() -> None
     assert supervisor.state_of("plain") == "running"
 
 
-def test_resolved_secret_reaches_the_server_environment_and_policy_blocks_public_url() -> None:
+def test_resolved_secret_reaches_the_server_environment_and_policy_blocks_public_url() -> (
+    None
+):
     seen_env: dict[str, str] = {}
 
     def factory(spec, *, env, headers, on_exit, on_tools_changed):
@@ -540,7 +658,12 @@ def test_resolved_secret_reaches_the_server_environment_and_policy_blocks_public
 
     supervisor, _ = make_supervisor(
         [
-            MCPSpec(name="secured", transport="stdio", command=("x",), env={"TOKEN": "local:api_token"}),
+            MCPSpec(
+                name="secured",
+                transport="stdio",
+                command=("x",),
+                env={"TOKEN": "local:api_token"},
+            ),
             MCPSpec(name="public", transport="http", url="http://example.com/mcp"),
         ],
         factory=factory,
@@ -589,7 +712,9 @@ def test_supervisor_runs_the_real_stdio_fixture_server(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def make_running_supervisor(**kwargs) -> tuple[MCPSupervisor, dict[str, list[FakeMCPConnection]]]:
+def make_running_supervisor(
+    **kwargs,
+) -> tuple[MCPSupervisor, dict[str, list[FakeMCPConnection]]]:
     supervisor, connections = make_supervisor(
         [MCPSpec(name="fs", transport="stdio", command=("x",), tool_timeout_seconds=5)],
         **kwargs,
@@ -607,7 +732,10 @@ def test_local_mcp_capabilities_require_consent_by_default() -> None:
 
     policy = LocalPolicy()
     assert policy.risk_level("local.mcp.fs.read_file", {}) is RiskLevel.LEVEL_1
-    assert policy.authorize("local.mcp.fs.read_file", {}) is PolicyDecision.CONSENT_REQUIRED
+    assert (
+        policy.authorize("local.mcp.fs.read_file", {})
+        is PolicyDecision.CONSENT_REQUIRED
+    )
     assert policy.risk_level("local.files.read", {}) is RiskLevel.LEVEL_0
     denied = LocalPolicy(denied_capabilities=frozenset({"local.mcp.fs.write_file"}))
     assert denied.authorize("local.mcp.fs.write_file", {}) is PolicyDecision.DENY
@@ -624,7 +752,9 @@ def test_mcp_service_round_trip_includes_consent_and_receipt() -> None:
         request = ConsentExchange(service.consent).create_request(
             "local.mcp.fs.read_file", dict(payload)
         )
-        ConsentExchange(service.consent).decide(request, approved=True, actor_id="alice")
+        ConsentExchange(service.consent).decide(
+            request, approved=True, actor_id="alice"
+        )
         execution = await service.execute(
             "local.mcp.fs.read_file", dict(payload), consent=True
         )
@@ -643,7 +773,9 @@ def test_mcp_service_maps_failures_to_structured_statuses() -> None:
     supervisor, connections = make_running_supervisor(
         fake_kwargs={"fs": {"tools": ("read_file",)}}
     )
-    policy = LocalPolicy(always_allow_capabilities=frozenset({"local.mcp.fs.read_file"}))
+    policy = LocalPolicy(
+        always_allow_capabilities=frozenset({"local.mcp.fs.read_file"})
+    )
     service = LocalMCPService(supervisor, policy=policy)
 
     async def scenario() -> None:
@@ -687,7 +819,9 @@ def test_mcp_service_timeout_yields_structured_failure(tmp_path: Path) -> None:
             )
         ]
     )
-    policy = LocalPolicy(always_allow_capabilities=frozenset({"local.mcp.slow.read_file"}))
+    policy = LocalPolicy(
+        always_allow_capabilities=frozenset({"local.mcp.slow.read_file"})
+    )
     service = LocalMCPService(supervisor, policy=policy)
 
     async def scenario() -> None:
@@ -722,9 +856,7 @@ def _client_with_mcp(supervisor, *, policy=None) -> LocalRuntimeClient:
         session_token="token",
         private_key=Ed25519PrivateKey.generate(),
         session_id="session-1",
-        mcp_service=LocalMCPService(
-            supervisor, policy=policy, consent=ConsentStore()
-        ),
+        mcp_service=LocalMCPService(supervisor, policy=policy, consent=ConsentStore()),
     )
 
 
@@ -875,7 +1007,16 @@ def test_http_endpoint_connection_failure_enters_the_restart_budget() -> None:
 
     connections: dict[str, list[FakeMCPConnection]] = {}
     supervisor = MCPSupervisor(
-        [MCPSpec(name="web", transport="http", url="http://127.0.0.1:9/mcp", max_restarts=1, restart_backoff_seconds=0, tool_timeout_seconds=5)],
+        [
+            MCPSpec(
+                name="web",
+                transport="http",
+                url="http://127.0.0.1:9/mcp",
+                max_restarts=1,
+                restart_backoff_seconds=0,
+                tool_timeout_seconds=5,
+            )
+        ],
         connection_factory=factory,
     )
 
@@ -906,7 +1047,14 @@ def test_network_policy_is_revalidated_on_every_http_call() -> None:
         return connection
 
     supervisor = MCPSupervisor(
-        [MCPSpec(name="web", transport="http", url="http://10.1.2.3:9/mcp", tool_timeout_seconds=5)],
+        [
+            MCPSpec(
+                name="web",
+                transport="http",
+                url="http://10.1.2.3:9/mcp",
+                tool_timeout_seconds=5,
+            )
+        ],
         connection_factory=factory,
         network_policy=MCPNetworkPolicy(approved_hosts=frozenset({"10.0.0.0/8"})),
     )
@@ -942,7 +1090,13 @@ def test_tool_set_change_is_republished_automatically() -> None:
 
 def test_start_failure_message_never_carries_the_command_path(tmp_path: Path) -> None:
     supervisor = MCPSupervisor(
-        [MCPSpec(name="gone", transport="stdio", command=(str(tmp_path / "no-such-binary"),))]
+        [
+            MCPSpec(
+                name="gone",
+                transport="stdio",
+                command=(str(tmp_path / "no-such-binary"),),
+            )
+        ]
     )
 
     async def scenario() -> None:
@@ -957,7 +1111,13 @@ def test_start_failure_message_never_carries_the_command_path(tmp_path: Path) ->
 def test_load_mcp_specs_reads_a_config_file(tmp_path: Path) -> None:
     config = tmp_path / "local-mcp.json"
     config.write_text(
-        json.dumps({"servers": [{"name": "fs", "transport": "stdio", "command": ["mcp-server-fs"]}]}),
+        json.dumps(
+            {
+                "servers": [
+                    {"name": "fs", "transport": "stdio", "command": ["mcp-server-fs"]}
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     specs = load_mcp_specs(config)

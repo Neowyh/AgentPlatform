@@ -51,7 +51,9 @@ def render_consent_summary(
     if capability.startswith("local.mcp."):
         summary["action"] = "call a tool on a local MCP server"
         summary["target"] = summary["capability"]
-        summary["arguments"] = text(json.dumps(payload.get("arguments", {}), ensure_ascii=False))
+        summary["arguments"] = text(
+            json.dumps(payload.get("arguments", {}), ensure_ascii=False)
+        )
     elif "path" in payload:
         summary["target"] = text(payload["path"])
         summary["size"] = text(len(str(payload.get("content", "")))) + " characters"
@@ -63,7 +65,6 @@ def render_consent_summary(
     if request_hash:
         summary["request_hash"] = request_hash
     return {key: value for key, value in summary.items() if value}
-
 
 
 @dataclass
@@ -189,7 +190,9 @@ class ConsentStore:
         actor_id: str,
         decided_at: str | None,
     ) -> dict[str, str]:
-        from datetime import UTC, datetime
+        from datetime import datetime
+
+        from .compat import UTC
 
         return {
             "capability": capability,

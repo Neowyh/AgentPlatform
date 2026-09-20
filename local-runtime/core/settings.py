@@ -16,10 +16,10 @@ import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from .compat import StrEnum
 from .files import RootConfig
 from .policy import LocalPolicy, RiskLevel
 
@@ -41,11 +41,19 @@ class RuntimeSettings:
     device_name: str = ""
     user_name: str = ""
     device_id: str = ""
+    #: Server-issued session identity; it must survive reconnects.
+    session_id: str = ""
+    #: Pinned broker public key captured during the first authenticated session.
+    server_public_key: str = ""
+    #: Secure-store reference for the device signing key.
+    device_key_ref: str = ""
     runtime_version: str = "0.1.0"
     #: Bearer credential for this device's Broker session, issued at pairing by
     #: ``POST /api/devices/register/complete``. It is what lets the device prove
     #: it is the paired device on reconnect; treat it like a password.
     session_token: str = ""
+    session_token_ref: str = ""
+    claim_token_ref: str = ""
     roots: list[dict[str, str]] = field(default_factory=list)
     rules: dict[str, str] = field(default_factory=dict)
     #: Per-capability risk-tier overrides: ``{"local.python": "level_2"}``.
@@ -137,7 +145,11 @@ class RuntimeSettings:
     def policy_hash(self) -> str:
         """Hash published in HELLO so the server can tell a stale policy."""
         canonical = json.dumps(
-            {"rules": self.rules, "roots": self.roots},
+            {
+                "rules": self.rules,
+                "risk_levels": self.risk_levels,
+                "roots": self.roots,
+            },
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -167,12 +179,18 @@ class RuntimeSettings:
         )
 
     def remove_root(self, logical_root: str) -> None:
-        self.roots = [entry for entry in self.roots if entry.get("logical_root") != logical_root]
+        self.roots = [
+            entry for entry in self.roots if entry.get("logical_root") != logical_root
+        ]
 
     # --- persistence -----------------------------------------------------
 
     def as_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
+        data = dataclasses.asdict(self)
+        # Session credentials belong in the OS secure store.  Keep the field
+        # in memory for compatibility, but never write a bearer token to JSON.
+        data["session_token"] = ""
+        return data
 
     def save(self, path: str | Path) -> Path:
         target = Path(path)
@@ -195,7 +213,16 @@ def load_settings(path: str | Path) -> RuntimeSettings:
     source = Path(path)
     if not source.exists():
         return RuntimeSettings()
-    data = json.loads(source.read_text(encoding="utf-8"))
+    text = source.read_text(encoding="utf-8").strip()
+    # Installers and first-run flows may create the config file before the
+    # tray has written its first settings snapshot. Treat that empty file as
+    # equivalent to a missing file so the entry point can initialize it.
+    if not text:
+        return RuntimeSettings()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid runtime settings JSON in {source}") from exc
     if not isinstance(data, dict):
-        raise ValueError("runtime settings must be a JSON object")
+        raise TypeError("runtime settings must be a JSON object")
     return RuntimeSettings.from_dict(data)

@@ -17,6 +17,7 @@ DEFAULT_EXCLUDES = {
     "dist",
     "backend/.venv",
     "backend/.ideer",
+    "backend/.deer-flow",
     "backend/.pytest_cache",
     "backend/.ruff_cache",
     "frontend/node_modules",
@@ -45,13 +46,24 @@ def _digest(path: Path) -> str:
     return "sha256:" + h.hexdigest()
 
 
-def snapshot(root: Path, includes: list[str] | None = None, all_skills: bool = False, excluded_skills: set[str] | None = None) -> dict[str, str]:
+def snapshot(
+    root: Path,
+    includes: list[str] | None = None,
+    all_skills: bool = False,
+    excluded_skills: set[str] | None = None,
+) -> dict[str, str]:
     files: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        if path.is_dir() or _excluded(rel) or rel.endswith((".pyc", ".log")):
+        if (
+            path.is_dir()
+            or _excluded(rel)
+            or rel.endswith((".pyc", ".log", ".db-shm", ".db-wal"))
+        ):
             continue
-        if includes and not any(rel == item or rel.startswith(item.rstrip("/") + "/") for item in includes):
+        if includes and not any(
+            rel == item or rel.startswith(item.rstrip("/") + "/") for item in includes
+        ):
             continue
         if rel.startswith("resources/skills/"):
             skill = rel.split("/", 2)[1]
@@ -59,7 +71,11 @@ def snapshot(root: Path, includes: list[str] | None = None, all_skills: bool = F
                 continue
             listed = root / "bundled-skills.txt"
             if not all_skills and listed.is_file():
-                names = {line.split("#", 1)[0].strip() for line in listed.read_text(encoding="utf-8").splitlines() if line.split("#", 1)[0].strip()}
+                names = {
+                    line.split("#", 1)[0].strip()
+                    for line in listed.read_text(encoding="utf-8").splitlines()
+                    if line.split("#", 1)[0].strip()
+                }
                 if skill not in names:
                     continue
         files[rel] = _digest(path)
@@ -71,12 +87,35 @@ def load_files(path: Path) -> dict[str, str]:
     return data.get("source_files", data.get("files", {}))
 
 
-def write_snapshot(root: Path, output: Path, includes: list[str], all_skills: bool, excluded_skills: set[str]) -> None:
-    data = {"format": 1, "source_roots": includes, "all_skills": all_skills, "excluded_skills": sorted(excluded_skills), "source_files": snapshot(root, includes, all_skills, excluded_skills)}
-    output.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def write_snapshot(
+    root: Path,
+    output: Path,
+    includes: list[str],
+    all_skills: bool,
+    excluded_skills: set[str],
+) -> None:
+    data = {
+        "format": 1,
+        "source_roots": includes,
+        "all_skills": all_skills,
+        "excluded_skills": sorted(excluded_skills),
+        "source_files": snapshot(root, includes, all_skills, excluded_skills),
+    }
+    output.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
-def write_delta(root: Path, base: Path, manifest: Path, archive: Path, deleted: Path, includes: list[str], all_skills: bool, excluded_skills: set[str]) -> None:
+def write_delta(
+    root: Path,
+    base: Path,
+    manifest: Path,
+    archive: Path,
+    deleted: Path,
+    includes: list[str],
+    all_skills: bool,
+    excluded_skills: set[str],
+) -> None:
     old = load_files(base)
     current = snapshot(root, includes, all_skills, excluded_skills)
     changed = [name for name, digest in current.items() if old.get(name) != digest]
@@ -90,7 +129,9 @@ def write_delta(root: Path, base: Path, manifest: Path, archive: Path, deleted: 
         "changed_files": sorted(changed),
         "deleted_files": removed,
     }
-    manifest.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     deleted.write_text("".join(f"{name}\n" for name in removed), encoding="utf-8")
     with tarfile.open(archive, "w:gz") as tar:
         for name in changed:
@@ -100,12 +141,23 @@ def write_delta(root: Path, base: Path, manifest: Path, archive: Path, deleted: 
 def verify_root(root: Path, manifest: Path) -> None:
     expected = load_files(manifest)
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    actual = snapshot(root, data.get("source_roots", []), data.get("all_skills", False), set(data.get("excluded_skills", [])))
+    actual = snapshot(
+        root,
+        data.get("source_roots", []),
+        data.get("all_skills", False),
+        set(data.get("excluded_skills", [])),
+    )
     if actual != expected:
         missing = sorted(set(expected) - set(actual))
-        changed = sorted(name for name in set(expected) & set(actual) if expected[name] != actual[name])
+        changed = sorted(
+            name
+            for name in set(expected) & set(actual)
+            if expected[name] != actual[name]
+        )
         extra = sorted(set(actual) - set(expected))
-        raise SystemExit(f"source baseline mismatch (missing={missing[:3]}, changed={changed[:3]}, extra={extra[:3]})")
+        raise SystemExit(
+            f"source baseline mismatch (missing={missing[:3]}, changed={changed[:3]}, extra={extra[:3]})"
+        )
 
 
 def apply_delta(root: Path, archive: Path, deleted: Path, manifest: Path) -> None:
@@ -115,7 +167,12 @@ def apply_delta(root: Path, archive: Path, deleted: Path, manifest: Path) -> Non
         with tarfile.open(archive, "r:gz") as tar:
             for member in tar.getmembers():
                 name = Path(member.name)
-                if name.is_absolute() or ".." in name.parts or not member.isfile() and not member.issym():
+                if (
+                    name.is_absolute()
+                    or ".." in name.parts
+                    or not member.isfile()
+                    and not member.issym()
+                ):
                     raise SystemExit(f"unsafe delta archive member: {member.name}")
             tar.extractall(staging, filter="data")
         for line in deleted.read_text(encoding="utf-8").splitlines():
@@ -154,7 +211,9 @@ def fingerprint(root: Path, prefixes: list[str]) -> str:
         for candidate in candidates:
             rel = candidate.relative_to(root).as_posix()
             entries.append(f"{rel}\0{_digest(candidate)}")
-    return "sha256:" + hashlib.sha256("\n".join(sorted(set(entries))).encode()).hexdigest()
+    return (
+        "sha256:" + hashlib.sha256("\n".join(sorted(set(entries))).encode()).hexdigest()
+    )
 
 
 def main() -> int:
@@ -188,9 +247,24 @@ def main() -> int:
     apply.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "snapshot":
-        write_snapshot(args.root, args.output, args.include, args.all_skills, set(args.exclude_skill))
+        write_snapshot(
+            args.root,
+            args.output,
+            args.include,
+            args.all_skills,
+            set(args.exclude_skill),
+        )
     elif args.command == "delta":
-        write_delta(args.root, args.base, args.manifest, args.archive, args.deleted, args.include, args.all_skills, set(args.exclude_skill))
+        write_delta(
+            args.root,
+            args.base,
+            args.manifest,
+            args.archive,
+            args.deleted,
+            args.include,
+            args.all_skills,
+            set(args.exclude_skill),
+        )
     elif args.command == "fingerprint":
         print(fingerprint(args.root, args.prefixes))
     elif args.command == "verify":

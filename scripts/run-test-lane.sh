@@ -9,7 +9,7 @@ PNPM_CMD=("$PYTHON_BIN" "$ROOT_DIR/scripts/pnpm_command.py")
 
 # Resolve the lane before doing any environment work.  This keeps --help and
 # malformed invocations useful on machines without the test dependencies.
-VALID_LANES=(backend-standard backend-serial backend-full backend-llm backend-external backend-blocking-io frontend-standard frontend-core frontend-smoke frontend-mock-e2e frontend-auth frontend-real frontend-stagehand frontend-visual frontend-a11y pr-standard core-full test-inventory test-contracts)
+VALID_LANES=(local-runtime backend-standard backend-serial backend-full backend-llm backend-external backend-blocking-io frontend-standard frontend-core frontend-smoke frontend-mock-e2e frontend-auth frontend-real frontend-stagehand frontend-visual frontend-a11y pr-standard core-full test-inventory test-contracts)
 is_valid_lane() {
   local candidate=$1 lane
   for lane in "${VALID_LANES[@]}"; do [[ $lane == "$candidate" ]] && return 0; done
@@ -21,6 +21,7 @@ usage() {
 Usage: scripts/run-test-lane.sh <lane>
 
 Lanes:
+  local-runtime       Local Runtime unit and integration tests.
   backend-standard    Parallel backend unit, integration, and contract tests.
   backend-serial      Backend tests marked serial, excluding real LLM tests.
   backend-full        backend-standard followed by backend-serial.
@@ -143,6 +144,9 @@ backend_pytest() {
 }
 
 case "$LANE" in
+  local-runtime)
+    (cd "$ROOT_DIR/local-runtime" && PYTHONPATH="$ROOT_DIR/local-runtime" PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$PYTHON_BIN" -m pytest -q)
+    ;;
   backend-standard)
     backend_pytest "not serial and not requires_llm and not live and not external"
     ;;
@@ -160,10 +164,10 @@ case "$LANE" in
     backend_pytest "external"
     ;;
   frontend-standard)
-    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --pool=forks --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose)
+    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --pool=forks --no-file-parallelism --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose)
     ;;
   frontend-core)
-    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --coverage --pool=forks --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" check)
+    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" rstest run && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" vitest run --coverage --pool=forks --no-file-parallelism --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" check)
     ;;
   frontend-smoke)
     (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" test:e2e:smoke)
@@ -204,11 +208,11 @@ case "$LANE" in
     ;;
   pr-standard)
     bash "$ROOT_DIR/scripts/check-runtime-boundary.sh"
-    run_composite backend-standard frontend-standard frontend-smoke
+    run_composite local-runtime backend-standard frontend-standard frontend-smoke
     ;;
   core-full)
     bash "$ROOT_DIR/scripts/check-runtime-boundary.sh"
-    run_composite backend-full frontend-core frontend-mock-e2e
+    run_composite local-runtime backend-full frontend-core frontend-mock-e2e
     ;;
   -h|--help)
     usage

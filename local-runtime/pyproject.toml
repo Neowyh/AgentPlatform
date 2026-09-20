@@ -1,8 +1,8 @@
 [project]
 name = "ideer-local-runtime"
 version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = ["cryptography>=43", "websockets>=14"]
+requires-python = ">=3.8"
+dependencies = ["cryptography>=43", "websockets>=13,<14"]
 
 [project.scripts]
 ideer-local-runtime = "core.cli:main"

@@ -9,7 +9,10 @@ from enum import StrEnum
 from typing import Any, Protocol
 from uuid import uuid4
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 from .protocol import (
     MessageType,
@@ -17,6 +20,7 @@ from .protocol import (
     TaskEnvelope,
     payload_digest,
     public_key_text,
+    schema_digest,
     sign_envelope,
 )
 
@@ -51,6 +55,8 @@ class DeviceConnection:
     websocket: WebSocketLike
     tasks_allowed: bool = True
     capabilities: frozenset[str] = field(default_factory=frozenset)
+    tool_descriptors: dict[str, dict[str, Any]] = field(default_factory=dict)
+    owner_id: str | None = None
     seen_task_ids: set[str] = field(default_factory=set)
     seen_message_ids: set[str] = field(default_factory=set)
 
@@ -98,7 +104,10 @@ class DeviceBroker:
             message_type=MessageType.HELLO,
             device_id=connection.device_id,
             session_id=connection.session_id,
-            payload={"server_public_key": self.server_public_key, "protocol_version": "1"},
+            payload={
+                "server_public_key": self.server_public_key,
+                "protocol_version": "1",
+            },
         )
         await connection.websocket.send_text(hello.model_dump_json(by_alias=True))
         return hello
@@ -110,10 +119,46 @@ class DeviceBroker:
                 self.connections.pop(device_id, None)
             now = datetime.now(UTC)
             for task in self.tasks.values():
-                if task.device_id == device_id and task.session_id == session_id and task.status in {TaskStatus.CREATED, TaskStatus.SENT, TaskStatus.ACKED, TaskStatus.CONSENT_REQUIRED, TaskStatus.PROGRESS}:
+                if (
+                    task.device_id == device_id
+                    and task.session_id == session_id
+                    and task.status
+                    in {
+                        TaskStatus.CREATED,
+                        TaskStatus.SENT,
+                        TaskStatus.ACKED,
+                        TaskStatus.CONSENT_REQUIRED,
+                        TaskStatus.PROGRESS,
+                    }
+                ):
                     task.status = TaskStatus.DEVICE_OFFLINE
                     task.error = "device disconnected before task completion"
                     task.expires_at = max(task.expires_at, now + timedelta(seconds=1))
+
+    async def invalidate(self, device_id: str, *, reason: str) -> None:
+        """Stop a live device session after an administrative state change."""
+        connection = self.connections.get(device_id)
+        if connection is None:
+            return
+        connection.tasks_allowed = False
+        now = datetime.now(UTC)
+        for task in self.tasks.values():
+            if (
+                task.device_id == device_id
+                and task.session_id == connection.session_id
+                and task.status
+                in {
+                    TaskStatus.CREATED,
+                    TaskStatus.SENT,
+                    TaskStatus.ACKED,
+                    TaskStatus.CONSENT_REQUIRED,
+                    TaskStatus.PROGRESS,
+                }
+            ):
+                task.status = TaskStatus.DEVICE_OFFLINE
+                task.error = reason
+                task.expires_at = max(task.expires_at, now + timedelta(seconds=1))
+        await connection.websocket.close(code=4003, reason=reason)
 
     async def send_echo_task(
         self,
@@ -150,10 +195,24 @@ class DeviceBroker:
         now = datetime.now(UTC)
         task_id = str(uuid4())
         expires_at = now + expires_in
-        payload = {"operation": operation, "path": path, "run_id": run_id, "tool_call_id": tool_call_id}
+        payload = {
+            "operation": operation,
+            "path": path,
+            "run_id": run_id,
+            "tool_call_id": tool_call_id,
+        }
         if payload_extra:
             payload.update(payload_extra)
-        record = TaskRecord(task_id, device_id, connection.session_id if connection else "", run_id, tool_call_id, payload, expires_at, authorization_snapshot=authorization_snapshot)
+        record = TaskRecord(
+            task_id,
+            device_id,
+            connection.session_id if connection else "",
+            run_id,
+            tool_call_id,
+            payload,
+            expires_at,
+            authorization_snapshot=authorization_snapshot,
+        )
         self.tasks[task_id] = record
         if connection is None:
             record.status = TaskStatus.DEVICE_OFFLINE
@@ -164,13 +223,18 @@ class DeviceBroker:
             record.error = "device protocol is outdated"
             return record
         if authorization_snapshot is not None:
-            allowed = frozenset(authorization_snapshot.get("effective_capabilities", ()))
-            if authorization_snapshot.get("device_id") != device_id or operation not in allowed:
+            allowed = frozenset(
+                authorization_snapshot.get("effective_capabilities", ())
+            )
+            if (
+                authorization_snapshot.get("device_id") != device_id
+                or operation not in allowed
+            ):
                 record.status = TaskStatus.DENIED
                 record.error_code = "AUTHORIZATION_SNAPSHOT_INVALID"
                 record.error = "local task authorization is no longer valid"
                 return record
-        if connection.capabilities and operation not in connection.capabilities:
+        if operation.startswith("local.") and operation not in connection.capabilities:
             record.status = TaskStatus.FAILED
             record.error_code = "CAPABILITY_UNAVAILABLE"
             record.error = "device capability is unavailable"
@@ -190,7 +254,12 @@ class DeviceBroker:
 
     async def cancel_task(self, task_id: str) -> TaskRecord:
         record = self._task(task_id)
-        if record.status in {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.DEVICE_OFFLINE, TaskStatus.EXPIRED}:
+        if record.status in {
+            TaskStatus.COMPLETED,
+            TaskStatus.CANCELLED,
+            TaskStatus.DEVICE_OFFLINE,
+            TaskStatus.EXPIRED,
+        }:
             return record
         record.status = TaskStatus.CANCELLED
         connection = self.connections.get(record.device_id)
@@ -203,13 +272,19 @@ class DeviceBroker:
                 task_id=record.task_id,
                 payload={"reason": "cancelled by caller"},
             )
-            await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
+            await connection.websocket.send_text(
+                envelope.model_dump_json(by_alias=True)
+            )
         return record
 
-    async def send_consent_decision(self, task_id: str, *, approved: bool, actor_id: str) -> TaskRecord:
+    async def send_consent_decision(
+        self, task_id: str, *, approved: bool, actor_id: str
+    ) -> TaskRecord:
         record = self._task(task_id)
         if record.status is not TaskStatus.CONSENT_REQUIRED:
-            raise ProtocolError("CONSENT_NOT_PENDING", "task is not waiting for consent")
+            raise ProtocolError(
+                "CONSENT_NOT_PENDING", "task is not waiting for consent"
+            )
         connection = self.connections.get(record.device_id)
         if connection is None or connection.session_id != record.session_id:
             record.status = TaskStatus.DEVICE_OFFLINE
@@ -232,7 +307,9 @@ class DeviceBroker:
         await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
         return record
 
-    async def receive(self, connection: DeviceConnection, envelope: TaskEnvelope) -> TaskRecord | None:
+    async def receive(
+        self, connection: DeviceConnection, envelope: TaskEnvelope
+    ) -> TaskRecord | None:
         envelope.verify(
             public_key=connection.public_key,
             expected_device_id=connection.device_id,
@@ -245,15 +322,57 @@ class DeviceBroker:
         if envelope.type == MessageType.CAPABILITY_UPDATE:
             values = envelope.payload.get("capabilities", ())
             if not isinstance(values, (list, tuple, set)):
-                raise ProtocolError("CAPABILITIES_INVALID", "capability update is invalid")
+                raise ProtocolError(
+                    "CAPABILITIES_INVALID", "capability update is invalid"
+                )
             connection.capabilities = frozenset(str(value) for value in values)
+            descriptors = envelope.payload.get("tool_descriptors", {})
+            if not isinstance(descriptors, dict):
+                raise ProtocolError(
+                    "TOOL_DESCRIPTORS_INVALID", "tool descriptors must be an object"
+                )
+            normalized: dict[str, dict[str, Any]] = {}
+            for name, descriptor in descriptors.items():
+                if not isinstance(name, str) or not isinstance(descriptor, dict):
+                    raise ProtocolError(
+                        "TOOL_DESCRIPTORS_INVALID",
+                        "tool descriptors must be objects keyed by capability",
+                    )
+                if name not in connection.capabilities:
+                    continue
+                schema = descriptor.get("input_schema", {})
+                if schema is not None and not isinstance(schema, dict):
+                    raise ProtocolError(
+                        "TOOL_DESCRIPTORS_INVALID",
+                        "tool input schema must be an object",
+                    )
+                schema = dict(schema or {})
+                schema_hash = str(descriptor.get("schema_hash", ""))
+                if schema_hash and schema_hash != schema_digest(schema):
+                    raise ProtocolError(
+                        "TOOL_SCHEMA_HASH_MISMATCH",
+                        "tool input schema hash does not match its schema",
+                    )
+                normalized[name] = {
+                    "description": str(descriptor.get("description", "")),
+                    "input_schema": schema,
+                    "schema_hash": schema_hash,
+                }
+            connection.tool_descriptors = normalized
             return None
         if envelope.task_id is None:
-            raise ProtocolError("TASK_ID_REQUIRED", "task lifecycle messages require task_id")
+            raise ProtocolError(
+                "TASK_ID_REQUIRED", "task lifecycle messages require task_id"
+            )
         record = self._task(envelope.task_id)
         self._expire_if_needed(record)
-        if record.device_id != connection.device_id or record.session_id != connection.session_id:
-            raise ProtocolError("SESSION_MISMATCH", "task belongs to another device session")
+        if (
+            record.device_id != connection.device_id
+            or record.session_id != connection.session_id
+        ):
+            raise ProtocolError(
+                "SESSION_MISMATCH", "task belongs to another device session"
+            )
         if record.status in {
             TaskStatus.COMPLETED,
             TaskStatus.CANCELLED,
@@ -269,7 +388,12 @@ class DeviceBroker:
         elif envelope.type == MessageType.CONSENT_REQUIRED:
             request_payload = envelope.payload.get("payload")
             request_hash = envelope.payload.get("request_hash")
-            if not isinstance(request_payload, dict) or not isinstance(request_hash, str) or request_hash != payload_digest(request_payload) or request_payload != record.payload:
+            if (
+                not isinstance(request_payload, dict)
+                or not isinstance(request_hash, str)
+                or request_hash != payload_digest(request_payload)
+                or request_payload != record.payload
+            ):
                 raise ProtocolError(
                     "CONSENT_HASH_MISMATCH",
                     "consent request does not match the task payload",
@@ -302,7 +426,9 @@ class DeviceBroker:
                 record.status = TaskStatus.COMPLETED
         elif envelope.type == MessageType.ERROR:
             record.error_code = str(envelope.payload.get("error_code", "DEVICE_ERROR"))
-            record.error = str(envelope.payload.get("message", "device reported an error"))
+            record.error = str(
+                envelope.payload.get("message", "device reported an error")
+            )
             record.receipt = envelope.payload.get("receipt")
             receipt_status = str((record.receipt or {}).get("status", "failed"))
             if receipt_status == "cancelled":
@@ -314,13 +440,19 @@ class DeviceBroker:
             else:
                 record.status = TaskStatus.FAILED
         else:
-            raise ProtocolError("MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}")
+            raise ProtocolError(
+                "MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}"
+            )
         if record.receipt is not None and record.task_id not in self._recorded_receipts:
             self._recorded_receipts.add(record.task_id)
             try:
-                from agentplatform_extension.evidence import record_local_execution_receipt
+                from agentplatform_extension.evidence import (
+                    record_local_execution_receipt,
+                )
 
-                record_local_execution_receipt(record.receipt, tool_call_id=record.tool_call_id)
+                record_local_execution_receipt(
+                    record.receipt, tool_call_id=record.tool_call_id
+                )
             except (ImportError, KeyError, RuntimeError, TypeError, ValueError):
                 pass
         return record
@@ -338,7 +470,12 @@ class DeviceBroker:
 
     @staticmethod
     def _expire_if_needed(record: TaskRecord) -> None:
-        if record.status in {TaskStatus.CREATED, TaskStatus.SENT, TaskStatus.ACKED, TaskStatus.PROGRESS} and record.expires_at <= datetime.now(UTC):
+        if record.status in {
+            TaskStatus.CREATED,
+            TaskStatus.SENT,
+            TaskStatus.ACKED,
+            TaskStatus.PROGRESS,
+        } and record.expires_at <= datetime.now(UTC):
             record.status = TaskStatus.EXPIRED
             record.error = "task delivery or execution deadline elapsed"
 

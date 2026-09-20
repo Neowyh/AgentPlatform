@@ -1,0 +1,35 @@
+name: Local Runtime Windows
+
+on:
+  push:
+    paths:
+      - "local-runtime/**"
+      - ".github/workflows/local-runtime-windows.yml"
+  pull_request:
+    paths:
+      - "local-runtime/**"
+      - ".github/workflows/local-runtime-windows.yml"
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        # CPython 3.8 is the supported interpreter line for Windows 7;
+        # 3.12 covers current Windows installations.
+        python-version: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Local Runtime
+        working-directory: local-runtime
+        run: >-
+          python -m pip install --upgrade pip &&
+          python -m pip install -e . pytest pytest-asyncio pytest-timeout
+      - name: Run Windows Local Runtime lane
+        env:
+          PYTHONPATH: ${{ github.workspace }}\local-runtime
+        run: python -m pytest local-runtime/tests -q

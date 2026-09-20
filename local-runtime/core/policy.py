@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Any
+
+from .compat import StrEnum
 
 
 class PolicyDecision(StrEnum):
@@ -42,7 +43,12 @@ class LocalPolicy:
             or capability in self.consent_required_capabilities
         ):
             return RiskLevel.LEVEL_1
-        if capability in {"local.files.write", "local.python", "local.artifacts.upload", "custom.modify"}:
+        if capability in {
+            "local.files.write",
+            "local.python",
+            "local.artifacts.upload",
+            "custom.modify",
+        }:
             return RiskLevel.LEVEL_1
         # Projected MCP tools stay user-visible: consent is required unless the
         # local policy explicitly moves a server or tool to another level.

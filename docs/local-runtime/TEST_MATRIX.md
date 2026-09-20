@@ -62,7 +62,11 @@ Device can never be accidentally covered as a Resource.
 | Capability projection | `local-runtime/tests/test_mcp.py` | Enabled servers project `local.mcp.<server>.<tool>` capabilities; the runtime publishes them in hello/CAPABILITY_UPDATE and republishes on change |
 | MCP consent default | `local-runtime/tests/test_mcp.py` | Projected MCP tools are risk level 1: consent is required unless local policy says otherwise |
 | MCP task round trip | `local-runtime/tests/test_mcp.py` | Server task → consent round trip → completed receipt bound to run/task with tool content |
+| Streamable HTTP session contract | `local-runtime/tests/test_mcp.py` | Initialize negotiates the supported protocol version, stores and replays `Mcp-Session-Id`, and reports an expired session without replaying a side-effecting call |
 | Broker MCP gate | `backend/tests/integration/api/test_devices_router.py` | Temporary service plus real Local Runtime and real stdio MCP complete a task via the broker with consent and a structured receipt |
+| Authenticated descriptor binding | `backend/tests/unit/gateway/test_local_runtime_context.py`, `backend/tests/unit/device_control/test_broker.py`, `backend/tests/integration/api/test_devices_router.py` | Run preparation replaces forged device facts with the signed online owner connection, preserves schema hashes, and rejects unannounced local capabilities |
+| Revocation closes live session | `backend/tests/unit/device_control/test_broker.py`, `local-runtime/tests/test_tray_actions.py` | Administrative invalidation closes the socket, fails pending work, and prevents automatic reconnect after a rejected session |
+| Runtime configuration takes effect | `local-runtime/tests/test_tray_actions.py` | Adding/removing the first/last root creates/removes services; changing MCP config rebuilds the projection |
 
 ## Local secret tests
 
@@ -90,9 +94,16 @@ Device can never be accidentally covered as a Resource.
 
 ## Required lanes
 
-The implementation lane is the backend standard lane plus the local-runtime
-tests. Before handoff, run `bash scripts/run-test-lane.sh pr-standard`; this
-ticket changes authentication, persistence, and a new control-plane boundary.
+The implementation lane is the independent `local-runtime` lane plus the
+backend standard lane. The canonical `pr-standard` composite includes both,
+the frontend standard lane, and browser smoke. The M9 production assembly
+coverage is `backend/tests/unit/agentplatform/test_runtime_adapter.py` plus
+the canonical run preparation path: an authorized `local.mcp.*` descriptor is
+adapted to an executable model tool and dispatched through the frozen device
+route, broker, and evidence bridge.
+
+Before handoff, run `bash scripts/run-test-lane.sh pr-standard`; this ticket
+changes authentication, persistence, and a new control-plane boundary.
 The protected high-risk path should select Real E2E in CI.
 
 本地直接运行 Local Runtime 测试时，工作目录必须是 `local-runtime/`，并显式加入

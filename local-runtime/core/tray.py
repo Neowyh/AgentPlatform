@@ -17,7 +17,10 @@ is written to the local audit log either way.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import threading
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,16 +39,18 @@ from .file_service import LocalFileService
 from .files import LocalFileStore
 from .mcp import LocalMCPService, MCPSupervisor, load_mcp_specs
 from .policy import RiskLevel
+from .protocol import public_key_text
 from .python import LocalPythonService
 from .secrets import (
     InMemorySecretStore,
     SecretBackendUnavailable,
+    SecretNotFound,
     SecretResolver,
     SecretStoreError,
     create_default_secret_store,
 )
 from .settings import CapabilityRule, RuntimeSettings, load_settings
-from .transport import ConsentDecisionError, LocalRuntimeClient
+from .transport import ConsentDecisionError, LocalRuntimeClient, RePairRequired
 
 #: Reconnect delay after a dropped session, doubling up to a cap: a tray that
 #: hammers a downed intranet makes the outage worse than the outage does.
@@ -55,6 +60,258 @@ MAX_RECONNECT_BACKOFF_SECONDS = 30.0
 
 class TrayError(RuntimeError):
     """A control-surface call could not be honoured."""
+
+
+class TrayApplication:
+    """Small native settings/status window backed by :class:`TrayController`.
+
+    Tkinter is imported lazily so headless commands and tests do not require a
+    display server.  The controller remains the source of truth; the window
+    only renders status and invokes its public actions.
+    """
+
+    def __init__(self, controller: TrayController) -> None:
+        self.controller = controller
+
+    def run(self) -> None:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.title("iDeer Local Runtime")
+        root.geometry("520x360")
+        status = tk.StringVar()
+        status_label = tk.Label(root, textvariable=status, anchor="w")
+        status_label.pack(fill="x", padx=12, pady=(12, 0))
+        details = tk.Text(root, height=14, width=68, state="disabled")
+        details.pack(fill="both", expand=True, padx=12, pady=12)
+        refresh_job: str | None = None
+
+        def refresh() -> None:
+            nonlocal refresh_job
+            snapshot = self.controller.status().as_dict()
+            status.set(f"{snapshot['connection']}  ·  {snapshot['server_url']}")
+            details.configure(state="normal")
+            details.delete("1.0", "end")
+            details.insert("end", json.dumps(snapshot, ensure_ascii=False, indent=2))
+            details.configure(state="disabled")
+            refresh_job = root.after(1000, refresh)
+
+        def toggle() -> None:
+            try:
+                if self.controller.status().paused:
+                    self.controller.resume()
+                else:
+                    self.controller.pause()
+                refresh()
+            except Exception as exc:  # noqa: BLE001 - show UI-safe error
+                messagebox.showerror("Local Runtime", str(exc))
+
+        def show_settings() -> None:
+            window = tk.Toplevel(root)
+            window.title("Local Runtime settings")
+            window.geometry("560x420")
+            settings = self.controller.open_settings()
+            form = tk.Frame(window)
+            form.pack(fill="both", expand=True, padx=12, pady=12)
+            fields: dict[str, tk.Entry] = {}
+            for row, (label, key) in enumerate(
+                (
+                    ("Server URL", "server_url"),
+                    ("Device name", "device_name"),
+                    ("MCP config path", "mcp_config_path"),
+                )
+            ):
+                tk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=4)
+                entry = tk.Entry(form, width=58)
+                entry.insert(0, str(getattr(settings, key)))
+                entry.grid(row=row, column=1, sticky="ew", pady=4)
+                fields[key] = entry
+            tk.Label(form, text="Roots JSON").grid(row=3, column=0, sticky="nw", pady=4)
+            roots = tk.Text(form, height=5, width=58)
+            roots.insert("1.0", json.dumps(settings.roots, ensure_ascii=False))
+            roots.grid(row=3, column=1, sticky="nsew", pady=4)
+            tk.Label(form, text="Rules JSON").grid(row=4, column=0, sticky="nw", pady=4)
+            rules = tk.Text(form, height=5, width=58)
+            rules.insert("1.0", json.dumps(settings.rules, ensure_ascii=False))
+            rules.grid(row=4, column=1, sticky="nsew", pady=4)
+            tk.Label(form, text="Risk levels JSON").grid(
+                row=5, column=0, sticky="nw", pady=4
+            )
+            risk_levels = tk.Text(form, height=5, width=58)
+            risk_levels.insert(
+                "1.0", json.dumps(settings.risk_levels, ensure_ascii=False)
+            )
+            risk_levels.grid(row=5, column=1, sticky="nsew", pady=4)
+            form.columnconfigure(1, weight=1)
+            form.rowconfigure(3, weight=1)
+            form.rowconfigure(4, weight=1)
+            form.rowconfigure(5, weight=1)
+
+            def save() -> None:
+                try:
+                    parsed_roots = json.loads(roots.get("1.0", "end"))
+                    parsed_rules = json.loads(rules.get("1.0", "end"))
+                    parsed_risk_levels = json.loads(risk_levels.get("1.0", "end"))
+                    if not isinstance(parsed_roots, list) or not all(
+                        isinstance(item, dict) for item in parsed_roots
+                    ):
+                        raise ValueError("roots must be a JSON list of objects")
+                    if not isinstance(parsed_rules, dict) or not isinstance(
+                        parsed_risk_levels, dict
+                    ):
+                        raise TypeError("rules and risk levels must be JSON objects")
+                    settings.server_url = fields["server_url"].get().strip()
+                    settings.device_name = fields["device_name"].get().strip()
+                    settings.mcp_config_path = fields["mcp_config_path"].get().strip()
+                    settings.roots = [
+                        {
+                            "logical_root": str(item.get("logical_root", "")),
+                            "physical_root": str(item.get("physical_root", "")),
+                        }
+                        for item in parsed_roots
+                    ]
+                    settings.rules = {
+                        str(key): str(value) for key, value in parsed_rules.items()
+                    }
+                    settings.risk_levels = {
+                        str(key): str(value)
+                        for key, value in parsed_risk_levels.items()
+                    }
+                    self.controller.save_settings()
+                    window.destroy()
+                    refresh()
+                except Exception as exc:  # noqa: BLE001 - show validation failure in UI
+                    messagebox.showerror("Local Runtime", str(exc), parent=window)
+
+            tk.Button(window, text="Save settings", command=save).pack(pady=(0, 10))
+
+        def show_pairing() -> None:
+            window = tk.Toplevel(root)
+            window.title("Pair Local Runtime")
+            window.geometry("520x260")
+            form = tk.Frame(window)
+            form.pack(fill="both", expand=True, padx=12, pady=12)
+            values = {
+                "server_url": tk.StringVar(value=self.controller.settings.server_url),
+                "pairing_code": tk.StringVar(),
+                "device_name": tk.StringVar(value=self.controller.settings.device_name),
+                "claim_token": tk.StringVar(),
+            }
+            for row, (label, key) in enumerate(
+                (
+                    ("Server URL", "server_url"),
+                    ("Pairing code", "pairing_code"),
+                    ("Device name", "device_name"),
+                    ("Claim token", "claim_token"),
+                )
+            ):
+                tk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=4)
+                tk.Entry(
+                    form,
+                    textvariable=values[key],
+                    width=52,
+                    show="*" if key == "claim_token" else "",
+                ).grid(row=row, column=1, sticky="ew", pady=4)
+            form.columnconfigure(1, weight=1)
+            status = tk.StringVar(
+                value="Create/register first, then confirm the code in the owner web UI."
+            )
+            tk.Label(window, textvariable=status, wraplength=480, justify="left").pack(
+                padx=12, anchor="w"
+            )
+
+            def start_pairing() -> None:
+                try:
+                    result = self.controller.pair_start(
+                        server_url=values["server_url"].get(),
+                        pairing_code=values["pairing_code"].get(),
+                        device_name=values["device_name"].get(),
+                    )
+                    status.set(
+                        f"Registered {result['device_id']}. Confirm the pairing code, then complete pairing."
+                    )
+                except Exception as exc:  # noqa: BLE001 - show UI-safe error
+                    messagebox.showerror("Local Runtime", str(exc), parent=window)
+
+            def complete_pairing() -> None:
+                try:
+                    self.controller.pair_complete(
+                        claim_token=values["claim_token"].get() or None
+                    )
+                    status.set(
+                        "Pairing complete. Use Reconnect to start the device session."
+                    )
+                except Exception as exc:  # noqa: BLE001 - show UI-safe error
+                    messagebox.showerror("Local Runtime", str(exc), parent=window)
+
+            buttons = tk.Frame(window)
+            buttons.pack(pady=(8, 10))
+            tk.Button(buttons, text="Register", command=start_pairing).pack(
+                side="left", padx=4
+            )
+            tk.Button(buttons, text="Complete", command=complete_pairing).pack(
+                side="left", padx=4
+            )
+
+        def show_audit() -> None:
+            window = tk.Toplevel(root)
+            window.title("Local Runtime audit")
+            window.geometry("720x420")
+            text = tk.Text(window, height=22, width=90)
+            text.pack(fill="both", expand=True, padx=12, pady=12)
+            entries = self.controller.audit_page(limit=100)
+            text.insert(
+                "end",
+                "\n".join(
+                    json.dumps(
+                        {
+                            "seq": entry.seq,
+                            "kind": entry.kind.value,
+                            "action": entry.action,
+                            "capability": entry.capability,
+                            "task_id": entry.task_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                    for entry in entries
+                )
+                or "No audit entries",
+            )
+            text.configure(state="disabled")
+
+        controls = tk.Frame(root)
+        controls.pack(pady=(0, 10))
+        tk.Button(controls, text="Pause / Resume", command=toggle).pack(
+            side="left", padx=4
+        )
+        tk.Button(controls, text="Reconnect", command=self.controller.reconnect).pack(
+            side="left", padx=4
+        )
+        tk.Button(controls, text="Disconnect", command=self.controller.disconnect).pack(
+            side="left", padx=4
+        )
+        tk.Button(controls, text="Pairing", command=show_pairing).pack(
+            side="left", padx=4
+        )
+        tk.Button(controls, text="Settings", command=show_settings).pack(
+            side="left", padx=4
+        )
+        tk.Button(controls, text="Audit", command=show_audit).pack(side="left", padx=4)
+
+        def hide() -> None:
+            root.withdraw()
+
+        def exit_app() -> None:
+            if refresh_job is not None:
+                root.after_cancel(refresh_job)
+            self.controller.stop()
+            root.destroy()
+
+        root.protocol("WM_DELETE_WINDOW", hide)
+        tk.Button(controls, text="Exit", command=exit_app).pack(side="left", padx=4)
+        refresh()
+        root.mainloop()
 
 
 @dataclass(frozen=True)
@@ -110,6 +367,8 @@ class TrayController:
     server_public_key: str | None = None
 
     def __post_init__(self) -> None:
+        if self.server_public_key is None and self.settings.server_public_key:
+            self.server_public_key = self.settings.server_public_key
         if self.audit is None:
             self.audit = LocalAuditLog(db_path=self.settings.audit_db_path or None)
         # One approval store for every service: an "always allow" or a denial
@@ -120,9 +379,15 @@ class TrayController:
         )
         self.secrets = _build_secret_resolver(self.settings, self._note_secret_use)
         self.mcp_service = _build_mcp_service(self.settings, self.secrets, self.consent)
+        self._mcp_config_path = self.settings.mcp_config_path
         self.client = LocalRuntimeClient(
-            server_url=self.settings.websocket_url(),
+            server_url=(
+                self.settings.websocket_url()
+                if self.settings.server_url.strip()
+                else "ws://127.0.0.1:8000/api/devices/ws"
+            ),
             device_id=self.settings.device_id,
+            session_id=self.settings.session_id or None,
             session_token=self.settings.session_token,
             private_key=self.private_key,
             server_public_key=self.server_public_key,
@@ -136,6 +401,8 @@ class TrayController:
             mcp_service=self.mcp_service,
             audit=self.audit,
             consent_prompt=self._prompt,
+            on_session_id=self._remember_session_id,
+            on_server_public_key=self._remember_server_public_key,
         )
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -146,6 +413,17 @@ class TrayController:
         # single question with one answer per call.
         self._lifecycle = threading.Lock()
         self._last_audit_seq = 0
+
+    def _remember_session_id(self, session_id: str) -> None:
+        self.settings.session_id = session_id
+        if self.settings.config_path:
+            self.settings.save(self.settings.config_path)
+
+    def _remember_server_public_key(self, public_key: str) -> None:
+        self.settings.server_public_key = public_key
+        self.server_public_key = public_key
+        if self.settings.config_path:
+            self.settings.save(self.settings.config_path)
 
     def _default_consent_path(self) -> str | None:
         if not self.settings.audit_db_path:
@@ -160,6 +438,7 @@ class TrayController:
         The thread exists because consent does: the UI thread must be able to
         answer a request while the runtime thread is parked waiting for it.
         """
+
         def runner() -> None:
             loop = asyncio.new_event_loop()
             self._loop = loop
@@ -202,8 +481,26 @@ class TrayController:
             while not self._stopping:
                 try:
                     await self.client.run()
+                    if (
+                        self.client.session_id
+                        and self.client.session_id != self.settings.session_id
+                    ):
+                        self.settings.session_id = self.client.session_id
+                        if self.settings.config_path:
+                            self.settings.save(self.settings.config_path)
                 except asyncio.CancelledError:
                     raise
+                except RePairRequired as exc:
+                    self.audit.record(
+                        AuditKind.CONNECTION,
+                        "pairing_required",
+                        detail={
+                            "error": str(exc),
+                            "device_id": self.settings.device_id,
+                        },
+                    )
+                    self._stopping = True
+                    break
                 except Exception as exc:  # noqa: BLE001 - any failure means retry
                     # Not just OSError: a dropped websocket surfaces as
                     # ConnectionClosed, which is not an OSError, so a
@@ -246,9 +543,7 @@ class TrayController:
                 return False
             self._stopping = True
         try:
-            asyncio.run_coroutine_threadsafe(
-                self._end_session(actor_id=actor_id), loop
-            )
+            asyncio.run_coroutine_threadsafe(self._end_session(actor_id=actor_id), loop)
         except RuntimeError:
             # The loop closed on its own rather than being asked to stop, so
             # there is nothing to cancel on it; joining is all that is left.
@@ -291,8 +586,7 @@ class TrayController:
         if client.mcp_service is not None:
             supervisor = client.mcp_service.supervisor
             servers = tuple(
-                (name, supervisor.state_of(name))
-                for name in supervisor.server_names()
+                (name, supervisor.state_of(name)) for name in supervisor.server_names()
             )
         recent = self.audit.recent(limit=1, kind=AuditKind.EXECUTION)
         integrity = self.audit.verify()
@@ -304,7 +598,9 @@ class TrayController:
             device_id=self.settings.device_id,
             runtime_version=self.settings.runtime_version,
             paused=client.paused,
-            allowed_roots=tuple(root.logical_root for root in self.settings.file_roots()),
+            allowed_roots=tuple(
+                root.logical_root for root in self.settings.file_roots()
+            ),
             capabilities=client.current_capabilities(),
             mcp_servers=servers,
             pending_consents=len(client.pending_consents()),
@@ -356,6 +652,125 @@ class TrayController:
             if self._thread is not None:
                 raise TrayError("the tray controller is already running")
         self.start()
+
+    # --- pairing --------------------------------------------------------
+
+    def pair_start(
+        self, *, server_url: str, pairing_code: str, device_name: str
+    ) -> dict[str, Any]:
+        """Register this device against an owner-created pairing challenge."""
+        if (
+            not server_url.strip()
+            or not pairing_code.strip()
+            or not device_name.strip()
+        ):
+            raise TrayError("server URL, pairing code, and device name are required")
+        base = server_url.rstrip("/")
+        endpoint = (
+            f"{base}/devices/register"
+            if base.endswith("/api")
+            else f"{base}/api/devices/register"
+        )
+        result = self._pairing_post(
+            endpoint,
+            {
+                "pairing_code": pairing_code,
+                "name": device_name,
+                "public_key": public_key_text(self.private_key),
+                "protocol_version": "1",
+                "runtime_version": self.settings.runtime_version,
+                "capabilities": list(self.client.current_capabilities()),
+            },
+        )
+        try:
+            secure = create_default_secret_store()
+            device_id = str(result["device"]["id"])
+            claim_ref = f"ideer-device-claim-{device_id}"
+            secure.set(claim_ref, str(result["claim_token"]))
+        except (KeyError, SecretStoreError) as exc:
+            raise TrayError("the pairing claim could not be stored securely") from exc
+        self.settings.server_url = server_url
+        self.settings.device_id = device_id
+        self.settings.device_name = device_name
+        self.settings.claim_token_ref = claim_ref
+        self.settings.session_id = ""
+        self.settings.session_token = ""
+        self.settings.save(self.settings.config_path)
+        self.audit.record(
+            AuditKind.CONFIG,
+            "pairing_started",
+            detail={"device_id": device_id, "claim_ref": claim_ref},
+        )
+        return {
+            "pairing_id": result["pairing_id"],
+            "device_id": device_id,
+            "claim_expires_at": result["claim_expires_at"],
+        }
+
+    def pair_complete(self, *, claim_token: str | None = None) -> RuntimeSettings:
+        """Complete owner confirmation and bind the issued session locally."""
+        if not self.settings.device_id or not self.settings.server_url:
+            raise TrayError("start pairing before completing it")
+        try:
+            secure = create_default_secret_store()
+            token = claim_token or secure.get(self.settings.claim_token_ref)
+        except SecretStoreError as exc:
+            raise TrayError(f"pairing claim unavailable: {exc.code}") from exc
+        base = self.settings.server_url.rstrip("/")
+        endpoint = (
+            f"{base}/devices/register/complete"
+            if base.endswith("/api")
+            else f"{base}/api/devices/register/complete"
+        )
+        result = self._pairing_post(
+            endpoint,
+            {
+                "device_id": self.settings.device_id,
+                "public_key": public_key_text(self.private_key),
+                "claim_token": token,
+            },
+        )
+        try:
+            session_token = str(result["session_token"])
+            token_ref = f"ideer-device-session-{self.settings.device_id}"
+            secure.set(token_ref, session_token)
+        except (KeyError, SecretStoreError) as exc:
+            raise TrayError("the device session could not be stored securely") from exc
+        device = result.get("device", {})
+        self.settings.session_id = str(result.get("session_id", ""))
+        self.settings.session_token = session_token
+        self.settings.session_token_ref = token_ref
+        self.settings.claim_token_ref = ""
+        self.settings.device_name = str(device.get("name", self.settings.device_name))
+        self.settings.save(self.settings.config_path)
+        self.client.server_url = self.settings.websocket_url()
+        self.client.device_id = self.settings.device_id
+        self.client.session_id = self.settings.session_id
+        self.client.session_token = session_token
+        self.client.server_public_key = self.settings.server_public_key or None
+        self.audit.record(
+            AuditKind.CONFIG,
+            "pairing_completed",
+            detail={"device_id": self.settings.device_id},
+        )
+        return self.settings
+
+    @staticmethod
+    def _pairing_post(endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                result = json.load(response)
+        except Exception as exc:
+            raise TrayError(f"pairing request failed: {type(exc).__name__}") from exc
+        if not isinstance(result, dict):
+            raise TrayError("pairing response was not a JSON object")
+        return result
 
     # --- consent ---------------------------------------------------------
 
@@ -445,7 +860,7 @@ class TrayController:
         """
         return self.settings
 
-    def view_local_audit(self) -> "LocalAuditView":
+    def view_local_audit(self) -> LocalAuditView:
         """A read-only view of the local audit history, for the tray menu.
 
         The UI renders ``entries`` newest-first, calls ``clear`` to wipe the
@@ -463,6 +878,9 @@ class TrayController:
         """
         if not self.settings.config_path:
             raise TrayError("no settings file is configured")
+        self._rebuild_file_services()
+        if self.settings.mcp_config_path != self._mcp_config_path:
+            self._replace_mcp_service()
         self.apply_policy()
         self.audit.record(
             AuditKind.CONFIG,
@@ -498,6 +916,7 @@ class TrayController:
             capability=capability,
             detail={"rule": rule.value},
         )
+        self._commit_configuration()
 
     def set_risk_level(self, capability: str, level: RiskLevel) -> None:
         self.settings.set_risk_level(capability, level)
@@ -508,6 +927,7 @@ class TrayController:
             capability=capability,
             detail={"risk_level": level.value},
         )
+        self._commit_configuration()
 
     def add_root(self, logical_root: str, physical_root: str | Path) -> None:
         """Widen or replace one allowed root and rebuild the store it feeds."""
@@ -518,6 +938,7 @@ class TrayController:
             "root_added",
             detail={"logical_root": logical_root},
         )
+        self._commit_configuration()
 
     def remove_root(self, logical_root: str) -> None:
         self.settings.remove_root(logical_root)
@@ -527,13 +948,81 @@ class TrayController:
             "root_removed",
             detail={"logical_root": logical_root},
         )
+        self._commit_configuration()
+
+    def _commit_configuration(self) -> None:
+        """Persist a live edit and publish its policy to an active session."""
+        if self.settings.config_path:
+            self.settings.save(self.settings.config_path)
+        if self._loop is not None and self.client.connection is not None:
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.send_capability_update(), self._loop
+            )
+            try:
+                future.result(timeout=5)
+            except Exception as exc:  # noqa: BLE001 - UI must remain responsive
+                self.audit.record(
+                    AuditKind.CONFIG,
+                    "publish_failed",
+                    detail={"error": type(exc).__name__},
+                )
 
     def _rebuild_file_services(self) -> None:
         store = LocalFileStore(self.settings.file_roots())
-        if self.client.file_service is not None:
-            self.client.file_service.files = store
-        if self.client.python_service is not None:
-            self.client.python_service.files = store
+        roots = self.settings.file_roots()
+        if roots:
+            if self.client.file_service is None:
+                self.client.file_service = LocalFileService(
+                    store, policy=self.client.policy, consent=self.consent
+                )
+            else:
+                self.client.file_service.files = store
+            if self.client.python_service is None:
+                self.client.python_service = LocalPythonService(
+                    store,
+                    policy=self.client.policy,
+                    consent=self.consent,
+                    secrets=self.secrets,
+                )
+            else:
+                self.client.python_service.files = store
+        else:
+            self.client.file_service = None
+            self.client.python_service = None
+
+    def set_mcp_config_path(self, path: str | Path) -> None:
+        """Apply an MCP config edit and restart only the local MCP services."""
+        self.settings.mcp_config_path = str(path)
+        self._replace_mcp_service()
+        self._commit_configuration()
+
+    def _replace_mcp_service(self) -> None:
+        old = self.mcp_service
+        new = _build_mcp_service(self.settings, self.secrets, self.consent)
+        self.mcp_service = new
+        self.client.mcp_service = new
+        self._mcp_config_path = self.settings.mcp_config_path
+        if new is not None:
+            new.on_capabilities_changed = self.client._on_mcp_capabilities_changed
+        if self._loop is None:
+            return
+
+        async def swap() -> None:
+            if old is not None:
+                await old.supervisor.stop_all()
+            if new is not None:
+                await new.supervisor.start_all()
+            await self.client._on_mcp_capabilities_changed()
+
+        future = asyncio.run_coroutine_threadsafe(swap(), self._loop)
+        try:
+            future.result(timeout=10)
+        except Exception as exc:  # noqa: BLE001 - UI must remain responsive
+            self.audit.record(
+                AuditKind.CONFIG,
+                "mcp_restart_failed",
+                detail={"error": type(exc).__name__},
+            )
 
     # --- secrets (names and references only) -----------------------------
 
@@ -584,8 +1073,40 @@ def load_controller(
     """Build a controller from a settings file; a missing file is a fresh device."""
     settings = load_settings(path)
     settings.config_path = str(path)
+    # Migrate legacy plaintext session credentials into the secure backend;
+    # the settings file is rewritten only after the secure write succeeds.
+    if settings.session_token_ref:
+        try:
+            secure = create_default_secret_store()
+            settings.session_token = secure.get(settings.session_token_ref)
+        except (SecretBackendUnavailable, SecretStoreError):
+            settings.session_token = ""
+    elif settings.session_token:
+        try:
+            secure = create_default_secret_store()
+            ref = f"ideer-device-session-{settings.device_id or 'default'}"
+            secure.set(ref, settings.session_token)
+            settings.session_token_ref = ref
+            settings.save(path)
+        except (SecretBackendUnavailable, SecretStoreError):
+            # Keep the in-memory legacy value for this process, but do not
+            # claim migration succeeded or create a plaintext backup.
+            pass
     key_path = Path(path).with_name("runtime-key")
-    private_key = private_key or _load_or_create_key(key_path)
+    secure = None
+    try:
+        secure = create_default_secret_store()
+    except SecretBackendUnavailable:
+        pass
+    key_ref = (
+        settings.device_key_ref or f"ideer-device-key-{settings.device_id or 'default'}"
+    )
+    private_key = private_key or _load_or_create_key(
+        key_path, secure_store=secure, key_ref=key_ref
+    )
+    if secure is not None and settings.device_key_ref != key_ref:
+        settings.device_key_ref = key_ref
+        settings.save(path)
     return TrayController(
         settings=settings,
         private_key=private_key,
@@ -594,7 +1115,12 @@ def load_controller(
     )
 
 
-def _load_or_create_key(path: Path) -> Ed25519PrivateKey:
+def _load_or_create_key(
+    path: Path,
+    *,
+    secure_store: Any | None = None,
+    key_ref: str | None = None,
+) -> Ed25519PrivateKey:
     """Read the device signing key, creating one on first run.
 
     The server pins the public key captured at pairing, so this file must
@@ -602,17 +1128,48 @@ def _load_or_create_key(path: Path) -> Ed25519PrivateKey:
     It is written unreadable to anyone but the user because it signs every
     frame this device sends.
     """
+    if secure_store is not None and key_ref:
+        try:
+            encoded = secure_store.get(key_ref)
+            key = load_pem_private_key(base64.b64decode(encoded), password=None)
+            if isinstance(key, Ed25519PrivateKey):
+                return key
+            raise TrayError("the stored device key is not an Ed25519 key")
+        except SecretNotFound:
+            pass
+        except (ValueError, TypeError, OSError) as exc:
+            raise TrayError("the stored device key could not be read") from exc
     if path.exists():
         try:
-            key = load_pem_private_key(path.read_bytes(), password=None)
+            pem = path.read_bytes()
+            key = load_pem_private_key(pem, password=None)
         except (ValueError, TypeError, OSError) as exc:
             raise TrayError(f"the device key at {path} could not be read") from exc
         if not isinstance(key, Ed25519PrivateKey):
             raise TrayError(f"{path} is not an Ed25519 key")
+        if secure_store is not None and key_ref:
+            try:
+                secure_store.set(key_ref, base64.b64encode(pem).decode("ascii"))
+                path.unlink()
+            except (SecretStoreError, OSError) as exc:
+                raise TrayError(
+                    "the device key could not be migrated to secure storage"
+                ) from exc
         return key
     path.parent.mkdir(parents=True, exist_ok=True)
     key = Ed25519PrivateKey.generate()
-    _write_private_key(path, key)
+    pem = key.private_bytes(
+        encoding=Encoding.PEM,
+        format=PrivateFormat.PKCS8,
+        encryption_algorithm=NoEncryption(),
+    )
+    if secure_store is not None and key_ref:
+        try:
+            secure_store.set(key_ref, base64.b64encode(pem).decode("ascii"))
+        except SecretStoreError as exc:
+            raise TrayError("the device key could not be stored securely") from exc
+    else:
+        _write_private_key(path, key)
     return key
 
 
@@ -683,9 +1240,7 @@ def _build_mcp_service(
     supervisor = MCPSupervisor(
         load_mcp_specs(settings.mcp_config_path), secret_resolver=lookup
     )
-    return LocalMCPService(
-        supervisor, policy=settings.policy(), consent=consent
-    )
+    return LocalMCPService(supervisor, policy=settings.policy(), consent=consent)
 
 
 class LocalAuditView:
@@ -697,7 +1252,7 @@ class LocalAuditView:
     a wiped log can never be mistaken for an empty one (Local 方案 §35).
     """
 
-    def __init__(self, controller: "TrayController") -> None:
+    def __init__(self, controller: TrayController) -> None:
         self._controller = controller
 
     @property

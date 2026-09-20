@@ -19,10 +19,11 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from .compat import UTC, StrEnum
 
 
 class AuditKind(StrEnum):
@@ -222,15 +223,15 @@ class LocalAuditLog:
                     entry_hash,
                 ),
             )
-            db.execute(
-                "INSERT OR REPLACE INTO audit_meta VALUES (1, ?)", (entry_hash,)
-            )
+            db.execute("INSERT OR REPLACE INTO audit_meta VALUES (1, ?)", (entry_hash,))
             db.commit()
         return _entry(seq, stamp, row, entry_hash)
 
     # --- reading ---------------------------------------------------------
 
-    def recent(self, *, limit: int = 50, kind: AuditKind | None = None) -> list[AuditEntry]:
+    def recent(
+        self, *, limit: int = 50, kind: AuditKind | None = None
+    ) -> list[AuditEntry]:
         """Newest first, so the user sees what just happened without paging."""
         if self.db_path is None:
             entries = list(reversed(self._buffer))
@@ -297,7 +298,10 @@ class LocalAuditLog:
                 "actor_id": row[8],
                 "detail": json.loads(row[9]),
             }
-            if row[10] != previous or _entry_hash(previous, row[0], row[1], body) != row[11]:
+            if (
+                row[10] != previous
+                or _entry_hash(previous, row[0], row[1], body) != row[11]
+            ):
                 return AuditIntegrity(
                     ok=False,
                     entries=len(rows),

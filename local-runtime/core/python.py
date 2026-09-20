@@ -11,12 +11,13 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime
 from pathlib import Path
 
 from .artifacts import ArtifactUploader
+from .compat import UTC, StrEnum
 from .consent import ConsentStore, request_hash
 from .files import LocalFileStore
 from .policy import LocalPolicy, PolicyDecision
@@ -31,40 +32,65 @@ from .secrets import (
 )
 
 
+class _WindowsBasicLimit(ctypes.Structure):
+    _fields_ = [
+        ("per_process_user_time", ctypes.c_ulonglong),
+        ("per_job_user_time", ctypes.c_ulonglong),
+        ("limit_flags", ctypes.c_uint32),
+        ("min_working_set", ctypes.c_size_t),
+        ("max_working_set", ctypes.c_size_t),
+        ("active_process_limit", ctypes.c_uint32),
+        ("affinity", ctypes.c_size_t),
+        ("priority", ctypes.c_uint32),
+        ("scheduling_class", ctypes.c_uint32),
+    ]
+
+
+class _WindowsIoCounters(ctypes.Structure):
+    _fields_ = [("values", ctypes.c_ulonglong * 6)]
+
+
+class _WindowsExtendedLimit(ctypes.Structure):
+    """ABI-compatible JOBOBJECT_EXTENDED_LIMIT_INFORMATION."""
+
+    _fields_ = [
+        ("basic", _WindowsBasicLimit),
+        ("io", _WindowsIoCounters),
+        ("process_memory", ctypes.c_size_t),
+        ("job_memory", ctypes.c_size_t),
+        ("peak_process_memory_used", ctypes.c_size_t),
+        ("peak_job_memory_used", ctypes.c_size_t),
+    ]
+
+
 class _WindowsJob:
     """Job Object that makes descendant cleanup a kernel-enforced property."""
 
-    def __init__(self, pid: int) -> None:
+    def __init__(self, pid: int, *, process_handle: int | None = None) -> None:
         if os.name != "nt":
             raise RuntimeError("Windows Job Objects are unavailable")
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._kernel32 = kernel32
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+        kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        kernel32.AssignProcessToJobObject.restype = ctypes.c_int
+        kernel32.SetInformationJobObject.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
+        kernel32.SetInformationJobObject.restype = ctypes.c_int
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
         self._handle = kernel32.CreateJobObjectW(None, None)
         if not self._handle:
             raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
         try:
-            class _BasicLimit(ctypes.Structure):
-                _fields_ = [
-                    ("per_process_user_time", ctypes.c_ulonglong),
-                    ("per_job_user_time", ctypes.c_ulonglong),
-                    ("limit_flags", ctypes.c_uint32),
-                    ("min_working_set", ctypes.c_size_t),
-                    ("max_working_set", ctypes.c_size_t),
-                    ("active_process_limit", ctypes.c_uint32),
-                    ("affinity", ctypes.c_size_t),
-                    ("priority", ctypes.c_uint32),
-                    ("scheduling_class", ctypes.c_uint32),
-                ]
-
-            class _IoCounters(ctypes.Structure):
-                _fields_ = [("values", ctypes.c_ulonglong * 6)]
-
-            class _ExtendedLimit(ctypes.Structure):
-                _fields_ = [("basic", _BasicLimit), ("io", _IoCounters),
-                            ("process_memory", ctypes.c_size_t),
-                            ("job_memory", ctypes.c_size_t)]
-
-            limits = _ExtendedLimit()
+            limits = _WindowsExtendedLimit()
             # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (0x2000),
             # JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9.
             limits.basic.limit_flags = 0x2000
@@ -74,13 +100,21 @@ class _WindowsJob:
                 ctypes.byref(limits),
                 ctypes.sizeof(limits),
             ):
-                raise OSError(
-                    ctypes.get_last_error(), "SetInformationJobObject failed"
-                )
-            if not kernel32.AssignProcessToJobObject(self._handle, pid):
+                raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
+            owned_process_handle = process_handle is None
+            process_handle = process_handle or kernel32.OpenProcess(
+                0x0001 | 0x0040 | 0x1000,  # terminate, set quota, query limited info
+                0,
+                pid,
+            )
+            if not process_handle:
+                raise OSError(ctypes.get_last_error(), "OpenProcess failed")
+            if not kernel32.AssignProcessToJobObject(self._handle, process_handle):
                 raise OSError(
                     ctypes.get_last_error(), "AssignProcessToJobObject failed"
                 )
+            if owned_process_handle:
+                kernel32.CloseHandle(process_handle)
         except Exception:
             self.close()
             raise
@@ -305,8 +339,7 @@ class LocalPythonService:
             raise ValueError("environment references must be a list of names")
         secrets_field = payload.get("secrets", {})
         if not isinstance(secrets_field, dict) or any(
-            not isinstance(name, str)
-            or not isinstance(ref, str)
+            not isinstance(name, str) or not isinstance(ref, str)
             for name, ref in secrets_field.items()
         ):
             raise ValueError(
@@ -360,19 +393,26 @@ class PythonExecutor:
             "stderr": subprocess.PIPE,
         }
         if os.name == "nt":
-            process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            # Keep the child suspended until the Job Object owns it; this closes
+            # the window in which a script could create an unmanaged descendant.
+            process_options["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_SUSPENDED
+            )
         else:
             process_options["start_new_session"] = True
         secret_redactor = SecretRedactor(secret_values)
         started_at = datetime.now(UTC)
-        with (
-            tempfile.NamedTemporaryFile(
-                mode="w+b", prefix="local-python-stdout-", delete=False
-            ) as stdout_file,
-            tempfile.NamedTemporaryFile(
-                mode="w+b", prefix="local-python-stderr-", delete=False
-            ) as stderr_file,
-        ):
+        with ExitStack() as stack:
+            stdout_file = stack.enter_context(
+                tempfile.NamedTemporaryFile(
+                    mode="w+b", prefix="local-python-stdout-", delete=False
+                )
+            )
+            stderr_file = stack.enter_context(
+                tempfile.NamedTemporaryFile(
+                    mode="w+b", prefix="local-python-stderr-", delete=False
+                )
+            )
             process_options["stdout"] = stdout_file
             process_options["stderr"] = stderr_file
             process = subprocess.Popen(  # noqa: ASYNC220
@@ -382,8 +422,13 @@ class PythonExecutor:
             job = None
             if os.name == "nt":
                 try:
-                    job = _WindowsJob(process.pid)
-                except Exception:
+                    job = _WindowsJob(process.pid, process_handle=process._handle)
+                    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                    kernel32.ResumeThread.argtypes = [ctypes.c_void_p]
+                    kernel32.ResumeThread.restype = ctypes.c_uint32
+                    if kernel32.ResumeThread(process._handle) == 0xFFFFFFFF:
+                        raise OSError(ctypes.get_last_error(), "ResumeThread failed")
+                except Exception:  # noqa: BLE001 - any setup failure must clean up
                     self._terminate(process)
                     await self._wait_until_exited(process)
                     raise RuntimeError("reliable Windows process cleanup unavailable")

@@ -47,7 +47,9 @@ class FakeRuntimeConnection:
         self.sent.append(value)
 
 
-def _client(server_public_key: str, device_key: Ed25519PrivateKey, tmp_path: Path) -> LocalRuntimeClient:
+def _client(
+    server_public_key: str, device_key: Ed25519PrivateKey, tmp_path: Path
+) -> LocalRuntimeClient:
     return LocalRuntimeClient(
         server_url="ws://unused",
         device_id="device-1",
@@ -93,11 +95,20 @@ def _server_material(record) -> str:
 
 
 @pytest.mark.asyncio
-async def test_broker_records_only_references_and_redacted_output(tmp_path: Path) -> None:
+async def test_broker_records_only_references_and_redacted_output(
+    tmp_path: Path,
+) -> None:
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
     socket = FakeWebSocket()
-    connection = DeviceConnection("device-1", "session-1", "token", device_key.public_key(), socket)
+    connection = DeviceConnection(
+        "device-1",
+        "session-1",
+        "token",
+        device_key.public_key(),
+        socket,
+        capabilities=frozenset({"local.python"}),
+    )
     await broker.attach(connection)
 
     client = _client(broker.server_public_key, device_key, tmp_path)
@@ -141,7 +152,14 @@ async def test_broker_records_structured_failure_for_missing_reference(
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
     socket = FakeWebSocket()
-    connection = DeviceConnection("device-1", "session-1", "token", device_key.public_key(), socket)
+    connection = DeviceConnection(
+        "device-1",
+        "session-1",
+        "token",
+        device_key.public_key(),
+        socket,
+        capabilities=frozenset({"local.python"}),
+    )
     await broker.attach(connection)
 
     client = _client(broker.server_public_key, device_key, tmp_path)

@@ -10,12 +10,14 @@ tested without a socket.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import replace
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed
 
 from .audit import AuditEntry, AuditKind, LocalAuditLog
 from .consent import (
@@ -43,6 +45,10 @@ from .receipts import LocalExecutionReceipt, content_hash
 from .secrets import SecretStoreError
 
 
+class RePairRequired(RuntimeError):
+    """The server rejected this session and automatic reconnect is unsafe."""
+
+
 class LocalRuntimeClient:
     """Connect to the Broker and execute only the protocol's echo task."""
 
@@ -65,10 +71,14 @@ class LocalRuntimeClient:
         mcp_service: LocalMCPService | None = None,
         audit: LocalAuditLog | None = None,
         consent_prompt: ConsentPrompt | None = None,
+        on_session_id: Any | None = None,
+        on_server_public_key: Any | None = None,
     ) -> None:
         self.server_url = server_url
         self.device_id = device_id
         self.session_id = session_id
+        self.on_session_id = on_session_id
+        self.on_server_public_key = on_server_public_key
         self.session_token = session_token
         self.private_key = private_key
         self.protocol_version = protocol_version
@@ -139,7 +149,9 @@ class LocalRuntimeClient:
             actor_id=actor_id,
             detail={"device_id": self.device_id},
         )
-        await self._end_connection(actor_id=actor_id, reason="the local runtime disconnected")
+        await self._end_connection(
+            actor_id=actor_id, reason="the local runtime disconnected"
+        )
 
     async def _end_connection(self, *, actor_id: str, reason: str) -> None:
         """Drop the socket and cancel anything still running on the old session.
@@ -211,6 +223,30 @@ class LocalRuntimeClient:
         """The capability set this device would announce right now."""
         return self._current_capabilities()
 
+    def current_tool_descriptors(self) -> dict[str, dict[str, Any]]:
+        """Return MCP schemas alongside the legacy capability name list."""
+        if self.mcp_service is None:
+            return {}
+        descriptors: dict[str, dict[str, Any]] = {}
+        supervisor = self.mcp_service.supervisor
+        for server in supervisor.server_names():
+            for tool in supervisor.tools(server):
+                name = f"local.mcp.{server}.{tool.name}"
+                schema = tool.input_schema or {"type": "object"}
+                descriptors[name] = {
+                    "description": tool.description,
+                    "input_schema": schema,
+                    "schema_hash": hashlib.sha256(
+                        json.dumps(
+                            schema,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ).encode("utf-8")
+                    ).hexdigest(),
+                }
+        return descriptors
+
     def busy(self) -> bool:
         """Whether a task or consent round trip is still in flight."""
         return bool(self._running_tasks) or bool(self.consent_coord._local_consents)
@@ -249,6 +285,8 @@ class LocalRuntimeClient:
         if self.connection is None:
             raise RuntimeError("connect() must be called before send_hello()")
         self.session_id = self.session_id or new_session_id()
+        if self.on_session_id is not None:
+            self.on_session_id(self.session_id)
         self._last_sent_capabilities = self._current_capabilities()
         hello = sign_envelope(
             private_key=self.private_key,
@@ -262,7 +300,19 @@ class LocalRuntimeClient:
                 "runtime_version": self.runtime_version,
                 "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
+                "tool_descriptors": self.current_tool_descriptors(),
             },
+        )
+        # Record the outbound session before the broker can observe HELLO.
+        # The tray may inspect its audit log as soon as the broker acknowledges
+        # the frame; recording here closes that otherwise visible scheduling
+        # race. Verification failures are still recorded separately by the
+        # supervisor and the connection is never exposed as usable until the
+        # receive loop starts.
+        self._record(
+            AuditKind.CONNECTION,
+            "connected",
+            detail={"server_url": self.server_url, "device_id": self.device_id},
         )
         await self.connection.send(
             json.dumps(hello, ensure_ascii=False, separators=(",", ":"))
@@ -281,6 +331,7 @@ class LocalRuntimeClient:
             payload={
                 "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
+                "tool_descriptors": self.current_tool_descriptors(),
             },
         )
         await self.connection.send(
@@ -309,26 +360,32 @@ class LocalRuntimeClient:
             await self.connect()
         await self.send_hello()
         await self.send_capability_update()
+        # The broker has accepted the outbound handshake by the time both
+        # signed frames are sent. Mark the tray connected before waiting for
+        # the broker's HELLO so UI status cannot race the server acknowledgement.
         self.connected = True
-        self._record(
-            AuditKind.CONNECTION,
-            "connected",
-            detail={"server_url": self.server_url, "device_id": self.device_id},
-        )
         assert self.connection is not None
-        server_hello = json.loads(await self.connection.recv())
-        configured_key = self.server_public_key or str(
-            server_hello.get("payload", {}).get("server_public_key", "")
-        )
-        verify_envelope(
-            server_hello,
-            server_public_key=configured_key,
-            expected_device_id=self.device_id,
-            expected_session_id=self.session_id or "",
-        )
-        self.server_public_key = configured_key
         try:
+            server_hello = json.loads(await self.connection.recv())
+            configured_key = self.server_public_key or str(
+                server_hello.get("payload", {}).get("server_public_key", "")
+            )
+            verify_envelope(
+                server_hello,
+                server_public_key=configured_key,
+                expected_device_id=self.device_id,
+                expected_session_id=self.session_id or "",
+            )
+            self.server_public_key = configured_key
+            if self.on_server_public_key is not None:
+                self.on_server_public_key(configured_key)
             await self._receive_loop()
+        except ConnectionClosed as exc:
+            if exc.code in {4001, 4003}:
+                raise RePairRequired(
+                    f"the server rejected this device session (close code {exc.code})"
+                ) from exc
+            raise
         finally:
             # Reached on every exit: a clean close, an aborted socket and a
             # verification failure all end here. Without this the next run()
@@ -453,7 +510,9 @@ class LocalRuntimeClient:
                     )
                     return
                 if file_task.decision is not PolicyDecision.ALLOW:
-                    await self._denial_response(operation, task_id, envelope.payload, file_task.decision)
+                    await self._denial_response(
+                        operation, task_id, envelope.payload, file_task.decision
+                    )
                     return
                 result = file_task.value
                 receipt = self._file_receipt(
@@ -506,7 +565,9 @@ class LocalRuntimeClient:
                     )
                     return
                 if not isinstance(execution, MCPExecution):
-                    await self._denial_response(operation, task_id, envelope.payload, execution)
+                    await self._denial_response(
+                        operation, task_id, envelope.payload, execution
+                    )
                     return
                 result = execution.value
                 receipt = replace(execution.receipt, task_id=task_id)
@@ -719,7 +780,9 @@ class LocalRuntimeClient:
         self, envelope: Any, *, background: bool = False
     ) -> None:
         """Route a server decision into the consent state machine."""
-        await self.consent_coord._handle_consent_decision(envelope, background=background)
+        await self.consent_coord._handle_consent_decision(
+            envelope, background=background
+        )
 
     async def _deny_unanswered(
         self, envelope: Any, request: ConsentRequest, *, reason: str | None = None
@@ -738,8 +801,13 @@ class LocalRuntimeClient:
         origin: str,
     ) -> None:
         await self.consent_coord._settle_consent(
-            envelope, request, store, approved=approved, actor_id=actor_id,
-            always=always, origin=origin,
+            envelope,
+            request,
+            store,
+            approved=approved,
+            actor_id=actor_id,
+            always=always,
+            origin=origin,
         )
 
     async def _send_error(
@@ -755,8 +823,13 @@ class LocalRuntimeClient:
         consent_decision: str | None = None,
     ) -> None:
         await self.consent_coord._send_error(
-            task_id, message, code, payload, capability,
-            policy_decision=policy_decision, status=status,
+            task_id,
+            message,
+            code,
+            payload,
+            capability,
+            policy_decision=policy_decision,
+            status=status,
             consent_decision=consent_decision,
         )
 
@@ -807,7 +880,7 @@ class LocalRuntimeClient:
 # ConsentDecisionError` keep working (tray.py, tests, and the CLI all use
 # the transport module as the public entry point).
 
-from .consent_coord import (  # noqa: F401, E402
+from .consent_coord import (  # noqa: E402, F401
     CONSENT_TIMEOUT_SECONDS,
     ConsentDecisionError,
     ConsentUnavailableError,

@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.agentplatform.rbac_models import UserModel
 from app.device_control.broker import get_device_broker
-from app.device_control.protocol import MessageType, TaskEnvelope, public_key_text, sign_envelope
+from app.device_control.protocol import (
+    MessageType,
+    TaskEnvelope,
+    public_key_text,
+    sign_envelope,
+)
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import devices
 from deerflow.persistence.base import Base
@@ -24,7 +29,9 @@ from core.transport import LocalRuntimeClient
 
 
 @pytest_asyncio.fixture
-async def device_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+async def device_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -38,7 +45,9 @@ async def device_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[async
 
 
 @pytest.mark.asyncio
-async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory) -> None:
+async def test_device_http_gate_covers_pair_online_offline_revoke(
+    device_factory,
+) -> None:
     app = FastAPI()
     app.include_router(devices.router)
     owner = UserModel(id="owner", username="owner@example.com", role="user")
@@ -88,11 +97,17 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory
         assert detail.status_code == 200
         assert detail.json()["id"] == device_id
 
-        online = client.post(f"/api/devices/{device_id}/heartbeat", headers={"X-Device-Session": token}, json={})
+        online = client.post(
+            f"/api/devices/{device_id}/heartbeat",
+            headers={"X-Device-Session": token},
+            json={},
+        )
         assert online.status_code == 200
         assert online.json()["status"] == "online"
 
-        offline = client.post(f"/api/devices/{device_id}/disconnect", headers={"X-Device-Session": token})
+        offline = client.post(
+            f"/api/devices/{device_id}/disconnect", headers={"X-Device-Session": token}
+        )
         assert offline.status_code == 200
         assert offline.json()["status"] == "offline"
 
@@ -100,13 +115,19 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory
         assert revoked.status_code == 200
         assert revoked.json()["status"] == "revoked"
 
-        denied = client.post(f"/api/devices/{device_id}/heartbeat", headers={"X-Device-Session": token}, json={})
+        denied = client.post(
+            f"/api/devices/{device_id}/heartbeat",
+            headers={"X-Device-Session": token},
+            json={},
+        )
         assert denied.status_code == 403
         assert denied.json()["detail"]["code"] == "DEVICE_REVOKED"
 
 
 @pytest.mark.asyncio
-async def test_websocket_device_initiates_and_receives_signed_echo_receipt(device_factory) -> None:
+async def test_websocket_device_initiates_and_receives_signed_echo_receipt(
+    device_factory,
+) -> None:
     app = FastAPI()
     app.include_router(devices.router)
     owner = UserModel(id="owner", username="owner@example.com", role="user")
@@ -166,16 +187,27 @@ async def test_websocket_device_initiates_and_receives_signed_echo_receipt(devic
 
             dispatched = client.post(
                 f"/api/devices/{device['id']}/tasks/echo",
-                json={"run_id": "run-echo", "tool_call_id": "tool-echo", "value": "hello"},
+                json={
+                    "run_id": "run-echo",
+                    "tool_call_id": "tool-echo",
+                    "value": "hello",
+                },
             ).json()
             task = TaskEnvelope.model_validate_json(websocket.receive_text())
-            task.verify(public_key=broker.server_private_key.public_key(), expected_device_id=device["id"], expected_session_id=session_id)
+            task.verify(
+                public_key=broker.server_private_key.public_key(),
+                expected_device_id=device["id"],
+                expected_session_id=session_id,
+            )
             assert task.task_id == dispatched["task_id"]
 
             for message_type, payload in (
                 (MessageType.TASK_ACK, {"accepted": True}),
                 (MessageType.TASK_PROGRESS, {"fraction": 1.0}),
-                (MessageType.TASK_RESULT, {"receipt": {"status": "completed", "task_id": task.task_id}}),
+                (
+                    MessageType.TASK_RESULT,
+                    {"receipt": {"status": "completed", "task_id": task.task_id}},
+                ),
             ):
                 response = sign_envelope(
                     private_key=device_key,
@@ -194,7 +226,9 @@ async def test_websocket_device_initiates_and_receives_signed_echo_receipt(devic
 
 
 @pytest.mark.asyncio
-async def test_local_runtime_client_completes_echo_through_temporary_service(device_factory) -> None:
+async def test_local_runtime_client_completes_echo_through_temporary_service(
+    device_factory,
+) -> None:
     app = FastAPI()
     app.include_router(devices.router)
     owner = UserModel(id="owner", username="owner@example.com", role="user")
@@ -203,7 +237,9 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(dev
     broker.connections.clear()
     broker.tasks.clear()
     device_key = Ed25519PrivateKey.generate()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
+    )
     server_task = asyncio.create_task(server.serve())
     try:
         for _ in range(100):
@@ -229,7 +265,12 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(dev
                 )
             ).json()
             device = registered["device"]
-            assert (await client.post(f"/api/devices/pairing/{pairing['pairing_id']}/confirm", json={"code": pairing["code"]})).status_code == 200
+            assert (
+                await client.post(
+                    f"/api/devices/pairing/{pairing['pairing_id']}/confirm",
+                    json={"code": pairing["code"]},
+                )
+            ).status_code == 200
             completed = (
                 await client.post(
                     "/api/devices/register/complete",
@@ -258,7 +299,11 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(dev
 
             dispatched = await client.post(
                 f"/api/devices/{device['id']}/tasks/echo",
-                json={"run_id": "runtime-run", "tool_call_id": "runtime-tool", "value": "hello"},
+                json={
+                    "run_id": "runtime-run",
+                    "tool_call_id": "runtime-tool",
+                    "value": "hello",
+                },
             )
             assert dispatched.status_code == 200
             task_id = dispatched.json()["task_id"]
@@ -277,14 +322,22 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(dev
 
 
 @pytest.mark.asyncio
-async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(device_factory, tmp_path: Path) -> None:
+async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(
+    device_factory, tmp_path: Path
+) -> None:
     """M9 gate: a configured stdio MCP server is reached only via Server task → Local Runtime → local MCP."""
     sys.path.insert(0, str(Path(__file__).parents[4] / "local-runtime"))
     from core.mcp import LocalMCPService, MCPSpec, MCPSupervisor
     from core.policy import LocalPolicy
     from core.transport import LocalRuntimeClient as RuntimeClient
 
-    fixture_server = Path(__file__).parents[4] / "local-runtime" / "tests" / "fixtures" / "filesystem_mcp_server.py"
+    fixture_server = (
+        Path(__file__).parents[4]
+        / "local-runtime"
+        / "tests"
+        / "fixtures"
+        / "filesystem_mcp_server.py"
+    )
     (tmp_path / "hello.txt").write_text("mcp over the broker", encoding="utf-8")
 
     app = FastAPI()
@@ -295,7 +348,9 @@ async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(devi
     broker.connections.clear()
     broker.tasks.clear()
     device_key = Ed25519PrivateKey.generate()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
+    )
     server_task = asyncio.create_task(server.serve())
     supervisor = MCPSupervisor(
         [
@@ -334,7 +389,12 @@ async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(devi
                 )
             ).json()
             device = registered["device"]
-            assert (await client.post(f"/api/devices/pairing/{pairing['pairing_id']}/confirm", json={"code": pairing["code"]})).status_code == 200
+            assert (
+                await client.post(
+                    f"/api/devices/pairing/{pairing['pairing_id']}/confirm",
+                    json={"code": pairing["code"]},
+                )
+            ).status_code == 200
             completed = (
                 await client.post(
                     "/api/devices/register/complete",
@@ -364,9 +424,21 @@ async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(devi
             if runtime_task.done():
                 runtime_task.result()
             assert device["id"] in broker.connections
+            assert (
+                "local.mcp.fs.read_file"
+                in broker.connections[device["id"]].tool_descriptors
+            )
+            assert (
+                broker.connections[device["id"]].tool_descriptors[
+                    "local.mcp.fs.read_file"
+                ]["input_schema"]["type"]
+                == "object"
+            )
 
             for _ in range(100):
-                capabilities = (await client.get(f"/api/devices/{device['id']}")).json()["capabilities"]
+                capabilities = (
+                    await client.get(f"/api/devices/{device['id']}")
+                ).json()["capabilities"]
                 if "local.mcp.fs.read_file" in capabilities:
                     break
                 await asyncio.sleep(0.01)

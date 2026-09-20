@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from deerflow.models.credential_loader import CodexCliCredential
@@ -22,7 +23,10 @@ def _make_model(**kwargs):
     from deerflow.models.openai_codex_provider import CodexChatModel
 
     cred = CodexCliCredential(access_token="tok-test", account_id="acc-test")
-    with patch("deerflow.models.openai_codex_provider.load_codex_cli_credential", return_value=cred):
+    with patch(
+        "deerflow.models.openai_codex_provider.load_codex_cli_credential",
+        return_value=cred,
+    ):
         return CodexChatModel(model="gpt-5.4", reasoning_effort="medium", **kwargs)
 
 
@@ -59,6 +63,18 @@ def test_to_json_does_not_leak_access_token():
     assert "tok-test" not in kwargs_str
     assert "_access_token" not in kwargs_str
     assert "_account_id" not in kwargs_str
+
+
+def test_safe_error_detail_is_bounded_and_selective():
+    from deerflow.models.openai_codex_provider import _safe_error_detail
+
+    response = httpx.Response(
+        400,
+        json={"detail": "unsupported model", "access_token": "secret-value"},
+    )
+    detail = _safe_error_detail(response)
+    assert "unsupported model" in detail
+    assert "secret-value" not in detail
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +203,9 @@ def test_convert_messages_human():
 
 def test_convert_messages_system_becomes_instructions():
     model = _make_model()
-    instructions, items = model._convert_messages([SystemMessage(content="You are helpful.")])
+    instructions, items = model._convert_messages(
+        [SystemMessage(content="You are helpful.")]
+    )
     assert "You are helpful." in instructions
     assert items == []
 
@@ -196,10 +214,15 @@ def test_convert_messages_ai_with_tool_calls():
     model = _make_model()
     ai = AIMessage(
         content="",
-        tool_calls=[{"name": "search", "args": {"q": "foo"}, "id": "tc1", "type": "tool_call"}],
+        tool_calls=[
+            {"name": "search", "args": {"q": "foo"}, "id": "tc1", "type": "tool_call"}
+        ],
     )
     _, items = model._convert_messages([ai])
-    assert any(item.get("type") == "function_call" and item["name"] == "search" for item in items)
+    assert any(
+        item.get("type") == "function_call" and item["name"] == "search"
+        for item in items
+    )
 
 
 def test_convert_messages_tool_message():
@@ -249,21 +272,27 @@ def test_parse_sse_data_line_invalid_json_returns_none():
 
 def test_parse_tool_call_arguments_valid_string():
     model = _make_model()
-    parsed, err = model._parse_tool_call_arguments({"arguments": '{"key": "val"}', "name": "t", "call_id": "c"})
+    parsed, err = model._parse_tool_call_arguments(
+        {"arguments": '{"key": "val"}', "name": "t", "call_id": "c"}
+    )
     assert parsed == {"key": "val"}
     assert err is None
 
 
 def test_parse_tool_call_arguments_already_dict():
     model = _make_model()
-    parsed, err = model._parse_tool_call_arguments({"arguments": {"key": "val"}, "name": "t", "call_id": "c"})
+    parsed, err = model._parse_tool_call_arguments(
+        {"arguments": {"key": "val"}, "name": "t", "call_id": "c"}
+    )
     assert parsed == {"key": "val"}
     assert err is None
 
 
 def test_parse_tool_call_arguments_invalid_json():
     model = _make_model()
-    parsed, err = model._parse_tool_call_arguments({"arguments": "not-json", "name": "t", "call_id": "c"})
+    parsed, err = model._parse_tool_call_arguments(
+        {"arguments": "not-json", "name": "t", "call_id": "c"}
+    )
     assert parsed is None
     assert err is not None
     assert "Failed to parse" in err["error"]
@@ -271,6 +300,8 @@ def test_parse_tool_call_arguments_invalid_json():
 
 def test_parse_tool_call_arguments_non_dict_json():
     model = _make_model()
-    parsed, err = model._parse_tool_call_arguments({"arguments": '["list", "not", "dict"]', "name": "t", "call_id": "c"})
+    parsed, err = model._parse_tool_call_arguments(
+        {"arguments": '["list", "not", "dict"]', "name": "t", "call_id": "c"}
+    )
     assert parsed is None
     assert err is not None

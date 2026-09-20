@@ -24,8 +24,10 @@ from pnpm_command import resolve as resolve_pnpm
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
+LOCAL_RUNTIME = ROOT / "local-runtime"
 
 LANES = {
+    "local-runtime": {"local_runtime": True},
     "backend-standard": {"backend": True, "socket": True},
     "backend-serial": {"backend": True, "socket": True},
     "backend-full": {"backend": True, "socket": True},
@@ -42,10 +44,21 @@ LANES = {
     "frontend-a11y": {"frontend": True, "browser": True, "socket": True},
     "frontend-auth": {"frontend": True, "browser": True, "socket": True},
     "frontend-real": {"frontend": True, "browser": True, "socket": True},
-    "frontend-stagehand": {"frontend": True, "browser": True, "socket": True, "llm": True},
+    "frontend-stagehand": {
+        "frontend": True,
+        "browser": True,
+        "socket": True,
+        "llm": True,
+    },
     "pr-standard": {"backend": True, "frontend": True, "browser": True, "socket": True},
     "core-full": {"backend": True, "frontend": True, "browser": True, "socket": True},
 }
+
+
+def _minimum_python(requirements: dict[str, bool]) -> tuple[int, int]:
+    """Return the interpreter floor for a lane's supported runtime."""
+
+    return (3, 8) if requirements.get("local_runtime") else (3, 12)
 
 
 def check(label: str, ok: bool, detail: str = "") -> bool:
@@ -60,8 +73,11 @@ def main() -> int:
     args = parser.parse_args()
     req = LANES[args.lane]
     failed = False
+    minimum_python = _minimum_python(req)
     failed |= not check(
-        "Python >= 3.12", sys.version_info >= (3, 12), sys.version.split()[0]
+        f"Python >= {minimum_python[0]}.{minimum_python[1]}",
+        sys.version_info >= minimum_python,
+        sys.version.split()[0],
     )
 
     if req.get("backend"):
@@ -79,6 +95,18 @@ def main() -> int:
                 if not available
                 else "locked dev environment",
             )
+
+    if req.get("local_runtime"):
+        failed |= not check(
+            "local-runtime/pyproject.toml", (LOCAL_RUNTIME / "pyproject.toml").is_file()
+        )
+        failed |= not check(
+            "local-runtime pytest",
+            _module_import_ok("pytest"),
+            "install pytest"
+            if not _module_import_ok("pytest")
+            else "runtime environment",
+        )
     if req.get("frontend"):
         failed |= not check("Node >= 22", _node_ok())
         try:
@@ -193,6 +221,15 @@ def _uv_import_ok(module: str) -> bool:
         return result.returncode == 0
     except OSError:
         return False
+
+
+def _module_import_ok(module: str) -> bool:
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def _pnpm_version_ok(command: list[str]) -> bool:

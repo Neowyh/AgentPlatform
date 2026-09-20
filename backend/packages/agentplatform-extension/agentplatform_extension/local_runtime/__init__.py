@@ -1,10 +1,24 @@
 """AgentPlatform extension boundary for local runtime tools."""
 
-from .authorization import LocalAuthorization, RunAuthorizationSnapshot, child_authorization
+from .authorization import (
+    LocalAuthorization,
+    RunAuthorizationSnapshot,
+    child_authorization,
+)
 from .provenance import LocalToolProvenance
 from .receipts import LocalExecutionReceipt, tool_receipt_from_local
 from .routing import DeviceRoute, RunDeviceRouter
-from .tools import LOCAL_TOOLS, LocalTool, LocalToolContributor, LocalToolExecutor, assemble_local_tools, filter_local_tools, is_local_mcp_capability, local_tool_names
+from .tools import (
+    LOCAL_TOOLS,
+    LocalTool,
+    LocalToolContributor,
+    LocalToolExecutor,
+    assemble_local_tools,
+    build_langchain_local_tools,
+    filter_local_tools,
+    is_local_mcp_capability,
+    local_tool_names,
+)
 
 __all__ = [
     "LocalAuthorization",
@@ -23,4 +37,5 @@ __all__ = [
     "is_local_mcp_capability",
     "local_tool_names",
     "LocalToolExecutor",
+    "build_langchain_local_tools",
 ]

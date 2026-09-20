@@ -59,7 +59,9 @@ def broker() -> FakeBroker:
 def _hello_count(broker: FakeBroker) -> int:
     """How many device sessions the server has been offered."""
     with broker._lock:
-        return sum(1 for frame in broker.received if frame["type"] == MessageType.HELLO.value)
+        return sum(
+            1 for frame in broker.received if frame["type"] == MessageType.HELLO.value
+        )
 
 
 def wait_for(predicate, *, timeout: float = 5.0, what: str = "condition") -> None:
@@ -102,10 +104,14 @@ def test_approving_on_the_tray_writes_the_file_and_reports_the_result(
     controller.start()
     try:
         broker.await_device()
-        broker.send(MessageType.TASK, _write_payload(content="on device"), task_id="task-1")
+        broker.send(
+            MessageType.TASK, _write_payload(content="on device"), task_id="task-1"
+        )
         wait_for(lambda: controller.pending_consents(), what="a pending consent")
 
-        controller.decide(controller.pending_consents()[0], approved=True, actor_id="alice")
+        controller.decide(
+            controller.pending_consents()[0], approved=True, actor_id="alice"
+        )
 
         result = broker.expect(MessageType.TASK_RESULT)
         assert result["task_id"] == "task-1"
@@ -127,12 +133,17 @@ def test_refusing_on_the_tray_touches_nothing_and_is_recorded(
         broker.send(MessageType.TASK, _write_payload(), task_id="task-2")
         wait_for(lambda: controller.pending_consents(), what="a pending consent")
 
-        controller.decide(controller.pending_consents()[0], approved=False, actor_id="alice")
+        controller.decide(
+            controller.pending_consents()[0], approved=False, actor_id="alice"
+        )
 
         error = broker.expect(MessageType.ERROR)
         assert error["payload"]["error_code"] == "DENIED"
         assert not (tmp_path / "work" / "a.txt").exists()
-        assert [(e.action, e.actor_id) for e in controller.audit_recent(kind=AuditKind.CONSENT)][0] == (
+        assert [
+            (e.action, e.actor_id)
+            for e in controller.audit_recent(kind=AuditKind.CONSENT)
+        ][0] == (
             "denied",
             "alice",
         )
@@ -150,17 +161,25 @@ def test_always_allow_stops_asking_about_that_capability(
         broker.send(MessageType.TASK, _write_payload(content="first"), task_id="task-3")
         wait_for(lambda: controller.pending_consents(), what="a pending consent")
         controller.decide(
-            controller.pending_consents()[0], approved=True, actor_id="alice", always=True
+            controller.pending_consents()[0],
+            approved=True,
+            actor_id="alice",
+            always=True,
         )
         broker.expect(MessageType.TASK_RESULT)
 
         broker.await_device()
-        broker.send(MessageType.TASK, _write_payload(content="second"), task_id="task-4")
+        broker.send(
+            MessageType.TASK, _write_payload(content="second"), task_id="task-4"
+        )
         second = broker.expect(MessageType.TASK_RESULT)
         assert second["task_id"] == "task-4"
         assert controller.pending_consents() == ()
         assert (tmp_path / "work" / "a.txt").read_text() == "second"
-        assert controller.audit_recent(kind=AuditKind.CONSENT)[0].action == "always_allowed"
+        assert (
+            controller.audit_recent(kind=AuditKind.CONSENT)[0].action
+            == "always_allowed"
+        )
     finally:
         controller.stop()
 
@@ -189,7 +208,9 @@ def test_a_level_two_capability_is_denied_without_asking(
         assert error["payload"]["error_code"] == "LOCAL_POLICY_DENIED"
         assert controller.pending_consents() == ()
         denied = controller.audit_recent(kind=AuditKind.POLICY)
-        assert [(e.capability, e.action) for e in denied] == [("local.python", "denied")]
+        assert [(e.capability, e.action) for e in denied] == [
+            ("local.python", "denied")
+        ]
     finally:
         controller.stop()
 
@@ -249,15 +270,17 @@ def test_disconnect_ends_the_session_and_stops_reconnecting(
     controller.start()
     try:
         broker.await_device()
-        assert controller.status().connection == "connected"
+        wait_for(
+            lambda: controller.status().connection == "connected",
+            what="the initial connection",
+        )
 
         controller.disconnect(actor_id="alice")
 
         assert controller.status().connection == "offline"
         assert controller._thread is None
         kinds = [
-            (entry.kind, entry.action)
-            for entry in controller.audit_recent(limit=6)
+            (entry.kind, entry.action) for entry in controller.audit_recent(limit=6)
         ]
         assert (AuditKind.CONNECTION, "disconnecting") in kinds
         # No reconnect storm: the device stays away until the user asks again.
@@ -282,7 +305,9 @@ def test_the_status_panel_reports_identity_roots_capabilities_and_history(
         broker.await_device()
         broker.send(MessageType.TASK, _write_payload(content="shown"), task_id="task-s")
         wait_for(lambda: controller.pending_consents(), what="a pending consent")
-        controller.decide(controller.pending_consents()[0], approved=True, actor_id="alice")
+        controller.decide(
+            controller.pending_consents()[0], approved=True, actor_id="alice"
+        )
         broker.expect(MessageType.TASK_RESULT)
 
         status = controller.status()
@@ -322,7 +347,9 @@ def test_the_audit_view_lists_events_newest_first_and_clearing_leaves_a_marker(
         marker = controller.clear_audit(actor_id="alice")
         assert marker["entries_removed"] == len(before)
         assert marker["last_entry_hash"] == before[0].entry_hash
-        assert [entry.action for entry in controller.audit_recent(limit=5)] == ["cleared"]
+        assert [entry.action for entry in controller.audit_recent(limit=5)] == [
+            "cleared"
+        ]
         assert controller.audit_integrity() == "ok"
         # The evidence of a history survives the clear.
         assert controller.audit.clearances()[0]["actor_id"] == "alice"
@@ -437,9 +464,13 @@ def test_disconnect_then_reconnect_moves_the_icon_and_back(
         assert controller.status().connection == "offline"
         # The session is really down: the device records dropping it, and a
         # lingering loop would keep answering the server behind an offline icon.
-        assert next(
-            entry.action for entry in controller.audit_recent(kind=AuditKind.CONNECTION)
-        ) == "disconnecting"
+        assert (
+            next(
+                entry.action
+                for entry in controller.audit_recent(kind=AuditKind.CONNECTION)
+            )
+            == "disconnecting"
+        )
         assert _hello_count(broker) == hellos
 
         controller.reconnect()
@@ -448,9 +479,15 @@ def test_disconnect_then_reconnect_moves_the_icon_and_back(
             what="the session to come back",
         )
         assert _hello_count(broker) == hellos + 1
-        broker.send(MessageType.TASK, _write_payload(content="reconnected"), task_id="task-r")
-        wait_for(lambda: controller.pending_consents(), what="a prompt after reconnecting")
-        controller.decide(controller.pending_consents()[0], approved=True, actor_id="alice")
+        broker.send(
+            MessageType.TASK, _write_payload(content="reconnected"), task_id="task-r"
+        )
+        wait_for(
+            lambda: controller.pending_consents(), what="a prompt after reconnecting"
+        )
+        controller.decide(
+            controller.pending_consents()[0], approved=True, actor_id="alice"
+        )
         target = tmp_path / "work" / "a.txt"
         wait_for(
             lambda: target.exists() and target.read_text() == "reconnected",
@@ -460,7 +497,9 @@ def test_disconnect_then_reconnect_moves_the_icon_and_back(
         controller.stop()
 
 
-def test_reconnecting_a_running_tray_is_refused(broker: FakeBroker, tmp_path: Path) -> None:
+def test_reconnecting_a_running_tray_is_refused(
+    broker: FakeBroker, tmp_path: Path
+) -> None:
     """A second start would be a duplicate session, not a resume."""
     controller = _controller(broker, tmp_path)
     controller.start()

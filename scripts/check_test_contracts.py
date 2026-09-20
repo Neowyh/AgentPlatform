@@ -42,6 +42,7 @@ def validate(root: Path = ROOT) -> list[str]:
     if unknown.returncode != 2:
         errors.append(f"runner unknown lane returned {unknown.returncode}, expected 2")
     for lane in (
+        "local-runtime",
         "backend-standard",
         "backend-serial",
         "backend-full",
