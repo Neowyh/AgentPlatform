@@ -37,7 +37,7 @@ Python 3.8 compatibility candidate.
 | Backend ruff check/format (changed files) | passed |
 | Local-runtime focused ruff check | passed |
 | `pr-standard` | current-candidate run: frontend-standard Rstest 758 and Vitest 10,221 passed; frontend-smoke 29 passed. Backend-standard completed with 26,010 passed, 145 skipped, and 38 failures after 4,285s; the failures were stale migration-head/extension-test expectations and were corrected, with the affected 149-test subset passing afterward. Parent lane remains failed and requires a fresh full rerun before release. |
-| `backend-blocking-io` | passed: 96 passed, 17s |
+| `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
 | `frontend-a11y` | passed: 3 passed, 177s |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
