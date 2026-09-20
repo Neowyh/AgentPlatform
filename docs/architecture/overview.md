@@ -3,7 +3,7 @@
 > audience: developers, architects<br>
 > status: current<br>
 > owner: engineering maintainers<br>
-> last-verified: 2026-07-15<br>
+> last-verified: 2026-09-20<br>
 > canonical-path: `docs/architecture/overview.md`
 
 本文件为 Claude Code（claude.ai/code）在本仓库中处理代码时提供指导。
@@ -11,6 +11,17 @@
 ## 项目概览
 
 iDeer 是一个基于 LangGraph 的 AI 超级智能体系统，采用全栈架构。后端提供“超级智能体”能力，包含沙箱执行、持久化记忆、子智能体委托以及可扩展工具集成，且所有能力都运行在线程级隔离环境中。
+
+## 当前集成进展（2026-09-20）
+
+| 工作包 | 代码状态 | 验收状态 |
+| --- | --- | --- |
+| M5 检索证据闭环 | 已整合到当前本机候选 | Gate 7 真实 RAGFlow/浏览器链路待外部环境 |
+| M6 检索测试与发布门禁 | 已整合到当前本机候选 | Gate 8 真实模型链路待外部环境 |
+| M9 本地 MCP、Secrets、Tray | 已整合到当前本机候选 | 本机测试通过；Windows 7 原生验收待测试机 |
+| 多附件 TTFT 诊断 | 上传 trace_id 关联能力已保留 | 真实业务 Agent 配对实验待外部环境；行为优化延期 |
+
+本机候选的标准测试入口是 `scripts/run-test-lane.sh`；后端本地测试使用 `cd backend && make test`，前端使用 `cd frontend && pnpm test`。正式收口仍要求 Gate 7、Gate 8、Windows 7 及真实业务链路的独立证据。
 
 **架构**：
 
@@ -21,7 +32,7 @@ iDeer 是一个基于 LangGraph 的 AI 超级智能体系统，采用全栈架�
 
 **运行时**：
 
-- `make dev`、Docker 开发环境和生产环境都会通过 Gateway 中的 `RunManager` + `run_agent()` + `StreamBridge`（`packages/harness/ideer/runtime/`）运行智能体运行时。Nginx 将该运行时暴露在 `/api/langgraph/*`，并重写到 Gateway 原生的 `/api/*` 路由。
+- `make dev`、Docker 开发环境和生产环境都会通过 Gateway 中的 `RunManager` + `run_agent()` + `StreamBridge`（`backend/packages/harness/deerflow/runtime/`）运行智能体运行时。Nginx 将该运行时暴露在 `/api/langgraph/*`，并重写到 Gateway 原生的 `/api/*` 路由。
 
 **项目结构**：
 
@@ -34,7 +45,7 @@ ideer/
 │   ├── Makefile               # 仅后端命令（dev、gateway、lint）
 │   ├── langgraph.json         # LangGraph Studio 图配置
 │   ├── packages/
-│   │   └── harness/           # ideer-harness 包（导入：ideer.*）
+│   │   └── harness/           # deerflow-harness 包（导入：deerflow.*）
 │   │       ├── pyproject.toml
 │   │       └── ideer/
 │   │           ├── agents/            # LangGraph 智能体系统
@@ -223,7 +234,7 @@ MCP 服务器和技能在项目根目录的 `extensions_config.json` 中共同�
 3. 当前目录（backend/）中的 `extensions_config.json`
 4. 父目录（项目根目录，**推荐位置**）中的 `extensions_config.json`
 
-### Gateway API（`app/gateway/`）
+### Gateway API（`backend/app/gateway/`）
 
 FastAPI 应用运行在端口 8001，健康检查为 `GET /health`。生产环境可设置 `GATEWAY_ENABLE_DOCS=false` 禁用 `/docs`、`/redoc` 和 `/openapi.json`（默认启用）。
 
