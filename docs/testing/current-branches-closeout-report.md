@@ -36,7 +36,7 @@ Python 3.8 compatibility candidate.
 | Backend `make test` with local sockets permitted (pre-final test-fix commit) | passed: 26,028 passed, 145 skipped, 818 warnings; 1,162s |
 | Backend ruff check/format (changed files) | passed |
 | Local-runtime focused ruff check | passed |
-| `pr-standard` | frontend-standard Rstest 758 and Vitest 10,221 passed; frontend-smoke 29 passed. The latest backend-standard run completed with 26,022 passed, 145 skipped, and 26 failures in 1,609s. The remaining failures are 25 extension-manager cases requiring network-only PyPI packages plus the live Gate 4 provider case; the corrected worker, sandbox, migration, receipt, and knowledge tests pass in focused reruns (90 passed). Parent lane remains blocked on those external checks. |
+| `pr-standard` | frontend-standard Rstest 758 and Vitest 10,221 passed; frontend-smoke 29 passed. The latest backend-standard run completed with 26,022 passed, 145 skipped, and 26 failures in 1,609s. The remaining failures are extension-manager cases requiring network-only PyPI packages plus the live Gate 4 provider case; the corrected worker, sandbox, migration, receipt, and knowledge tests pass in focused reruns (90 passed). Parent lane remains blocked on those external checks. |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
 | `frontend-a11y` | passed: 3 passed, 177s |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
