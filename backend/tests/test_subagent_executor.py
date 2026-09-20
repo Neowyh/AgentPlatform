@@ -4399,7 +4399,11 @@ class TestToolReceiptHarvest:
             config=base_config,
             tools=[],
             thread_id="test-thread",
-            extensions=SimpleNamespace(needs_task_store=False, has_task_lifecycle=False),
+            extensions=SimpleNamespace(
+                needs_task_store=False,
+                has_task_lifecycle=False,
+                runtime_evidence_hooks=None,
+            ),
             execution_capacity=self._ImmediateCapacity(),
         )
         submitter = self._ThreadSubmitter()
@@ -4455,7 +4459,11 @@ class TestToolReceiptHarvest:
             config=short_config,
             tools=[],
             thread_id="test-thread",
-            extensions=SimpleNamespace(needs_task_store=False, has_task_lifecycle=False),
+            extensions=SimpleNamespace(
+                needs_task_store=False,
+                has_task_lifecycle=False,
+                runtime_evidence_hooks=None,
+            ),
             execution_capacity=self._ImmediateCapacity(),
         )
         submitter = self._ThreadSubmitter()

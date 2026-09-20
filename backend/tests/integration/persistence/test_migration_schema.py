@@ -35,7 +35,7 @@ from deerflow.persistence.migrations._chain_meta import (
 )
 from tests._migration_test_support import unified_alembic_config
 
-CURRENT_HEAD = "20260917_knowledge_eval_comparisons"
+CURRENT_HEAD = "20260918_knowledge_publish_eval_gate"
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
