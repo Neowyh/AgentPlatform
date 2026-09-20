@@ -15,6 +15,20 @@ from .files import FileAccessError, LocalFileStore, RootConfig
 from .policy import LocalPolicy, PolicyDecision, RiskLevel
 from .python import LocalPythonService, PythonExecutor, PythonResult, PythonTaskStatus
 from .receipts import LocalExecutionReceipt
+from .secrets import (
+    InMemorySecretStore,
+    ResolvedSecrets,
+    SecretBackendUnavailable,
+    SecretNotFound,
+    SecretRedactor,
+    SecretResolver,
+    SecretStore,
+    SecretStoreError,
+    WindowsCredentialStore,
+    create_default_secret_store,
+    is_secret_ref,
+    secret_ref,
+)
 from .transport import LocalRuntimeClient
 
 __all__ = [
@@ -28,6 +42,7 @@ __all__ = [
     "FileAccessError",
     "FileArtifactUploader",
     "FileTaskResult",
+    "InMemorySecretStore",
     "LocalExecutionReceipt",
     "LocalFileService",
     "LocalFileStore",
@@ -39,9 +54,20 @@ __all__ = [
     "PythonExecutor",
     "PythonResult",
     "PythonTaskStatus",
+    "ResolvedSecrets",
     "RiskLevel",
     "RootConfig",
+    "SecretBackendUnavailable",
+    "SecretNotFound",
+    "SecretRedactor",
+    "SecretResolver",
+    "SecretStore",
+    "SecretStoreError",
     "SingleUseUploadGrant",
+    "WindowsCredentialStore",
+    "create_default_secret_store",
+    "is_secret_ref",
     "request_hash",
     "runtime_cli",
+    "secret_ref",
 ]

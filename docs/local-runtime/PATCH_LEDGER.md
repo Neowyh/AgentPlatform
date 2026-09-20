@@ -14,3 +14,11 @@ must add a row here before implementation.
 M8 local file and Python hardening remains outside the shared harness. The
 runtime changes use only local-runtime seams and the existing broker protocol;
 no new harness patch is required.
+
+M9 local secrets (OS store, `local:` references, redaction gate) also remains
+inside `local-runtime/` plus its tests; the broker protocol is unchanged and no
+harness patch is required.
+
+M9 `local.mcp.*` model-side integration lives in `local-runtime/core/mcp.py`,
+the `agentplatform-extension` local_runtime tools, and their tests; the harness
+package is untouched and no harness patch is required.

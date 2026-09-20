@@ -1,4 +1,11 @@
-"""Outbound-only WebSocket transport for the harmless M7 echo task."""
+"""Outbound-only WebSocket transport for the harmless M7 echo task.
+
+The wire session (``LocalRuntimeClient``) owns the connection, the pause /
+resume / close / shutdown controls and the running-task registry. The consent
+state machine lives in ``LocalConsentCoordinator`` (``consent_coord``), so a
+session can be tested without a consent prompt and a consent prompt can be
+tested without a socket.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +17,19 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import ClientConnection, connect
 
-from .consent import ConsentExchange, ConsentRequest
+from .audit import AuditEntry, AuditKind, LocalAuditLog
+from .consent import (
+    ConsentRequest,
+    ConsentStore,
+    PendingConsent,
+)
+from .consent_coord import (
+    ConsentPrompt,
+    LocalConsentCoordinator,
+)
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError
+from .mcp import LocalMCPService, MCPExecution
 from .policy import LocalPolicy, PolicyDecision
 from .protocol import (
     MessageType,
@@ -23,6 +40,7 @@ from .protocol import (
 )
 from .python import LocalPythonService, PythonResult
 from .receipts import LocalExecutionReceipt, content_hash
+from .secrets import SecretStoreError
 
 
 class LocalRuntimeClient:
@@ -44,6 +62,9 @@ class LocalRuntimeClient:
         policy: LocalPolicy | None = None,
         file_service: LocalFileService | None = None,
         python_service: LocalPythonService | None = None,
+        mcp_service: LocalMCPService | None = None,
+        audit: LocalAuditLog | None = None,
+        consent_prompt: ConsentPrompt | None = None,
     ) -> None:
         self.server_url = server_url
         self.device_id = device_id
@@ -67,20 +88,168 @@ class LocalRuntimeClient:
         self.policy = policy or LocalPolicy()
         self.file_service = file_service
         self.python_service = python_service
+        self.mcp_service = mcp_service
+        if self.mcp_service is not None:
+            self.mcp_service.on_capabilities_changed = self._on_mcp_capabilities_changed
         self.connection: ClientConnection | None = None
-        self._pending_consents: dict[str, ConsentRequest] = {}
+        self.audit = audit or LocalAuditLog()
+        self.consent_prompt = consent_prompt
+        self.paused = False
+        self.connected = False
+        self._last_sent_capabilities: tuple[str, ...] | None = None
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._cancelled_tasks: set[str] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        # The consent state machine is its own object; the session hands itself
+        # in as the wire and the coordinator owns the pending tables, the
+        # prompt wait, the answers and the audit rows that prove what happened
+        # to each request.
+        self.consent_coord = LocalConsentCoordinator(self, consent_prompt)
+
+    # --- user controls ---------------------------------------------------
+
+    def pause(self, *, actor_id: str = "local-user") -> None:
+        """Stop accepting new tasks; in-flight work and prompts complete."""
+        if self.paused:
+            return
+        self.paused = True
+        self._record(
+            AuditKind.CONTROL,
+            "paused",
+            actor_id=actor_id,
+            detail={"accepting_tasks": False},
+        )
+
+    def resume(self, *, actor_id: str = "local-user") -> None:
+        if not self.paused:
+            return
+        self.paused = False
+        self._record(
+            AuditKind.CONTROL,
+            "resumed",
+            actor_id=actor_id,
+            detail={"accepting_tasks": True},
+        )
+
+    async def close(self, *, actor_id: str = "local-user") -> None:
+        """Drop the outbound session, failing open prompts closed."""
+        self._record(
+            AuditKind.CONNECTION,
+            "disconnecting",
+            actor_id=actor_id,
+            detail={"device_id": self.device_id},
+        )
+        await self._end_connection(actor_id=actor_id, reason="the local runtime disconnected")
+
+    async def _end_connection(self, *, actor_id: str, reason: str) -> None:
+        """Drop the socket and cancel anything still running on the old session.
+
+        A session that has ended cannot answer a consent prompt or deliver a
+        task result, so an in-flight task is stopped here rather than left to
+        finish its local side effect with nowhere to report it. This is the
+        teardown both an explicit :meth:`close` and a dropped connection use —
+        a retry has to start from no connection at all, or it would write its
+        next hello into a dead socket.
+        """
+        self._abandon_pending_consents(reason=reason)
+        tasks = tuple(self._running_tasks.values())
+        for task in tasks:
+            task.cancel()
+        # Nothing is awaited between reading the socket and clearing it, so a
+        # session that has ended can never leave a connection object behind for
+        # a retry to mistake as live.
+        connection = self.connection
+        self.connected = False
+        self.connection = None
+        try:
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            if connection is not None:
+                await connection.close()
+
+    async def shutdown(self, *, actor_id: str = "local-user") -> None:
+        """Stop the runtime: cancel in-flight tasks, then close the session."""
+        for task in tuple(self._running_tasks.values()):
+            task.cancel()
+        await self.close(actor_id=actor_id)
+
+    def _abandon_pending_consents(self, *, reason: str) -> None:
+        """Fail open on-device prompts closed; nothing waits on a dead session."""
+        self.consent_coord._abandon_pending_consents(reason=reason)
+
+    def _record(
+        self,
+        kind: AuditKind,
+        action: str,
+        *,
+        capability: str | None = None,
+        task_id: str | None = None,
+        run_id: str | None = None,
+        digest: str | None = None,
+        actor_id: str | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> AuditEntry:
+        return self.audit.record(
+            kind,
+            action,
+            capability=capability,
+            task_id=task_id,
+            run_id=run_id,
+            digest=digest,
+            actor_id=actor_id,
+            detail=detail,
+        )
 
     async def connect(self) -> ClientConnection:
         """Open the device-initiated connection; the server is never dialed back."""
-        self.connection = await connect(self.server_url)
-        return self.connection
+        connection = await connect(self.server_url)
+        self.connection = connection
+        return connection
+
+    def current_capabilities(self) -> tuple[str, ...]:
+        """The capability set this device would announce right now."""
+        return self._current_capabilities()
+
+    def busy(self) -> bool:
+        """Whether a task or consent round trip is still in flight."""
+        return bool(self._running_tasks) or bool(self.consent_coord._local_consents)
+
+    # --- backward-compat aliases for tests that reach into the consent tables ---
+    #
+    # The consent tables live on the coordinator now; these properties keep
+    # the old attribute names reachable so existing tests and one-off callers
+    # (tray.py, the fake broker helpers) don't have to be updated in one shot.
+
+    @property
+    def _relayed_consents(self):
+        return self.consent_coord._relayed_consents
+
+    @property
+    def _local_consents(self):
+        return self.consent_coord._local_consents
+
+    @property
+    def _answered_consents(self):
+        return self.consent_coord._answered_consents
+
+    def _current_capabilities(self) -> tuple[str, ...]:
+        """Static capabilities plus the live ``local.mcp.*`` projection."""
+        if self.mcp_service is None:
+            return tuple(self.capabilities)
+        merged = list(self.capabilities)
+        merged.extend(
+            name
+            for name in self.mcp_service.supervisor.capabilities()
+            if name not in merged
+        )
+        return tuple(merged)
 
     async def send_hello(self) -> None:
         if self.connection is None:
             raise RuntimeError("connect() must be called before send_hello()")
         self.session_id = self.session_id or new_session_id()
+        self._last_sent_capabilities = self._current_capabilities()
         hello = sign_envelope(
             private_key=self.private_key,
             message_type=MessageType.HELLO,
@@ -91,7 +260,7 @@ class LocalRuntimeClient:
                 "public_key": public_key_text(self.private_key),
                 "protocol_version": self.protocol_version,
                 "runtime_version": self.runtime_version,
-                "capabilities": list(self.capabilities),
+                "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
             },
         )
@@ -103,13 +272,14 @@ class LocalRuntimeClient:
         """Publish the current device capability set to the server registry."""
         if self.connection is None or self.session_id is None:
             raise RuntimeError("connect and send_hello must be called first")
+        self._last_sent_capabilities = self._current_capabilities()
         message = sign_envelope(
             private_key=self.private_key,
             message_type=MessageType.CAPABILITY_UPDATE,
             device_id=self.device_id,
             session_id=self.session_id,
             payload={
-                "capabilities": list(self.capabilities),
+                "capabilities": list(self._current_capabilities()),
                 "policy_hash": self.policy_hash,
             },
         )
@@ -117,12 +287,34 @@ class LocalRuntimeClient:
             json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         )
 
+    async def _on_mcp_capabilities_changed(self) -> None:
+        """Republish capabilities when a server reports a tool-set change."""
+        if self.connection is None or self.session_id is None:
+            return
+        current = self._current_capabilities()
+        if current != self._last_sent_capabilities:
+            await self.send_capability_update()
+
+    async def refresh_mcp_capabilities(self) -> None:
+        """Re-enumerate tools from enabled servers; republish when the set changed."""
+        if self.mcp_service is None:
+            return
+        await self.mcp_service.supervisor.refresh_all()
+        await self._on_mcp_capabilities_changed()
+
     async def run(self) -> None:
         """Receive signed tasks and return ACK/progress/result envelopes."""
+        self._loop = asyncio.get_running_loop()
         if self.connection is None:
             await self.connect()
         await self.send_hello()
         await self.send_capability_update()
+        self.connected = True
+        self._record(
+            AuditKind.CONNECTION,
+            "connected",
+            detail={"server_url": self.server_url, "device_id": self.device_id},
+        )
         assert self.connection is not None
         server_hello = json.loads(await self.connection.recv())
         configured_key = self.server_public_key or str(
@@ -135,6 +327,22 @@ class LocalRuntimeClient:
             expected_session_id=self.session_id or "",
         )
         self.server_public_key = configured_key
+        try:
+            await self._receive_loop()
+        finally:
+            # Reached on every exit: a clean close, an aborted socket and a
+            # verification failure all end here. Without this the next run()
+            # finds self.connection still set and "sends" hello to a socket
+            # that is already gone, so the device never redials.
+            if self.connection is not None:
+                await self._end_connection(
+                    actor_id="local-runtime",
+                    reason="the session with the server ended",
+                )
+
+    async def _receive_loop(self) -> None:
+        """Verify and dispatch frames until the session ends."""
+        assert self.connection is not None
         async for raw in self.connection:
             message = json.loads(raw)
             envelope = verify_envelope(
@@ -157,19 +365,14 @@ class LocalRuntimeClient:
             elif envelope.type == MessageType.TASK_CANCEL:
                 await self._handle_task_cancel(envelope.task_id or "")
 
-        tasks = tuple(self._running_tasks.values())
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
     def _task_finished(self, task_id: str, task: asyncio.Task[None]) -> None:
         self._running_tasks.pop(task_id, None)
         if not task.cancelled():
             task.exception()
 
     async def _handle_task_cancel(self, task_id: str) -> None:
-        request = self._pending_consents.pop(task_id, None)
+        relayed = self.consent_coord._relayed_consents.pop(task_id, None)
+        request = relayed.request if relayed is not None else None
         if request is not None:
             self._cancelled_tasks.add(task_id)
             await self._send_error(
@@ -188,6 +391,20 @@ class LocalRuntimeClient:
     async def _handle_task(self, envelope) -> None:
         assert self.connection is not None
         task_id = envelope.task_id or ""
+        operation = str(envelope.payload.get("operation", ""))
+        if self.paused:
+            # Pause never drops a task silently: the caller gets a structured
+            # denial carrying a receipt, which the broker records as DENIED.
+            await self._send_error(
+                task_id,
+                "local runtime is paused; no new tasks are accepted",
+                "DEVICE_PAUSED",
+                dict(envelope.payload),
+                operation,
+                policy_decision=PolicyDecision.DENY.value,
+                status="denied",
+            )
+            return
         await self.connection.send(
             json.dumps(
                 sign_envelope(
@@ -201,7 +418,13 @@ class LocalRuntimeClient:
                 separators=(",", ":"),
             )
         )
-        operation = str(envelope.payload.get("operation", ""))
+        self._record(
+            AuditKind.TASK,
+            "accepted",
+            capability=operation,
+            task_id=task_id,
+            run_id=str(envelope.payload.get("run_id", "")),
+        )
         try:
             if operation == "echo":
                 result = envelope.payload.get("value")
@@ -222,26 +445,15 @@ class LocalRuntimeClient:
             elif operation == "local.files.write":
                 file_task = self.handle_file_task(operation, dict(envelope.payload))
                 if file_task.decision is PolicyDecision.CONSENT_REQUIRED:
-                    if self.file_service is None:
-                        raise RuntimeError(
-                            "file_service is required for local file tasks"
-                        )
-                    request = ConsentExchange(self.file_service.consent).create_request(
-                        operation, dict(envelope.payload)
+                    assert self.file_service is not None
+                    await self.consent_coord._request_consent(
+                        envelope,
+                        dict(envelope.payload),
+                        self.file_service.consent,
                     )
-                    self._pending_consents[task_id] = request
-                    await self._send_consent_required(envelope, request)
                     return
                 if file_task.decision is not PolicyDecision.ALLOW:
-                    await self._send_error(
-                        task_id,
-                        file_task.decision.value,
-                        "LOCAL_POLICY_DENIED",
-                        envelope.payload,
-                        operation,
-                        policy_decision=file_task.decision.value,
-                        status="denied",
-                    )
+                    await self._denial_response(operation, task_id, envelope.payload, file_task.decision)
                     return
                 result = file_task.value
                 receipt = self._file_receipt(
@@ -259,23 +471,17 @@ class LocalRuntimeClient:
                     ),
                 )
                 if python_result is PolicyDecision.CONSENT_REQUIRED:
-                    request = ConsentExchange(
-                        self.python_service.consent
-                    ).create_request(operation, dict(envelope.payload))
-                    self._pending_consents[task_id] = request
-                    await self._send_consent_required(envelope, request)
+                    await self.consent_coord._request_consent(
+                        envelope,
+                        dict(envelope.payload),
+                        self.python_service.consent,
+                    )
                     return
                 if python_result is not PolicyDecision.ALLOW and not isinstance(
                     python_result, PythonResult
                 ):
-                    await self._send_error(
-                        task_id,
-                        python_result.value,
-                        "LOCAL_POLICY_DENIED",
-                        envelope.payload,
-                        operation,
-                        policy_decision=python_result.value,
-                        status="denied",
+                    await self._denial_response(
+                        operation, task_id, envelope.payload, python_result
                     )
                     return
                 assert isinstance(python_result, PythonResult)
@@ -286,9 +492,34 @@ class LocalRuntimeClient:
                         "local Python execution did not produce a receipt"
                     )
                 receipt = replace(receipt, task_id=task_id)
+            elif operation.startswith("local.mcp."):
+                if self.mcp_service is None:
+                    raise RuntimeError("mcp_service is required for local MCP tasks")
+                execution = await self.mcp_service.execute(
+                    operation, dict(envelope.payload)
+                )
+                if execution is PolicyDecision.CONSENT_REQUIRED:
+                    await self.consent_coord._request_consent(
+                        envelope,
+                        dict(envelope.payload),
+                        self.mcp_service.consent,
+                    )
+                    return
+                if not isinstance(execution, MCPExecution):
+                    await self._denial_response(operation, task_id, envelope.payload, execution)
+                    return
+                result = execution.value
+                receipt = replace(execution.receipt, task_id=task_id)
             else:
                 raise ValueError("unsupported operation")
         except asyncio.CancelledError:
+            self._record(
+                AuditKind.TASK,
+                "cancelled",
+                capability=operation,
+                task_id=task_id,
+                run_id=str(envelope.payload.get("run_id", "")),
+            )
             await self._send_error(
                 task_id,
                 "local task cancelled",
@@ -300,6 +531,13 @@ class LocalRuntimeClient:
             )
             raise
         except FileAccessError as exc:
+            await self._send_error(
+                task_id, str(exc), exc.code, envelope.payload, operation
+            )
+            return
+        except SecretStoreError as exc:
+            # A secret reference or its backend failed: the task fails with a
+            # stable code; there is no plaintext fallback path.
             await self._send_error(
                 task_id, str(exc), exc.code, envelope.payload, operation
             )
@@ -322,6 +560,7 @@ class LocalRuntimeClient:
                 separators=(",", ":"),
             )
         )
+        self._record_execution(receipt)
         await self.connection.send(
             json.dumps(
                 sign_envelope(
@@ -334,6 +573,72 @@ class LocalRuntimeClient:
                 ),
                 separators=(",", ":"),
             )
+        )
+
+    def _record_policy_denial(
+        self, capability: str, task_id: str, payload: dict[str, Any]
+    ) -> None:
+        """Record a device-side veto, which no receipt would otherwise show."""
+        self._record(
+            AuditKind.POLICY,
+            "denied",
+            capability=capability,
+            task_id=task_id,
+            run_id=str(payload.get("run_id", "")),
+            detail={
+                "risk_level": self.policy.risk_level(capability, dict(payload)).value
+            },
+        )
+
+    async def _denial_response(
+        self,
+        capability: str,
+        task_id: str,
+        payload: dict[str, Any],
+        decision: PolicyDecision,
+    ) -> None:
+        """Record the local audit row and emit the wire error frame in one call.
+
+        A policy denial is a single event with two observable halves: the
+        structured error frame the server learns from, and the audit row the
+        user sees. Owning both here means no caller can record without
+        sending or vice versa.
+        """
+        self._record_policy_denial(capability, task_id, payload)
+        await self._send_error(
+            task_id,
+            decision.value,
+            "LOCAL_POLICY_DENIED",
+            payload,
+            capability,
+            policy_decision=decision.value,
+            status="denied",
+        )
+
+    def _record_execution(self, receipt: LocalExecutionReceipt) -> None:
+        """One audit row per finished local execution, keyed by its receipt.
+
+        Callers record before sending the result: the local log must never lag
+        a frame the network already delivered, or a user opening their history
+        right after an outcome appears sees nothing.
+        """
+        kind = (
+            AuditKind.MCP
+            if receipt.capability.startswith("local.mcp.")
+            else AuditKind.EXECUTION
+        )
+        self._record(
+            kind,
+            receipt.status,
+            capability=receipt.capability,
+            task_id=receipt.task_id,
+            run_id=receipt.run_id,
+            digest=receipt.payload_hash,
+            detail={
+                "result_hash": receipt.result_hash,
+                "consent_decision": receipt.consent_decision,
+                "policy_decision": receipt.policy_decision,
+            },
         )
 
     def _file_receipt(
@@ -369,161 +674,72 @@ class LocalRuntimeClient:
             "artifact_error": result.artifact_error,
         }
 
-    async def _send_consent_required(
-        self, envelope: Any, request: ConsentRequest
-    ) -> None:
-        assert self.connection is not None
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.CONSENT_REQUIRED,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=envelope.task_id,
-                    payload={
-                        "capability": request.capability,
-                        "payload": request.payload,
-                        "request_hash": request.request_hash,
-                    },
-                ),
-                separators=(",", ":"),
-            )
-        )
-
-    async def _handle_consent_decision(self, envelope: Any, *, background: bool = False) -> None:
-        task_id = envelope.task_id or ""
-        if task_id in self._cancelled_tasks:
-            return
-        request = self._pending_consents.pop(task_id, None)
-        if (
-            request is None
-            or envelope.payload.get("request_hash") != request.request_hash
-        ):
-            await self._send_error(
-                task_id,
-                "consent request does not match",
-                "CONSENT_MISMATCH",
-                envelope.payload,
-                request.capability if request else "local.files.write",
-                policy_decision=PolicyDecision.DENY.value,
-                status="denied",
-            )
-            return
-        if request.capability == "local.python":
+    def _consent_service_store(self, capability: str) -> ConsentStore:
+        """The ConsentStore that grades one capability; the coordinator needs it to settle."""
+        if capability.startswith("local.mcp."):
+            service: Any = self.mcp_service
+        elif capability == "local.python":
             service = self.python_service
         else:
             service = self.file_service
         if service is None:
             raise RuntimeError("required local service is unavailable")
-        approved = bool(envelope.payload.get("approved", False))
-        exchange = ConsentExchange(service.consent)
-        exchange.decide(
-            request,
-            approved=approved,
-            actor_id=str(envelope.payload.get("actor_id", "local-user")),
+        return service.consent
+
+    # --- consent: delegated to LocalConsentCoordinator --------------------
+
+    def pending_consents(self) -> tuple[PendingConsent, ...]:
+        """Every request awaiting a decision, newest first."""
+        return self.consent_coord.pending_consents()
+
+    def resolve_local_consent(
+        self,
+        task_id: str,
+        *,
+        approved: bool,
+        actor_id: str = "local-user",
+        always: bool = False,
+    ) -> None:
+        """Answer a pending on-device request from the UI thread."""
+        self.consent_coord.resolve_local_consent(
+            task_id, approved=approved, actor_id=actor_id, always=always
         )
-        if not approved or not exchange.authorize(request, request.payload):
-            await self._send_error(
-                task_id,
-                "local consent denied",
-                "DENIED",
-                request.payload,
-                request.capability,
-                policy_decision=PolicyDecision.DENY.value,
-                status="denied",
-                consent_decision="denied",
-            )
-            return
-        if background:
-            task = asyncio.create_task(self._execute_consented(envelope, request))
-            self._running_tasks[task_id] = task
-            task.add_done_callback(
-                lambda finished, current_task_id=task_id: self._task_finished(
-                    current_task_id, finished
-                )
-            )
-            await asyncio.sleep(0)
-            return
-        await self._execute_consented(envelope, request)
 
-    async def _execute_consented(self, envelope: Any, request: ConsentRequest) -> None:
-        try:
-            await self._execute_consented_inner(envelope, request)
-        except asyncio.CancelledError:
-            await self._send_error(
-                envelope.task_id or "",
-                "local task cancelled",
-                "CANCELLED",
-                request.payload,
-                request.capability,
-                policy_decision=PolicyDecision.ALLOW.value,
-                status="cancelled",
-                consent_decision="approved",
-            )
+    def expire_consents(self, *, now: float | None = None) -> tuple[str, ...]:
+        """Auto-deny prompts nobody answered, so nothing hangs indefinitely."""
+        return self.consent_coord.expire_consents(now=now)
 
-    async def _execute_consented_inner(self, envelope: Any, request: ConsentRequest) -> None:
-        task_id = envelope.task_id or ""
-        if request.capability == "local.python":
-            python_result = await self.python_service.execute(
-                request.payload,
-                consent=True,
-                on_output=lambda stream, output: self._send_python_output(
-                    task_id, stream, output
-                ),
-            )
-            if not isinstance(python_result, PythonResult):
-                decision = python_result
-                value = None
-            else:
-                decision = PolicyDecision.ALLOW
-                value = self._python_result_value(python_result)
-                receipt = python_result.receipt
-                if receipt is not None:
-                    receipt = replace(receipt, task_id=task_id)
-        else:
-            file_task = self.file_service.execute(
-                request.capability, request.payload, consent=True
-            )
-            decision = file_task.decision
-            value = file_task.value
-            receipt = self._file_receipt(
-                envelope,
-                request.capability,
-                value,
-                consent_decision="approved",
-                payload=request.payload,
-                task_id=task_id,
-            )
-        if decision is not PolicyDecision.ALLOW:
-            await self._send_error(
-                task_id,
-                decision.value,
-                "LOCAL_POLICY_DENIED",
-                request.payload,
-                request.capability,
-                policy_decision=decision.value,
-                status="denied",
-                consent_decision="approved",
-            )
-            return
-        if receipt is None:
-            raise RuntimeError("local execution did not produce a receipt")
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.TASK_RESULT,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=task_id,
-                    payload={
-                        "result": value,
-                        "receipt": receipt.as_dict(),
-                    },
-                ),
-                separators=(",", ":"),
-            )
+    async def _request_consent(
+        self, envelope: Any, payload: dict[str, Any], store: ConsentStore
+    ) -> None:
+        """Ask about one task: locally when a tray is attached, else upstream."""
+        await self.consent_coord._request_consent(envelope, payload, store)
+
+    async def _handle_consent_decision(
+        self, envelope: Any, *, background: bool = False
+    ) -> None:
+        """Route a server decision into the consent state machine."""
+        await self.consent_coord._handle_consent_decision(envelope, background=background)
+
+    async def _deny_unanswered(
+        self, envelope: Any, request: ConsentRequest, *, reason: str | None = None
+    ) -> None:
+        await self.consent_coord._deny_unanswered(envelope, request, reason=reason)
+
+    async def _settle_consent(
+        self,
+        envelope: Any,
+        request: ConsentRequest,
+        store: ConsentStore,
+        *,
+        approved: bool,
+        actor_id: str,
+        always: bool = False,
+        origin: str,
+    ) -> None:
+        await self.consent_coord._settle_consent(
+            envelope, request, store, approved=approved, actor_id=actor_id,
+            always=always, origin=origin,
         )
 
     async def _send_error(
@@ -538,49 +754,17 @@ class LocalRuntimeClient:
         status: str = "failed",
         consent_decision: str | None = None,
     ) -> None:
-        assert self.connection is not None
-        receipt = LocalExecutionReceipt(
-            run_id=str(payload.get("run_id", "")),
-            task_id=task_id,
-            capability=capability,
-            policy_decision=policy_decision,
-            status=status,
-            payload_hash=content_hash(payload),
+        await self.consent_coord._send_error(
+            task_id, message, code, payload, capability,
+            policy_decision=policy_decision, status=status,
             consent_decision=consent_decision,
-        )
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.ERROR,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=task_id,
-                    payload={
-                        "error_code": code,
-                        "message": message,
-                        "receipt": receipt.as_dict(),
-                    },
-                ),
-                separators=(",", ":"),
-            )
         )
 
     async def _send_python_output(self, task_id: str, stream: str, output: str) -> None:
-        assert self.connection is not None
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.TASK_PROGRESS,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=task_id,
-                    payload={"fraction": 0.0, "stream": stream, "output": output},
-                ),
-                separators=(",", ":"),
-            )
-        )
+        await self.consent_coord._send_python_output(task_id, stream, output)
+
+    async def _execute_consented(self, envelope: Any, request: ConsentRequest) -> None:
+        await self.consent_coord._execute_consented(envelope, request)
 
     async def handle_echo_task(self, envelope: Any) -> LocalExecutionReceipt:
         """Apply Local Policy and return a receipt without executing system commands."""
@@ -614,3 +798,17 @@ class LocalRuntimeClient:
         if self.file_service is None:
             raise RuntimeError("file_service is required for local file tasks")
         return self.file_service.execute(capability, payload, consent=consent)
+
+
+# --- backward-compat re-exports -----------------------------------------
+#
+# These used to be defined in transport.py; they now live in consent_coord.py.
+# Re-export them so existing imports like `from core.transport import
+# ConsentDecisionError` keep working (tray.py, tests, and the CLI all use
+# the transport module as the public entry point).
+
+from .consent_coord import (  # noqa: F401, E402
+    CONSENT_TIMEOUT_SECONDS,
+    ConsentDecisionError,
+    ConsentUnavailableError,
+)

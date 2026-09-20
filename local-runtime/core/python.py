@@ -21,6 +21,14 @@ from .consent import ConsentStore, request_hash
 from .files import LocalFileStore
 from .policy import LocalPolicy, PolicyDecision
 from .receipts import LocalExecutionReceipt, content_hash
+from .secrets import (
+    SECRET_REF_PREFIX,
+    ResolvedSecrets,
+    SecretBackendUnavailable,
+    SecretRedactor,
+    SecretResolver,
+    is_secret_ref,
+)
 
 
 class _WindowsJob:
@@ -116,16 +124,20 @@ class _StreamingRedactor:
         r"(?i)(api[_-]?key|secret|token|password)(\s*[=:]\s*)[^\s,;]+"
     )
 
-    def __init__(self) -> None:
+    def __init__(self, secrets: SecretRedactor) -> None:
+        self._secrets = secrets
+        self._holdback = max(128, secrets.longest)
         self._pending = ""
 
     def feed(self, text: str, *, final: bool = False) -> str:
         self._pending += text
-        redacted = self._pattern.sub(r"\1\2[REDACTED]", self._pending)
+        redacted = self._secrets.redact(
+            self._pattern.sub(r"\1\2[REDACTED]", self._pending)
+        )
         if final:
             self._pending = ""
             return redacted
-        keep = min(128, len(redacted))
+        keep = min(self._holdback, len(redacted))
         emitted, self._pending = redacted[:-keep], redacted[-keep:]
         return emitted
 
@@ -142,6 +154,7 @@ class LocalPythonService:
         uploader: ArtifactUploader | None = None,
         executor: PythonExecutor | None = None,
         environment: Mapping[str, str] | None = None,
+        secrets: SecretResolver | None = None,
     ) -> None:
         self.files = files
         self.policy = policy or LocalPolicy()
@@ -149,6 +162,7 @@ class LocalPythonService:
         self.uploader = uploader
         self.executor = executor or PythonExecutor()
         self.environment = dict(environment or {})
+        self.secrets = secrets
 
     async def execute(
         self,
@@ -167,6 +181,7 @@ class LocalPythonService:
         )
         if decision is not PolicyDecision.ALLOW:
             return decision
+        resolved_secrets = self._resolve_payload_secrets(payload)
         environment_names = [str(name) for name in payload.get("environment", [])]
         safe_environment_names = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
         unavailable = {
@@ -177,16 +192,24 @@ class LocalPythonService:
         if unavailable:
             raise ValueError("environment reference is unavailable")
         working_root = self.files.resolve(str(payload["working_root"]))
+        environment = {
+            name: self.environment[name]
+            for name in payload.get("environment", [])
+            if name in self.environment
+        }
+        if resolved_secrets is not None:
+            environment = {**environment, **resolved_secrets.environment}
         result = await self.executor.run(
             str(payload["script"]),
             working_root=working_root,
             args=[str(arg) for arg in payload.get("args", [])],
             timeout=float(payload.get("timeout", 30)),
-            environment={
-                name: self.environment[name]
-                for name in payload.get("environment", [])
-                if name in self.environment
-            },
+            environment=environment,
+            secret_values=(
+                tuple(resolved_secrets.environment.values())
+                if resolved_secrets is not None
+                else ()
+            ),
             on_output=on_output,
         )
         artifact_error: str | None = None
@@ -243,6 +266,24 @@ class LocalPythonService:
         )
         return replace(result, receipt=receipt, artifact_error=artifact_error)
 
+    def _resolve_payload_secrets(
+        self, payload: dict[str, object]
+    ) -> ResolvedSecrets | None:
+        """Resolve the payload's `local:` references or fail the task loudly.
+
+        Literal values in the secrets slot are rejected so plaintext can never
+        enter the process environment or any protocol field by that route.
+        """
+        secrets_field = payload.get("secrets", {})
+        if not secrets_field:
+            return None
+        if self.secrets is None:
+            raise SecretBackendUnavailable(
+                "SECRET_BACKEND_UNAVAILABLE",
+                "no local secret store is configured on this runtime",
+            )
+        return self.secrets.resolve_environment(dict(secrets_field))
+
     @staticmethod
     def _validate_payload(payload: dict[str, object]) -> None:
         if not isinstance(payload.get("working_root"), str):
@@ -262,6 +303,22 @@ class LocalPythonService:
             not isinstance(name, str) for name in environment
         ):
             raise ValueError("environment references must be a list of names")
+        secrets_field = payload.get("secrets", {})
+        if not isinstance(secrets_field, dict) or any(
+            not isinstance(name, str)
+            or not isinstance(ref, str)
+            for name, ref in secrets_field.items()
+        ):
+            raise ValueError(
+                f"secrets must map environment names to {SECRET_REF_PREFIX} references"
+            )
+        for name, ref in secrets_field.items():
+            if not name or "=" in name or "\x00" in name:
+                raise ValueError("secret environment names must be valid names")
+            if not is_secret_ref(ref):
+                raise ValueError(
+                    f"secret values must use {SECRET_REF_PREFIX} references"
+                )
 
 
 class PythonExecutor:
@@ -282,6 +339,7 @@ class PythonExecutor:
         args: list[str] | None = None,
         timeout: float = 30,
         environment: Mapping[str, str] | None = None,
+        secret_values: tuple[str, ...] = (),
         on_output: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> PythonResult:
         if not working_root.is_dir():
@@ -305,6 +363,7 @@ class PythonExecutor:
             process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             process_options["start_new_session"] = True
+        secret_redactor = SecretRedactor(secret_values)
         started_at = datetime.now(UTC)
         with (
             tempfile.NamedTemporaryFile(
@@ -332,8 +391,8 @@ class PythonExecutor:
                 deadline = asyncio.get_running_loop().time() + timeout
                 output_offsets = {"stdout": 0, "stderr": 0}
                 redactors = {
-                    "stdout": _StreamingRedactor(),
-                    "stderr": _StreamingRedactor(),
+                    "stdout": _StreamingRedactor(secret_redactor),
+                    "stderr": _StreamingRedactor(secret_redactor),
                 }
                 output_window_started = asyncio.get_running_loop().time()
                 output_window_bytes = {"stdout": 0, "stderr": 0}
@@ -395,8 +454,8 @@ class PythonExecutor:
                         visible = tail[:available]
                         await on_output(stream, visible)
                         output_window_bytes[stream] += len(visible.encode("utf-8"))
-            stdout, stdout_hash = self._summarize_log(stdout_file.name)
-            stderr, stderr_hash = self._summarize_log(stderr_file.name)
+            stdout, stdout_hash = self._summarize_log(stdout_file.name, secret_redactor)
+            stderr, stderr_hash = self._summarize_log(stderr_file.name, secret_redactor)
             if job is not None:
                 job.close()
         finished_at = datetime.now(UTC)
@@ -457,7 +516,7 @@ class PythonExecutor:
             output,
         )
 
-    def _summarize_log(self, path: str) -> tuple[str, str]:
+    def _summarize_log(self, path: str, secrets: SecretRedactor) -> tuple[str, str]:
         digest = hashlib.sha256()
         preview = bytearray()
         with open(path, "rb") as output_file:
@@ -465,6 +524,6 @@ class PythonExecutor:
                 digest.update(chunk)
                 if len(preview) < self.max_output_bytes:
                     preview.extend(chunk[: self.max_output_bytes - len(preview)])
-        return self._redact(
-            bytes(preview).decode("utf-8", errors="replace")
+        return secrets.redact(
+            self._redact(bytes(preview).decode("utf-8", errors="replace"))
         ), digest.hexdigest()

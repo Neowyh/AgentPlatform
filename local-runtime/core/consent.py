@@ -24,6 +24,48 @@ class ConsentRequest:
     request_hash: str
 
 
+def render_consent_summary(
+    capability: str, payload: dict[str, Any], *, request_hash: str = ""
+) -> dict[str, str]:
+    """The human-readable essentials of a consent request (§9 risk grading).
+
+    The user is shown what the agent wants to do, not the raw envelope: the
+    target path, the command, or the MCP tool, plus the ``request_hash`` the
+    approval binds to. Values are truncated; nothing here is a credential —
+    payload secret slots hold ``local:<name>`` references, never plaintext.
+    """
+
+    def text(value: Any, limit: int = 240) -> str:
+        rendered = "" if value is None else str(value)
+        rendered = " ".join(rendered.split())
+        return rendered if len(rendered) <= limit else rendered[: limit - 1] + "…"
+
+    summary = {
+        "capability": capability,
+        "action": {
+            "local.files.write": "write a file inside an allowed root",
+            "local.python": "run a script on this machine",
+            "local.artifacts.upload": "send a local file to the server",
+        }.get(capability, ""),
+    }
+    if capability.startswith("local.mcp."):
+        summary["action"] = "call a tool on a local MCP server"
+        summary["target"] = summary["capability"]
+        summary["arguments"] = text(json.dumps(payload.get("arguments", {}), ensure_ascii=False))
+    elif "path" in payload:
+        summary["target"] = text(payload["path"])
+        summary["size"] = text(len(str(payload.get("content", "")))) + " characters"
+    elif "script" in payload:
+        summary["target"] = text(payload.get("working_root", ""))
+        summary["command"] = text(payload["script"])
+    if payload.get("secrets"):
+        summary["secrets"] = text(", ".join(str(name) for name in payload["secrets"]))
+    if request_hash:
+        summary["request_hash"] = request_hash
+    return {key: value for key, value in summary.items() if value}
+
+
+
 @dataclass
 class ConsentStore:
     _approved: set[tuple[str, str]] = field(default_factory=set)
@@ -174,6 +216,35 @@ class ConsentStore:
         self._approved.remove(key)
         self._persist(capability, digest, False)
         return True
+
+
+@dataclass(frozen=True)
+class PendingConsent:
+    """One consent request awaiting a decision, from either answering surface.
+
+    ``silenceable`` is the tray's "always allow" affordance: a Level 2 request
+    is shown but can never be moved out of the ask-first path (Local 方案 §9).
+    """
+
+    task_id: str
+    capability: str
+    payload: dict[str, Any]
+    request_hash: str
+    risk_level: str
+    silenceable: bool
+    summary: dict[str, str]
+    requested_at: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "capability": self.capability,
+            "request_hash": self.request_hash,
+            "risk_level": self.risk_level,
+            "silenceable": self.silenceable,
+            "summary": dict(self.summary),
+            "requested_at": self.requested_at,
+        }
 
 
 class ConsentExchange:
