@@ -33,7 +33,7 @@ Python 3.8 compatibility candidate.
 | Same M9 command with local sockets permitted | 105 passed |
 | Frontend `pnpm test` command (Rstest + Vitest) with local port permitted | Rstest 758 passed; Vitest 369 files / 10,221 tests passed |
 | Backend `make test` preflight in sandbox | unexecuted: local socket bind denied |
-| Backend `make test` with local sockets permitted | passed: 26,028 passed, 145 skipped, 818 warnings; 1,162s |
+| Backend `make test` with local sockets permitted (pre-final test-fix commit) | passed: 26,028 passed, 145 skipped, 818 warnings; 1,162s |
 | Backend ruff check/format (changed files) | passed |
 | Local-runtime focused ruff check | passed |
 | `pr-standard` | frontend-standard Rstest 758 and Vitest 10,221 passed; frontend-smoke 29 passed. The latest backend-standard run completed with 26,022 passed, 145 skipped, and 26 failures in 1,609s. The remaining failures are 25 extension-manager cases requiring network-only PyPI packages plus the live Gate 4 provider case; the corrected worker, sandbox, migration, receipt, and knowledge tests pass in focused reruns (90 passed). Parent lane remains blocked on those external checks. |
