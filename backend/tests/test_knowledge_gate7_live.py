@@ -54,7 +54,9 @@ def test_gate7_real_run_artifacts_prove_source_chain_and_matrix() -> None:
     run_id = os.environ.get("RAGFLOW_GATE7_RUN_ID")
     expected_snippet = os.environ.get("RAGFLOW_GATE7_EXPECTED_SNIPPET")
     if not all((source_chain_path, matrix_path, run_id, expected_snippet)):
-        pytest.skip("Set RAGFLOW_GATE7_SOURCE_CHAIN_JSON, RAGFLOW_GATE7_MATRIX_JSON, RAGFLOW_GATE7_RUN_ID, and RAGFLOW_GATE7_EXPECTED_SNIPPET")
+        pytest.skip(
+            "Set RAGFLOW_GATE7_SOURCE_CHAIN_JSON, RAGFLOW_GATE7_MATRIX_JSON, RAGFLOW_GATE7_RUN_ID, and RAGFLOW_GATE7_EXPECTED_SNIPPET"
+        )
 
     source_chain = json.loads(Path(source_chain_path).read_text(encoding="utf-8"))
     matrix = json.loads(Path(matrix_path).read_text(encoding="utf-8"))
@@ -114,7 +116,9 @@ async def test_gate7_real_provider_content_matches_archived_delivery() -> None:
             knowledge_scope={"bindings": {"gate-kb": dataset_id}},
         )
         with bind_run_evidence(binding):
-            delivered = await KnowledgeRuntimeAdapter(scope, client.retrieve).search_knowledge(marker, logical_kb="gate-kb")
+            delivered = await KnowledgeRuntimeAdapter(
+                scope, client.retrieve
+            ).search_knowledge(marker, logical_kb="gate-kb")
             evidence = current_run_evidence()
 
         assert evidence is not None
@@ -126,14 +130,24 @@ async def test_gate7_real_provider_content_matches_archived_delivery() -> None:
         item = receipt["items"][0]
         assert item["document_id"] == "gate7-document"
         assert marker in item["content"]
-        assert item["evidence_id"] in delivered
-        assert item["content"] in delivered
+        # Structured provider responses carry the opaque identifier on the
+        # corresponding delivered chunk; string providers carry it in the
+        # rendered citation text.
+        delivered_chunk = next(
+            chunk
+            for chunk in delivered["chunks"]
+            if chunk.get("evidence_id") == item["evidence_id"]
+        )
+        assert delivered_chunk["content"] == item["content"]
     finally:
         await client.delete_document(dataset_id, document_id)
 
 
 async def _document_is_ready(client, dataset_id: str, document_id: str) -> bool:
-    return await client.get_document_status(dataset_id=dataset_id, document_id=document_id) == "ready"
+    return (
+        await client.get_document_status(dataset_id=dataset_id, document_id=document_id)
+        == "ready"
+    )
 
 
 async def _marker_is_searchable(client, dataset_id: str, marker: str) -> bool:

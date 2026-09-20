@@ -44,29 +44,50 @@ def _items(result: object, metadata: dict[str, object]) -> list[dict[str, object
     documents = documents if isinstance(documents, dict) else {}
     raw_chunks: list[object] = []
     if isinstance(result, dict):
-        raw_chunks = result.get("chunks") if isinstance(result.get("chunks"), list) else []
+        raw_chunks = (
+            result.get("chunks") if isinstance(result.get("chunks"), list) else []
+        )
     elif isinstance(result, str):
         matches = list(_ITEM_RE.finditer(result))
         for index, match in enumerate(matches):
             start = match.end()
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(result)
-            raw_chunks.append({"document_keyword": match.group(2), "similarity": match.group(3), "content": result[start:end].strip()})
+            end = (
+                matches[index + 1].start() if index + 1 < len(matches) else len(result)
+            )
+            raw_chunks.append(
+                {
+                    "document_keyword": match.group(2),
+                    "similarity": match.group(3),
+                    "content": result[start:end].strip(),
+                }
+            )
 
     items: list[dict[str, object]] = []
     for chunk in raw_chunks[:MAX_RECEIPT_ITEMS]:
         if not isinstance(chunk, dict):
             continue
         document_id = chunk.get("document_id")
-        document = documents.get(str(document_id), {}) if document_id is not None else {}
+        document = (
+            documents.get(str(document_id), {}) if document_id is not None else {}
+        )
         document = document if isinstance(document, dict) else {}
         item: dict[str, object] = {
             "document_id": document.get("logical_document_id"),
-            "display_name": chunk.get("document_keyword") or document.get("display_name"),
+            "display_name": chunk.get("document_keyword")
+            or document.get("display_name"),
             "content_hash": document.get("content_hash"),
-            "chunk_ref": _chunk_reference(document.get("logical_document_id"), chunk.get("chunk_id")),
+            "chunk_ref": _chunk_reference(
+                document.get("logical_document_id"), chunk.get("chunk_id")
+            ),
             "content": _bounded_text(chunk.get("content")),
-            "score": chunk.get("similarity") if chunk.get("similarity") is not None else None,
-            "position": {key: chunk[key] for key in ("page", "page_number", "section", "position") if key in chunk},
+            "score": chunk.get("similarity")
+            if chunk.get("similarity") is not None
+            else None,
+            "position": {
+                key: chunk[key]
+                for key in ("page", "page_number", "section", "position")
+                if key in chunk
+            },
         }
         items.append(item)
     return items
@@ -76,7 +97,11 @@ def _citation_label(item: dict[str, object]) -> str:
     label = str(item.get("display_name") or "Knowledge source")
     position = item.get("position")
     if isinstance(position, dict):
-        page = position.get("page") if position.get("page") is not None else position.get("page_number")
+        page = (
+            position.get("page")
+            if position.get("page") is not None
+            else position.get("page_number")
+        )
         if isinstance(page, (str, int)) and str(page):
             return f"{label} — Page {page}"
         section = position.get("section")
@@ -86,7 +111,14 @@ def _citation_label(item: dict[str, object]) -> str:
 
 
 def _markdown_label(label: str) -> str:
-    return label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("(", "\\(").replace(")", "\\)").replace("\n", " ")
+    return (
+        label.replace("\\", "\\\\")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .replace("\n", " ")
+    )
 
 
 def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
@@ -94,8 +126,25 @@ def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
     items = receipt.get("items")
     if not isinstance(items, list) or not items:
         return result
+    if receipt.get("archive_status") == "failed":
+        return "Knowledge evidence could not be archived; no verifiable citation is available."
     if isinstance(result, dict) and isinstance(result.get("chunks"), list):
+        model_text = result.get("__agentplatform_model_text")
+        if isinstance(model_text, str):
+            links = [
+                f"- [citation:{_markdown_label(_citation_label(item))}](evidence://{item['evidence_id']})"
+                for item in items
+                if isinstance(item, dict) and item.get("evidence_id")
+            ]
+            if links:
+                return (
+                    model_text.rstrip()
+                    + "\n\nKnowledge citations (copy the exact link when citing):\n"
+                    + "\n".join(links)
+                )
+            return model_text
         delivered = dict(result)
+        delivered.pop("__agentplatform_model_text", None)
         chunks = []
         item_index = 0
         for chunk in result["chunks"]:
@@ -108,7 +157,16 @@ def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
                 item_index += 1
                 continue
             evidence_id = item["evidence_id"]
-            annotated = dict(chunk)
+            annotated = {
+                key: value
+                for key, value in chunk.items()
+                if key not in {"document_id", "dataset_id", "chunk_id", "kb_id"}
+            }
+            # The archived item is the delivery contract.  Provider chunks can
+            # exceed the receipt budget; returning the original content here
+            # would make the model cite text that cannot be retrieved later.
+            annotated["content"] = item.get("content")
+            annotated["document"] = item.get("display_name")
             label = _markdown_label(_citation_label(item))
             annotated["evidence_id"] = evidence_id
             annotated["citation_label"] = label
@@ -124,13 +182,21 @@ def _model_facing_result(result: object, receipt: dict[str, object]) -> object:
         if not isinstance(item, dict) or not item.get("evidence_id"):
             continue
         evidence_id = item["evidence_id"]
-        links.append(f"- [citation:{_markdown_label(_citation_label(item))}](evidence://{evidence_id})")
+        links.append(
+            f"- [citation:{_markdown_label(_citation_label(item))}](evidence://{evidence_id})"
+        )
     if not links:
         return result
-    return result.rstrip() + "\n\nKnowledge citations (copy the exact link when citing):\n" + "\n".join(links)
+    return (
+        result.rstrip()
+        + "\n\nKnowledge citations (copy the exact link when citing):\n"
+        + "\n".join(links)
+    )
 
 
-def project_retrieval_items(result: object, metadata: dict[str, object]) -> list[dict[str, object]]:
+def project_retrieval_items(
+    result: object, metadata: dict[str, object]
+) -> list[dict[str, object]]:
     """Project provider chunks into bounded, canonical-identity items.
 
     Shared by run retrieval receipts and the KnowledgeBase management
@@ -160,7 +226,21 @@ def build_retrieval_receipt(
     items = _items(result, metadata)
     status = _status(result)
     created_at = datetime.now(UTC).isoformat()
-    receipt_id = "rr_" + hashlib.sha256(f"{query}\0{logical_kb}\0{created_at}".encode()).hexdigest()[:24]
+    receipt_id = (
+        "rr_"
+        + hashlib.sha256(f"{query}\0{logical_kb}\0{created_at}".encode()).hexdigest()[
+            :24
+        ]
+    )
+    provider_count = (
+        len(result.get("chunks", []))
+        if isinstance(result, dict) and isinstance(result.get("chunks"), list)
+        else len(items)
+    )
+    character_truncated = any(
+        isinstance(item, dict) and str(item.get("content", "")).endswith("…")
+        for item in items
+    )
     receipt = {
         "receipt_id": receipt_id,
         "receipt_kind": "retrieval",
@@ -180,9 +260,18 @@ def build_retrieval_receipt(
         "created_at": created_at,
         "query_sha256": _query_hash(query),
         "result_status": status,
-        "budget": {"max_items": MAX_RECEIPT_ITEMS, "max_chars_per_item": MAX_ITEM_CHARS},
+        "budget": {
+            "max_items": MAX_RECEIPT_ITEMS,
+            "max_chars_per_item": MAX_ITEM_CHARS,
+        },
+        "provider_count": provider_count,
         "returned_count": len(items),
-        "truncated": isinstance(result, dict) and isinstance(result.get("chunks"), list) and len(result["chunks"]) > len(items),
+        "delivered_count": len(items),
+        "truncation": {
+            "items": provider_count > len(items),
+            "characters": character_truncated,
+        },
+        "truncated": provider_count > len(items) or character_truncated,
         "items": items,
     }
     receipt_id = str(receipt["receipt_id"])
@@ -197,10 +286,15 @@ def model_facing_retrieval_result(result: object, receipt: dict[str, object]) ->
     return _model_facing_result(result, receipt)
 
 
-def build_denied_retrieval_receipt(query: str, logical_kb: str | None) -> dict[str, object]:
+def build_denied_retrieval_receipt(
+    query: str, logical_kb: str | None
+) -> dict[str, object]:
     """Record a denied attempt without resolving or exposing a guessed KB."""
     created_at = datetime.now(UTC).isoformat()
-    receipt_id = "rr_" + hashlib.sha256(f"{query}\0denied\0{created_at}".encode()).hexdigest()[:24]
+    receipt_id = (
+        "rr_"
+        + hashlib.sha256(f"{query}\0denied\0{created_at}".encode()).hexdigest()[:24]
+    )
     return {
         "receipt_id": receipt_id,
         "receipt_kind": "retrieval",
@@ -214,7 +308,10 @@ def build_denied_retrieval_receipt(query: str, logical_kb: str | None) -> dict[s
         "created_at": created_at,
         "query_sha256": _query_hash(query),
         "result_status": "access_denied",
-        "budget": {"max_items": MAX_RECEIPT_ITEMS, "max_chars_per_item": MAX_ITEM_CHARS},
+        "budget": {
+            "max_items": MAX_RECEIPT_ITEMS,
+            "max_chars_per_item": MAX_ITEM_CHARS,
+        },
         "returned_count": 0,
         "truncated": False,
         "items": [],

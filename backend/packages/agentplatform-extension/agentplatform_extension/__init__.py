@@ -18,15 +18,23 @@ from agentplatform_extension.evidence import (
     ResourceSnapshotRef,
     RunEvidenceBinding,
     RuntimeEvidenceHooks,
+    bind_receipt_archiver,
     bind_run_evidence,
+    bind_tool_call_evidence,
     build_run_evidence_envelope,
+    current_receipt_archiver,
     current_run_evidence,
+    current_tool_call_evidence,
+    mark_retrieval_receipt_archive_status,
     record_local_execution_receipt,
     record_retrieval_receipt,
     record_subagent_verification,
     record_tool_receipt,
 )
-from agentplatform_extension.local_runtime import LocalAuthorization, LocalToolContributor
+from agentplatform_extension.local_runtime import (
+    LocalAuthorization,
+    LocalToolContributor,
+)
 from agentplatform_extension.network_policy import NetworkPolicy
 
 
@@ -39,15 +47,22 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
     never contain caller credentials or private owner state.
     """
 
-    registry.runtime_evidence(RuntimeEvidenceHooks())
     authorization = config.get("authorization")
     if config.get("dynamic_context") is True:
+        registry.runtime_evidence(RuntimeEvidenceHooks())
         registry.task_lifecycle(EvidenceLifecycleContributor())
         return
     if not isinstance(authorization, Mapping):
         return
+    registry.runtime_evidence(RuntimeEvidenceHooks())
     effective = frozenset(str(item) for item in authorization.get("allowed_tools", ()))
-    registry.tools(LocalToolContributor(LocalAuthorization.from_capabilities(effective, device_online=bool(authorization.get("device_online", True)))))
+    registry.tools(
+        LocalToolContributor(
+            LocalAuthorization.from_capabilities(
+                effective, device_online=bool(authorization.get("device_online", True))
+            )
+        )
+    )
     registry.task_lifecycle(
         EvidenceLifecycleContributor(
             snapshots=config.get("resource_snapshots", ()),
@@ -55,10 +70,20 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
                 caller_user_id=str(authorization.get("caller_user_id", "")),
                 effective_agent_id=str(authorization.get("effective_agent_id", "")),
                 policy_revision=str(authorization.get("policy_revision", "")),
-                allowed_tools=tuple(str(item) for item in authorization.get("allowed_tools", ())),
-                memory_scope=(str(authorization["memory_scope"]) if "memory_scope" in authorization else None),
+                allowed_tools=tuple(
+                    str(item) for item in authorization.get("allowed_tools", ())
+                ),
+                memory_scope=(
+                    str(authorization["memory_scope"])
+                    if "memory_scope" in authorization
+                    else None
+                ),
             ),
-            runtime_assembly_fingerprint=(str(config["runtime_assembly_fingerprint"]) if "runtime_assembly_fingerprint" in config else None),
+            runtime_assembly_fingerprint=(
+                str(config["runtime_assembly_fingerprint"])
+                if "runtime_assembly_fingerprint" in config
+                else None
+            ),
             trace_id=str(config["trace_id"]) if "trace_id" in config else None,
         )
     )
@@ -73,10 +98,15 @@ __all__ = [
     "RunEvidenceBinding",
     "build_run_evidence_envelope",
     "bind_run_evidence",
+    "bind_receipt_archiver",
+    "bind_tool_call_evidence",
     "current_run_evidence",
+    "current_receipt_archiver",
+    "current_tool_call_evidence",
     "record_subagent_verification",
     "record_tool_receipt",
     "record_retrieval_receipt",
+    "mark_retrieval_receipt_archive_status",
     "record_local_execution_receipt",
     "install",
 ]

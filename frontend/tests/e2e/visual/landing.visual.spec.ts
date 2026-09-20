@@ -4,6 +4,15 @@ import { mockLangGraphAPI } from "../utils/mock-api";
 
 test.describe("Landing — visual regression", () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const nativeSetInterval = window.setInterval.bind(window);
+      window.setInterval = ((handler, timeout, ...args) => {
+        if (timeout === 2200) {
+          return nativeSetInterval(() => undefined, 2_147_483_647);
+        }
+        return nativeSetInterval(handler, timeout, ...args);
+      }) as typeof window.setInterval;
+    });
     mockLangGraphAPI(page);
     await page.setViewportSize({ width: 1280, height: 720 });
   });

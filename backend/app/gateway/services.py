@@ -28,11 +28,21 @@ from langgraph.types import Command
 # Canonical (Resource-catalog) bootstrap for in-run agent creation. The gateway
 # composition owns the enterprise behavior, so the wrap is installed once at
 # import — before any lead-agent graph can be assembled in this process.
-from app.agentplatform.agent_bootstrap import install as _install_canonical_agent_bootstrap
-from app.agentplatform.resources.canonical_sandbox import install_run_skill_view_resolver as _install_run_skill_view_resolver
+from app.agentplatform.agent_bootstrap import (
+    install as _install_canonical_agent_bootstrap,
+)
+from app.agentplatform.resources.canonical_sandbox import (
+    install_run_skill_view_resolver as _install_run_skill_view_resolver,
+)
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
-from app.gateway.deps import get_checkpointer, get_local_provider, get_run_context, get_run_manager, get_stream_bridge
+from app.gateway.deps import (
+    get_checkpointer,
+    get_local_provider,
+    get_run_context,
+    get_run_manager,
+    get_stream_bridge,
+)
 from app.gateway.internal_auth import (
     INTERNAL_OWNER_USER_ID_HEADER_NAME,
     INTERNAL_SYSTEM_ROLE,
@@ -41,11 +51,21 @@ from app.gateway.internal_auth import (
 )
 from app.gateway.utils import sanitize_log_param
 from app.mcp_tasks.errors import PermanentNotificationError
-from deerflow.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
-from deerflow.agents.middlewares.input_sanitization_middleware import frame_untrusted_text
-from deerflow.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
+from deerflow.agents.middlewares.dynamic_context_middleware import (
+    _DYNAMIC_CONTEXT_REMINDER_KEY,
+    _REMINDER_DATE_KEY,
+)
+from deerflow.agents.middlewares.input_sanitization_middleware import (
+    frame_untrusted_text,
+)
+from deerflow.agents.middlewares.tool_receipt import (
+    TOOL_RECEIPT_KEY,
+    TOOL_RECEIPT_LEDGER_KEY,
+)
 from deerflow.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
-from deerflow.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
+from deerflow.agents.middlewares.view_image_middleware import (
+    _IMAGE_CONTEXT_MESSAGE_MARKER_KEY,
+)
 from deerflow.config import get_app_config
 from deerflow.config.database_config import resolve_checkpoint_graph_cache_max
 from deerflow.runtime import (
@@ -76,10 +96,22 @@ from deerflow.runtime.events.message_identity import MESSAGE_SEQ_KEY
 from deerflow.runtime.goal import goal_thread_lock
 from deerflow.runtime.journal import build_checkpoint_history_seed_events
 from deerflow.runtime.runs.naming import resolve_root_run_name
-from deerflow.runtime.secret_context import LegacyRunMetadataSecretError, redact_config_secrets, validate_run_metadata_secrets
+from deerflow.runtime.secret_context import (
+    LegacyRunMetadataSecretError,
+    redact_config_secrets,
+    validate_run_metadata_secrets,
+)
 from deerflow.runtime.user_context import reset_current_user, set_current_user
-from deerflow.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
-from deerflow.trace_context import DEERFLOW_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
+from deerflow.subagents.status_contract import (
+    SUBAGENT_ACCEPTANCE_VERDICT_KEY,
+    SUBAGENT_RECEIPT_VERDICT_KEY,
+    SUBAGENT_TOOL_RECEIPTS_KEY,
+)
+from deerflow.trace_context import (
+    DEERFLOW_TRACE_METADATA_KEY,
+    ensure_trace_context,
+    ensure_trace_id,
+)
 from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY
 from deerflow.utils.thread_id import validate_thread_id
 
@@ -176,7 +208,13 @@ def normalize_stream_modes(raw: list[str] | str | None) -> list[str]:
 
 def _strip_external_message_metadata(message: Any) -> Any:
     if isinstance(message, dict) and isinstance(message.get("additional_kwargs"), dict):
-        additional_kwargs = {key: value for key, value in message["additional_kwargs"].items() if key != ORIGINAL_USER_CONTENT_KEY and key != MESSAGE_SEQ_KEY and key not in _SERVER_OWNED_MESSAGE_METADATA_KEYS}
+        additional_kwargs = {
+            key: value
+            for key, value in message["additional_kwargs"].items()
+            if key != ORIGINAL_USER_CONTENT_KEY
+            and key != MESSAGE_SEQ_KEY
+            and key not in _SERVER_OWNED_MESSAGE_METADATA_KEYS
+        }
         return {**message, "additional_kwargs": additional_kwargs}
     if not isinstance(message, BaseMessage):
         return message
@@ -192,11 +230,17 @@ def _strip_external_message_metadata(message: Any) -> Any:
 
 def _strip_external_delegation_verdict(entry: Any) -> Any:
     if isinstance(entry, dict):
-        return {key: value for key, value in entry.items() if key not in {"receipt_verdict", "acceptance_verdict"}}
+        return {
+            key: value
+            for key, value in entry.items()
+            if key not in {"receipt_verdict", "acceptance_verdict"}
+        }
     return entry
 
 
-def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool = False) -> dict[str, Any]:
+def normalize_input(
+    raw_input: dict[str, Any] | None, *, trusted_internal: bool = False
+) -> dict[str, Any]:
     """Convert LangGraph Platform input format to LangChain state dict.
 
     Delegates dict→message coercion to ``langchain_core.messages.utils.convert_to_messages``
@@ -229,12 +273,20 @@ def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool 
             else:
                 converted.append(msg)
         if not trusted_internal:
-            converted = [_strip_external_message_metadata(message) for message in converted]
+            converted = [
+                _strip_external_message_metadata(message) for message in converted
+            ]
         result = {**raw_input, "messages": converted}
     else:
         result = raw_input
     if not trusted_internal and isinstance(result.get("delegations"), list):
-        result = {**result, "delegations": [_strip_external_delegation_verdict(item) for item in result["delegations"]]}
+        result = {
+            **result,
+            "delegations": [
+                _strip_external_delegation_verdict(item)
+                for item in result["delegations"]
+            ],
+        }
     return result
 
 
@@ -243,23 +295,36 @@ def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, An
     cleaned: dict[str, Any] = {}
     for channel, value in values.items():
         if channel == "delegations" and isinstance(value, list):
-            cleaned[channel] = [_strip_external_delegation_verdict(item) for item in value]
+            cleaned[channel] = [
+                _strip_external_delegation_verdict(item) for item in value
+            ]
         elif isinstance(value, list):
-            cleaned[channel] = [_strip_external_message_metadata(item) for item in value]
+            cleaned[channel] = [
+                _strip_external_message_metadata(item) for item in value
+            ]
         else:
             cleaned[channel] = _strip_external_message_metadata(value)
     return cleaned
 
 
-def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
+def validate_evidence_selection(
+    evidence_mode: str | None, code_package_id: str | None
+) -> tuple[str, str | None]:
     """Normalize the hidden hybrid mode and validate an optional code package."""
     mode = evidence_mode or "hybrid"
     if mode not in {"document", "code", "hybrid"}:
-        raise HTTPException(status_code=400, detail="evidence_mode must be document, code, or hybrid")
+        raise HTTPException(
+            status_code=400, detail="evidence_mode must be document, code, or hybrid"
+        )
     if mode == "code" and not code_package_id:
-        raise HTTPException(status_code=400, detail=f"{mode} mode requires a Code Evidence Package")
+        raise HTTPException(
+            status_code=400, detail=f"{mode} mode requires a Code Evidence Package"
+        )
     if mode == "document" and code_package_id:
-        raise HTTPException(status_code=400, detail="document mode cannot include a Code Evidence Package")
+        raise HTTPException(
+            status_code=400,
+            detail="document mode cannot include a Code Evidence Package",
+        )
     return mode, str(code_package_id) if code_package_id else None
 
 
@@ -295,7 +360,9 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
     }
 )
 
-_CONTEXT_ONLY_KEYS: frozenset[str] = frozenset({"github_token", "disable_clarification"})
+_CONTEXT_ONLY_KEYS: frozenset[str] = frozenset(
+    {"github_token", "disable_clarification"}
+)
 
 _CONTEXT_INTERNAL_CALLER_KEYS: frozenset[str] = frozenset({"non_interactive"})
 _SERVER_OWNED_AUTHZ_CONTEXT_KEYS: frozenset[str] = frozenset(
@@ -345,7 +412,11 @@ def merge_run_context_overrides(
         return
     configurable = config.setdefault("configurable", {})
     runtime_context = config.setdefault("context", {})
-    keys = _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS if internal else _CONTEXT_CONFIGURABLE_KEYS
+    keys = (
+        _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS
+        if internal
+        else _CONTEXT_CONFIGURABLE_KEYS
+    )
     for key in keys:
         if key in context:
             if isinstance(configurable, dict):
@@ -411,7 +482,10 @@ def inject_authenticated_user_context(
             configurable.pop("user_id", None)
         return
 
-    if internal_owner_user is None and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
+    if (
+        internal_owner_user is None
+        and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE
+    ):
         runtime_context.pop("user_role", None)
         runtime_context.pop("oauth_provider", None)
         runtime_context.pop("oauth_id", None)
@@ -425,7 +499,9 @@ def inject_authenticated_user_context(
     # legacy auth-table value, which would silently re-escalate a downgraded
     # or unprovisioned account.
     cached_identity = getattr(getattr(request, "state", None), "_ideer_rbac_user", None)
-    resolved_role = cached_identity.get("role") if isinstance(cached_identity, dict) else None
+    resolved_role = (
+        cached_identity.get("role") if isinstance(cached_identity, dict) else None
+    )
     # Direct embedded callers and focused contract tests do not pass the
     # middleware's RBAC cache. Preserve the authenticated user's role there;
     # requests that went through middleware always use the server-resolved
@@ -438,12 +514,18 @@ def inject_authenticated_user_context(
         runtime_context["user_role"] = resolved_role
     runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
     runtime_context["oauth_id"] = getattr(user, "oauth_id", None)
-    department_id = cached_identity.get("department_id") if isinstance(cached_identity, dict) else None
+    department_id = (
+        cached_identity.get("department_id")
+        if isinstance(cached_identity, dict)
+        else None
+    )
     if department_id is not None:
         runtime_context["authz_attributes"] = {"department_id": str(department_id)}
 
 
-async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:
+async def resolve_trusted_internal_owner_for_attribution(
+    request: Request, owner_user_id: str | None
+) -> Any | None:
     if not owner_user_id:
         return None
     user = getattr(request.state, "user", None)
@@ -452,7 +534,10 @@ async def resolve_trusted_internal_owner_for_attribution(request: Request, owner
     try:
         return await get_local_provider().get_user(owner_user_id)
     except Exception:
-        logger.exception("Failed to resolve trusted internal owner %s", sanitize_log_param(owner_user_id))
+        logger.exception(
+            "Failed to resolve trusted internal owner %s",
+            sanitize_log_param(owner_user_id),
+        )
         return None
 
 
@@ -487,7 +572,11 @@ async def _canonical_selection_metadata(
     """Return immutable resource identities alongside user-facing entry labels."""
     from sqlalchemy import select
 
-    from app.agentplatform.resource_models import Resource, ResourceVersion, RunResourceSnapshot
+    from app.agentplatform.resource_models import (
+        Resource,
+        ResourceVersion,
+        RunResourceSnapshot,
+    )
     from deerflow.persistence.engine import get_session_factory
 
     session_factory = get_session_factory()
@@ -498,10 +587,14 @@ async def _canonical_selection_metadata(
             (
                 await session.execute(
                     select(Resource, ResourceVersion, RunResourceSnapshot)
-                    .join(RunResourceSnapshot, RunResourceSnapshot.resource_id == Resource.id)
+                    .join(
+                        RunResourceSnapshot,
+                        RunResourceSnapshot.resource_id == Resource.id,
+                    )
                     .join(
                         ResourceVersion,
-                        (ResourceVersion.resource_id == Resource.id) & (ResourceVersion.version == RunResourceSnapshot.version),
+                        (ResourceVersion.resource_id == Resource.id)
+                        & (ResourceVersion.version == RunResourceSnapshot.version),
                     )
                     .where(RunResourceSnapshot.run_id == run_id)
                 )
@@ -511,11 +604,15 @@ async def _canonical_selection_metadata(
     agent, agent_version = by_id.get(agent_resource_id, (None, None))
     if agent is None or agent_version is None:
         return {}
-    selected_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
+    selected_skill = body_context.get("skill_resource_id") or body_context.get(
+        "skill_name"
+    )
     skill_entry = None
     if selected_skill:
         for resource, version in by_id.values():
-            if resource.type == "skill" and (resource.id == selected_skill or resource.slug == selected_skill):
+            if resource.type == "skill" and (
+                resource.id == selected_skill or resource.slug == selected_skill
+            ):
                 skill_entry = {
                     "resource_id": resource.id,
                     "display_name": resource.display_name,
@@ -532,7 +629,11 @@ async def _canonical_selection_metadata(
             "version": agent_version.version,
             "content_hash": agent_version.content_hash,
         },
-        "resolved_skill_ids": sorted(resource.id for resource, _version in by_id.values() if resource.type == "skill"),
+        "resolved_skill_ids": sorted(
+            resource.id
+            for resource, _version in by_id.values()
+            if resource.type == "skill"
+        ),
         "resource_snapshots": [
             {
                 "resource_id": snapshot.resource_id,
@@ -551,11 +652,19 @@ async def _canonical_selection_metadata(
             }
             for _resource, _version, snapshot in rows
         ],
-        "policy_revision": str(max(snapshot.authz_revision for _resource, _version, snapshot in rows)),
+        "policy_revision": str(
+            max(snapshot.authz_revision for _resource, _version, snapshot in rows)
+        ),
     }
     if skill_entry is not None:
         selection["preferred_skill"] = skill_entry
-    for key in ("scenario_id", "agent_label", "task_id", "task_label", "prompt_template"):
+    for key in (
+        "scenario_id",
+        "agent_label",
+        "task_id",
+        "task_label",
+        "prompt_template",
+    ):
         if key in body_context:
             selection[key] = body_context[key]
     task_id = body_context.get("task_id")
@@ -579,7 +688,9 @@ async def _discard_canonical_run_snapshot(run_id: str) -> None:
     if session_factory is None:
         return
     async with session_factory() as session:
-        await session.execute(delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id))
+        await session.execute(
+            delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id)
+        )
         await session.commit()
 
 
@@ -664,12 +775,22 @@ def build_run_config(
     if assistant_id and assistant_id != _DEFAULT_ASSISTANT_ID:
         normalized = assistant_id.strip().lower().replace("_", "-")
         if not normalized or not re.fullmatch(r"[a-z0-9-]+", normalized):
-            raise ValueError(f"Invalid assistant_id {assistant_id!r}: must contain only letters, digits, and hyphens after normalization.")
+            raise ValueError(
+                f"Invalid assistant_id {assistant_id!r}: must contain only letters, digits, and hyphens after normalization."
+            )
         context_target = config.setdefault("context", {})
-        configurable_target = config.setdefault("configurable", {"thread_id": thread_id})
-        if not isinstance(context_target, dict) or not isinstance(configurable_target, dict):
+        configurable_target = config.setdefault(
+            "configurable", {"thread_id": thread_id}
+        )
+        if not isinstance(context_target, dict) or not isinstance(
+            configurable_target, dict
+        ):
             raise TypeError("run config containers must be mappings")
-        effective_agent_name = context_target.get("agent_name") or configurable_target.get("agent_name") or normalized
+        effective_agent_name = (
+            context_target.get("agent_name")
+            or configurable_target.get("agent_name")
+            or normalized
+        )
         context_target["agent_name"] = effective_agent_name
         configurable_target["agent_name"] = effective_agent_name
         config.setdefault("run_name", resolve_root_run_name(config, normalized))
@@ -730,7 +851,9 @@ def build_checkpoint_state_mutation_accessor(
 # cached reference keeps the old config alive, so id-reuse cannot produce a
 # false hit. Bounded: cleared when too many distinct assistants appear.
 _STATE_ACCESSOR_GRAPH_CACHE_MAX = 64
-_state_accessor_graph_cache: dict[tuple[str | None, str, int | None], tuple[Any, Any, Any]] = {}
+_state_accessor_graph_cache: dict[
+    tuple[str | None, str, int | None], tuple[Any, Any, Any]
+] = {}
 
 
 def _accessor_graph_cache_max(app_config: Any) -> int:
@@ -774,7 +897,16 @@ class _RawCheckpointSnapshot:
     metadata, config ancestry, created_at) comes straight from the tuple.
     """
 
-    __slots__ = ("config", "values", "metadata", "parent_config", "created_at", "tasks", "tasks_known", "next")
+    __slots__ = (
+        "config",
+        "values",
+        "metadata",
+        "parent_config",
+        "created_at",
+        "tasks",
+        "tasks_known",
+        "next",
+    )
 
     def __init__(self, config: dict[str, Any], tup: Any | None) -> None:
         self.config = getattr(tup, "config", None) or config
@@ -805,14 +937,18 @@ class _RawCheckpointReadAccessor:
     @staticmethod
     def _gate(tup: Any) -> None:
         if checkpoint_tuple_uses_delta(tup):
-            raise CheckpointModeMismatchError("Thread requires delta mode; materialize and convert its checkpoints before using full mode.")
+            raise CheckpointModeMismatchError(
+                "Thread requires delta mode; materialize and convert its checkpoints before using full mode."
+            )
 
     async def aget(self, config: dict[str, Any]) -> _RawCheckpointSnapshot:
         tup = await self.checkpointer.aget_tuple(config)
         self._gate(tup)
         return _RawCheckpointSnapshot(config, tup)
 
-    async def ahistory(self, config: dict[str, Any], *, limit: int | None = None) -> list[_RawCheckpointSnapshot]:
+    async def ahistory(
+        self, config: dict[str, Any], *, limit: int | None = None
+    ) -> list[_RawCheckpointSnapshot]:
         if limit is not None and limit <= 0:
             return []
         result: list[_RawCheckpointSnapshot] = []
@@ -826,7 +962,11 @@ class _RawCheckpointReadAccessor:
             before = config
             walk_config = {
                 **config,
-                "configurable": {k: v for k, v in config.get("configurable", {}).items() if k != "checkpoint_id"},
+                "configurable": {
+                    k: v
+                    for k, v in config.get("configurable", {}).items()
+                    if k != "checkpoint_id"
+                },
             }
             anchor = await self.checkpointer.aget_tuple(before)
             self._gate(anchor)
@@ -834,7 +974,9 @@ class _RawCheckpointReadAccessor:
                 result.append(_RawCheckpointSnapshot(config, anchor))
         if limit is None or len(result) < limit:
             remaining = None if limit is None else limit - len(result)
-            async for tup in self.checkpointer.alist(walk_config, before=before, limit=remaining):
+            async for tup in self.checkpointer.alist(
+                walk_config, before=before, limit=remaining
+            ):
                 self._gate(tup)
                 result.append(_RawCheckpointSnapshot(config, tup))
                 if limit is not None and len(result) >= limit:
@@ -883,7 +1025,9 @@ def build_checkpoint_state_accessor(
             thread_id,
             exc_info=True,
         )
-        return _RawCheckpointReadAccessor(ctx.checkpointer, ctx.checkpoint_channel_mode), config
+        return _RawCheckpointReadAccessor(
+            ctx.checkpointer, ctx.checkpoint_channel_mode
+        ), config
     accessor = CheckpointStateAccessor.bind(
         graph,
         ctx.checkpointer,
@@ -911,7 +1055,9 @@ async def resolve_thread_assistant_id(
         thread_store = get_thread_store(request)
         record = await thread_store.get(thread_id)
     except Exception:
-        logger.warning("Failed to resolve assistant_id for thread %s", thread_id, exc_info=True)
+        logger.warning(
+            "Failed to resolve assistant_id for thread %s", thread_id, exc_info=True
+        )
         if fail_closed:
             raise
         return None
@@ -931,7 +1077,9 @@ async def build_thread_checkpoint_state_accessor(
     with the default lead schema would drop channels contributed by a custom
     ``AgentMiddleware.state_schema`` from the response.
     """
-    assistant_id = await resolve_thread_assistant_id(request, thread_id, fail_closed=fail_closed)
+    assistant_id = await resolve_thread_assistant_id(
+        request, thread_id, fail_closed=fail_closed
+    )
     return build_checkpoint_state_accessor(
         request,
         thread_id=thread_id,
@@ -987,7 +1135,10 @@ async def apply_checkpoint_to_run_config(
             raise HTTPException(status_code=400, detail="checkpoint must be an object")
         checkpoint_thread_id = checkpoint.get("thread_id")
         if checkpoint_thread_id is not None and str(checkpoint_thread_id) != thread_id:
-            raise HTTPException(status_code=400, detail="checkpoint thread_id does not match request thread_id")
+            raise HTTPException(
+                status_code=400,
+                detail="checkpoint thread_id does not match request thread_id",
+            )
         if checkpoint.get("checkpoint_id"):
             checkpoint_id = str(checkpoint["checkpoint_id"])
         if checkpoint.get("checkpoint_ns") is not None:
@@ -1009,14 +1160,24 @@ async def apply_checkpoint_to_run_config(
     try:
         checkpoint_tuple = await get_checkpointer(request).aget_tuple(read_config)
     except Exception as exc:
-        logger.exception("Failed to validate checkpoint %s for thread %s", checkpoint_id, sanitize_log_param(thread_id))
-        raise HTTPException(status_code=500, detail="Failed to validate checkpoint") from exc
+        logger.exception(
+            "Failed to validate checkpoint %s for thread %s",
+            checkpoint_id,
+            sanitize_log_param(thread_id),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to validate checkpoint"
+        ) from exc
     if checkpoint_tuple is None:
-        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Checkpoint {checkpoint_id} not found"
+        )
 
     configurable = config.setdefault("configurable", {})
     if not isinstance(configurable, dict):
-        raise HTTPException(status_code=400, detail="request config configurable must be an object")
+        raise HTTPException(
+            status_code=400, detail="request config configurable must be an object"
+        )
     configurable.update(
         {
             "thread_id": thread_id,
@@ -1033,7 +1194,9 @@ async def apply_checkpoint_to_run_config(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
+async def _resolve_canonical_alias(
+    assistant_id: str | None, request: Request
+) -> str | None:
     """Resolve a legacy-name assistant through the catalog alias resolver.
 
     Legacy owner-directory reads are sealed, so names must map to an active
@@ -1065,7 +1228,9 @@ async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -
 
     session_factory = get_session_factory()
     if session_factory is None:
-        raise HTTPException(status_code=503, detail="Resource persistence is unavailable")
+        raise HTTPException(
+            status_code=503, detail="Resource persistence is unavailable"
+        )
     try:
         # T2: reuse the identity _authenticate already resolved instead of
         # issuing a duplicate UserModel SELECT on every first turn.
@@ -1092,12 +1257,16 @@ async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -
                     raise ResourcePermissionDenied("Active RBAC user is required")
                 actor = ResourceActor(
                     user_id=str(user.id),
-                    department_id=str(user.department_id) if user.department_id is not None else None,
+                    department_id=str(user.department_id)
+                    if user.department_id is not None
+                    else None,
                     role=str(user.role),
                     permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
                     tool_groups=None,
                 )
-            resource = await ResourceService(session, actor).resolve_legacy_alias("agent", assistant_id)
+            resource = await ResourceService(session, actor).resolve_legacy_alias(
+                "agent", assistant_id
+            )
         return resource.id
     except ResourceNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1143,7 +1312,9 @@ async def ensure_checkpoint_history_seeded(
     )
     if events:
         await event_store.put_batch(events)
-        logger.info("Seeded %d checkpoint-history events for thread %s", len(events), thread_id)
+        logger.info(
+            "Seeded %d checkpoint-history events for thread %s", len(events), thread_id
+        )
 
 
 def _consume_task_result(task: asyncio.Task) -> None:
@@ -1180,11 +1351,15 @@ async def _ensure_thread_metadata(
         unscoped = await thread_store.get(record.thread_id, user_id=None)
         if unscoped is not None:
             if unscoped.get("user_id") != owner_user_id:
-                await thread_store.update_owner(record.thread_id, owner_user_id, user_id=None)
+                await thread_store.update_owner(
+                    record.thread_id, owner_user_id, user_id=None
+                )
             existing = await thread_store.get(record.thread_id)
     if existing is None:
         if require_existing_thread:
-            raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
+            raise LookupError(
+                f"Thread {record.thread_id} was deleted during run admission"
+            )
         await thread_store.create(
             record.thread_id,
             assistant_id=record.assistant_id,
@@ -1221,7 +1396,10 @@ async def start_run(
         config_metadata = (getattr(body, "config", None) or {}).get("metadata")
         validate_run_metadata_secrets(config_metadata)
     except LegacyRunMetadataSecretError as exc:
-        raise HTTPException(status_code=422, detail="legacy auth_token is unsupported; use config.context.secrets") from exc
+        raise HTTPException(
+            status_code=422,
+            detail="legacy auth_token is unsupported; use config.context.secrets",
+        ) from exc
 
     # ``interrupt`` and ``rollback`` can terminate an already-active run.
     # Keep this check at the shared service choke point so stateless routes and
@@ -1234,7 +1412,11 @@ async def start_run(
     run_mgr = get_run_manager(request)
     run_ctx = get_run_context(request)
 
-    disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
+    disconnect = (
+        DisconnectMode.cancel
+        if body.on_disconnect == "cancel"
+        else DisconnectMode.continue_
+    )
 
     # Deep module owns evidence/manifest/alias parallelism and snapshot freeze.
     from app.gateway.run_preparation import discard_canonical_snapshot, prepare_run
@@ -1245,8 +1427,12 @@ async def start_run(
     canonical_factory = prepared.canonical_factory
     model_name = prepared.model_name
     run_metadata = prepared.run_metadata
-    if prepared.evidence_mode == "hybrid" and "evidence_mode" not in (getattr(body, "metadata", None) or {}):
-        run_metadata = {key: value for key, value in run_metadata.items() if key != "evidence_mode"}
+    if prepared.evidence_mode == "hybrid" and "evidence_mode" not in (
+        getattr(body, "metadata", None) or {}
+    ):
+        run_metadata = {
+            key: value for key, value in run_metadata.items() if key != "evidence_mode"
+        }
     trace_id = ensure_trace_id()
     run_metadata = {**run_metadata, DEERFLOW_TRACE_METADATA_KEY: trace_id}
 
@@ -1260,7 +1446,9 @@ async def start_run(
             owner_user_id = str(owner_user_id)
 
     if require_existing_thread:
-        if not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
+        if not await run_ctx.thread_store.check_access(
+            thread_id, owner_user_id, require_existing=True
+        ):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
 
     # Validate checkpoint admission before the durable run row is created.
@@ -1269,10 +1457,17 @@ async def start_run(
     else:
         graph_input = normalize_input(
             body.input,
-            trusted_internal=getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL,
+            trusted_internal=getattr(
+                getattr(request, "state", None), "auth_source", None
+            )
+            == AUTH_SOURCE_INTERNAL,
         )
-    config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
-    await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
+    config = build_run_config(
+        thread_id, body.config, run_metadata, assistant_id=body.assistant_id
+    )
+    await apply_checkpoint_to_run_config(
+        config, body=body, thread_id=thread_id, request=request
+    )
 
     try:
         await ensure_checkpoint_history_seeded(
@@ -1280,12 +1475,17 @@ async def start_run(
             thread_id=thread_id,
             assistant_id=body.assistant_id,
         )
-        if require_existing_thread and not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
+        if require_existing_thread and not await run_ctx.thread_store.check_access(
+            thread_id, owner_user_id, require_existing=True
+        ):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
         create_kwargs = {
             "on_disconnect": disconnect,
             "metadata": run_metadata,
-            "kwargs": {"input": body.input, "config": redact_config_secrets(body.config)},
+            "kwargs": {
+                "input": body.input,
+                "config": redact_config_secrets(body.config),
+            },
             "multitask_strategy": body.multitask_strategy,
             "model_name": model_name,
             "user_id": owner_user_id,
@@ -1294,7 +1494,9 @@ async def start_run(
             create_kwargs["run_id"] = canonical_run_id
         if idempotency_key is not None:
             create_kwargs["idempotency_key"] = idempotency_key
-        record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
+        record = await run_mgr.create_or_reject(
+            thread_id, body.assistant_id, **create_kwargs
+        )
     except ConflictError as exc:
         await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1316,13 +1518,25 @@ async def start_run(
     # The ``context`` field is a custom extension for the langgraph-compat layer
     # that carries agent configuration (model_name, thinking_enabled, etc.).
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
-    is_internal_caller = getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL
+    is_internal_caller = (
+        getattr(getattr(request, "state", None), "auth_source", None)
+        == AUTH_SOURCE_INTERNAL
+    )
     merge_run_context_overrides(config, body_context, internal=is_internal_caller)
     if not is_internal_caller:
         strip_internal_context_keys(config)
     request_context_values = getattr(body, "config", None) or {}
-    needs_owner_attribution = isinstance(request_context_values.get("context"), dict) and any(key in request_context_values["context"] for key in ("user_role", "oauth_provider", "oauth_id", "authz_attributes"))
-    internal_owner_user = await resolve_trusted_internal_owner_for_attribution(request, owner_user_id) if needs_owner_attribution else None
+    needs_owner_attribution = isinstance(
+        request_context_values.get("context"), dict
+    ) and any(
+        key in request_context_values["context"]
+        for key in ("user_role", "oauth_provider", "oauth_id", "authz_attributes")
+    )
+    internal_owner_user = (
+        await resolve_trusted_internal_owner_for_attribution(request, owner_user_id)
+        if needs_owner_attribution
+        else None
+    )
     inject_authenticated_user_context(
         config,
         request,
@@ -1339,7 +1553,10 @@ async def start_run(
         try:
             await prepared.memory_preload_task
         except Exception:
-            logger.debug("Memory preload did not complete for %s (non-fatal)", sanitize_log_param(thread_id))
+            logger.debug(
+                "Memory preload did not complete for %s (non-fatal)",
+                sanitize_log_param(thread_id),
+            )
 
     run_evidence_binding = getattr(prepared, "evidence_binding", None)
     if run_evidence_binding is not None and run_evidence_binding.run_id is None:
@@ -1387,19 +1604,27 @@ async def start_run(
                     _THREAD_METADATA_SETUP_TIMEOUT_SECONDS,
                 )
                 if require_existing_thread:
-                    metadata_failure = TimeoutError("Timed out verifying existing thread metadata")
+                    metadata_failure = TimeoutError(
+                        "Timed out verifying existing thread metadata"
+                    )
         finally:
             if metadata_task.done():
                 if not metadata_failure_logged:
                     _log_thread_metadata_task_result(metadata_task, thread_id=thread_id)
             else:
                 metadata_task.cancel()
-                metadata_task.add_done_callback(lambda task: _log_thread_metadata_task_result(task, thread_id=thread_id))
+                metadata_task.add_done_callback(
+                    lambda task: _log_thread_metadata_task_result(
+                        task, thread_id=thread_id
+                    )
+                )
             if not abort_task.done():
                 abort_task.cancel()
                 abort_task.add_done_callback(_consume_task_result)
         if metadata_failure is not None and require_existing_thread:
-            await run_mgr.fail_start_if_pending(record.run_id, error=str(metadata_failure))
+            await run_mgr.fail_start_if_pending(
+                record.run_id, error=str(metadata_failure)
+            )
         await run_agent(
             bridge,
             run_mgr,
@@ -1414,12 +1639,60 @@ async def start_run(
             interrupt_after=body.interrupt_after,
         )
 
-    owner_context_token = set_current_user(SimpleNamespace(id=owner_user_id)) if owner_user_id else None
+    async def _archive_retrieval_receipt(receipt: dict) -> bool:
+        """Make a retrieval item readable before exposing its citation."""
+        from agentplatform_extension.evidence import current_run_evidence
+
+        binding = current_run_evidence()
+        if binding is None:
+            return False
+        archived_receipt = {**receipt, "archive_status": "archived"}
+        receipts = tuple(
+            archived_receipt
+            if item.get("receipt_id") == receipt.get("receipt_id")
+            else item
+            for item in binding.retrieval_receipts
+        )
+        record.metadata = {
+            **(record.metadata or {}),
+            "run_evidence": {
+                **binding.as_mapping(),
+                "retrieval_receipts": list(receipts),
+                "archive_status": "archived",
+            },
+        }
+        persisted = await run_mgr.persist_current_record(record.run_id)
+        if not persisted:
+            failed = tuple(
+                {**item, "archive_status": "failed"}
+                if item.get("receipt_id") == receipt.get("receipt_id")
+                else item
+                for item in binding.retrieval_receipts
+            )
+            record.metadata = {
+                **(record.metadata or {}),
+                "run_evidence": {
+                    **binding.as_mapping(),
+                    "retrieval_receipts": list(failed),
+                    "archive_status": "failed",
+                },
+            }
+        return persisted
+
+    owner_context_token = (
+        set_current_user(SimpleNamespace(id=owner_user_id)) if owner_user_id else None
+    )
     try:
         if run_evidence_binding is not None:
-            from agentplatform_extension.evidence import bind_run_evidence
+            from agentplatform_extension.evidence import (
+                bind_receipt_archiver,
+                bind_run_evidence,
+            )
 
-            with bind_run_evidence(run_evidence_binding):
+            with (
+                bind_run_evidence(run_evidence_binding),
+                bind_receipt_archiver(_archive_retrieval_receipt),
+            ):
                 task = asyncio.create_task(_execute_run())
         else:
             task = asyncio.create_task(_execute_run())
@@ -1440,7 +1713,9 @@ def _resolve_scheduler_recursion_limit() -> int:
 
     try:
         scheduler = getattr(get_app_config(), "scheduler", None)
-        configured = int(getattr(scheduler, "recursion_limit", _DEFAULT_RECURSION_LIMIT))
+        configured = int(
+            getattr(scheduler, "recursion_limit", _DEFAULT_RECURSION_LIMIT)
+        )
         ceiling = _resolve_max_recursion_limit()
         if configured > ceiling:
             logger.warning(
@@ -1450,7 +1725,10 @@ def _resolve_scheduler_recursion_limit() -> int:
             )
         return _clamp_recursion_limit(configured, ceiling)
     except Exception:
-        logger.warning("failed to load app config; falling back to recursion_limit=%s", _DEFAULT_RECURSION_LIMIT)
+        logger.warning(
+            "failed to load app config; falling back to recursion_limit=%s",
+            _DEFAULT_RECURSION_LIMIT,
+        )
         return _DEFAULT_RECURSION_LIMIT
 
 
@@ -1467,14 +1745,23 @@ async def launch_scheduled_thread_run(
     """Launch one scheduler occurrence through the normal Run admission seam."""
 
     if metadata and "auth_token" in metadata:
-        raise HTTPException(status_code=422, detail="legacy auth_token is unsupported; use config.context.secrets")
+        raise HTTPException(
+            status_code=422,
+            detail="legacy auth_token is unsupported; use config.context.secrets",
+        )
     if request is None:
         if app is None:
             raise ValueError("launch_scheduled_thread_run requires request or app")
         request = SimpleNamespace(
             app=app,
-            headers=({INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id} if owner_user_id else {}),
-            state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+            headers=(
+                {INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id}
+                if owner_user_id
+                else {}
+            ),
+            state=SimpleNamespace(
+                user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL
+            ),
             cookies={},
         )
 
@@ -1487,21 +1774,38 @@ async def launch_scheduled_thread_run(
         input={"messages": [{"role": "user", "content": prompt}]},
         metadata=metadata or {},
         config={"recursion_limit": _resolve_scheduler_recursion_limit()},
-        context={"non_interactive": True, **({"user_id": owner_user_id} if owner_user_id else {})},
+        context={
+            "non_interactive": True,
+            **({"user_id": owner_user_id} if owner_user_id else {}),
+        },
     )
     # Scheduler runs never request temporary-thread cleanup; keep the
     # internal launch contract explicit even while the legacy HTTP model
     # defaults this field to ``keep``.
     body.on_completion = None
     scheduled_task_run_id = (metadata or {}).get("scheduled_task_run_id")
-    idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
+    idempotency_key = (
+        f"scheduled-task:{scheduled_task_run_id}"
+        if isinstance(scheduled_task_run_id, str)
+        else None
+    )
     with ensure_trace_context():
-        record = await start_run(body, thread_id, request, idempotency_key=idempotency_key)
+        record = await start_run(
+            body, thread_id, request, idempotency_key=idempotency_key
+        )
     return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
 def _mcp_task_notification_prompt(event: dict[str, Any]) -> str:
-    payload = frame_untrusted_text(json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str))
+    payload = frame_untrusted_text(
+        json.dumps(
+            event,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+    )
     instruction = (
         "A durable background MCP task has an update that requires the user's attention. "
         "Explain the update clearly and concisely. Do not expose or ask for a remote task ID. "
@@ -1528,7 +1832,9 @@ async def launch_mcp_task_notification_run(
     request = SimpleNamespace(
         app=app,
         headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
-        state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+        state=SimpleNamespace(
+            user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL
+        ),
         cookies={},
     )
     body = RunCreateRequest(
@@ -1581,7 +1887,9 @@ def _run_is_terminal(record: RunRecord) -> bool:
     return record.status in _TERMINAL_RUN_STATUSES
 
 
-async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
+async def _terminal_record_stream_missing(
+    bridge: StreamBridge, record: RunRecord
+) -> bool:
     """True when a terminal run has no retained stream on bridges that can tell."""
     if not _run_is_terminal(record):
         return False
@@ -1620,7 +1928,11 @@ async def _orphan_recovery_observed_after_heartbeat(
     if not inspect.isawaitable(refreshed_result):
         return False
     refreshed = await refreshed_result
-    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
+    return (
+        refreshed is not None
+        and _run_is_terminal(refreshed)
+        and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
+    )
 
 
 async def wait_for_run_completion(
@@ -1660,7 +1972,9 @@ async def wait_for_run_completion(
     try:
         while True:
             gap_seen = False
-            async for entry in bridge.subscribe(record.run_id, last_event_id=resume_from_event_id):
+            async for entry in bridge.subscribe(
+                record.run_id, last_event_id=resume_from_event_id
+            ):
                 # END_SENTINEL means the run reached a terminal state; honour it
                 # even if the client just disconnected so the caller still serializes
                 # the real final checkpoint.
@@ -1674,7 +1988,10 @@ async def wait_for_run_completion(
                     resume_from_event_id = entry.latest_available_event_id
                     gap_seen = True
                     break
-                if entry is HEARTBEAT_SENTINEL and await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
+                if (
+                    entry is HEARTBEAT_SENTINEL
+                    and await _orphan_recovery_observed_after_heartbeat(record, run_mgr)
+                ):
                     completed = True
                     return True
                 if await request.is_disconnected():
@@ -1753,6 +2070,11 @@ async def sse_consumer(
     finally:
         # Only the creator's own stream may cancel-on-disconnect — never an
         # observer join, and never a run executing on another worker.
-        if apply_on_disconnect and not gap_emitted and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
+        if (
+            apply_on_disconnect
+            and not gap_emitted
+            and not record.store_only
+            and record.status in (RunStatus.pending, RunStatus.running)
+        ):
             if record.on_disconnect == DisconnectMode.cancel:
                 await run_mgr.cancel(record.run_id)

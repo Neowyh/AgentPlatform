@@ -1,10 +1,13 @@
 # M5 Gate 7 retrieval evidence acceptance
 
-> status: partial — live provider and browser execution require the isolated
-> RAGFlow/model harness described below.
+> status: partial — live provider passed against the configured isolated
+> RAGFlow stack; browser execution and the complete 16-row matrix remain
+> unexecuted. GitNexus could not register this worktree after a full index
+> attempt, so impact and detect-changes gates remain blocked.
 >
-> candidate: `feature/m5-retrieval-evidence` at the reviewed commit (`HEAD`)
-> date: 2026-09-15 (Asia/Shanghai)
+> candidate: `feature/m5-retrieval-evidence` working tree, based on
+> `72bb9eb861a175352c159998c0293c1f1a289f0e` (uncommitted changes)
+> date: 2026-09-17 (Asia/Shanghai)
 
 This is the formal acceptance record for
 [Gate 7](../../.scratch/m5-retrieval-evidence/issues/05-gate7-acceptance.md).
@@ -58,17 +61,28 @@ browser, or credentials is recorded as `unexecuted`, never as pass.
 
 | Check | Source | Result | Time / duration / exit | Notes |
 | --- | --- | --- | --- | --- |
-| Provider → adapter → archived receipt | `test_knowledge_gate7_live.py` | unexecuted | 2026-09-15 / — / — | No isolated RAGFlow dataset was supplied in this workspace. |
+| Provider → adapter → archived receipt | `test_knowledge_gate7_live.py` | passed | 2026-09-15 / 5.95s / 0 | Real isolated RAGFlow service; dataset `737991f4ab7a11f1b2776b607031e48e`; 1 passed, 1 skipped. |
 | Persisted Run → Tool Call → KB → Revision → Document → Chunk | `test_gate7_acceptance_artifacts.py` plus real-run artifact validation | unexecuted | 2026-09-15 / — / — | Requires a real run artifact and exact snippet; the validator rejects missing hops. |
 | Required real Agent/Workflow/Sub-Agent and browser matrix | `test_gate7_acceptance_artifacts.py` plus matrix artifact validation | unexecuted | 2026-09-15 / — / — | Requires all matrix rows with a passing result and evidence artifact. |
 | Acceptance artifact validators | `tests/unit/knowledge/test_gate7_acceptance_artifacts.py` | passed | 2026-09-15 / focused 5s / 0 | 3 passed; live artifact validation was skipped without isolated artifacts. |
 | Browser click, exact snippet, keyboard focus restore | `knowledge-evidence-gate7.spec.ts` | unexecuted | 2026-09-15 / — / — | No real E2E manifest or seeded Gate 7 run was supplied. |
-| Focused backend M5 contracts | `tests/test_knowledge_gate7_live.py`, `tests/unit/knowledge/test_retrieval_receipts.py`, `tests/unit/gateway/test_run_evidence.py` | passed | 2026-09-15 / focused 6s / 0 | 15 passed; Gate 7 live case was correctly unexecuted without provider credentials. |
+| Focused backend M5 contracts | `tests/test_knowledge_gate7_live.py`, `tests/unit/knowledge/test_retrieval_receipts.py`, `tests/unit/gateway/test_run_evidence.py` | passed | 2026-09-15 / focused / 0 | Retrieval/evidence regression tests passed; live provider case recorded separately below. |
+| Current retrieval/evidence regression slice | `tests/unit/knowledge/test_retrieval_receipts.py`, `tests/unit/gateway/test_run_evidence.py`, `tests/test_tool_receipt_middleware.py` | passed | 2026-09-16 / focused / 0 | 17 + 6 + 18 passed; bounded delivery, exact evidence lookup beyond 50 receipts, archive failure/exception fail-closed behavior, and tool-call binding. |
+| Structured source-chain projection regression | `test_structured_search_delivers_evidence_id_and_citation_to_model` | passed | 2026-09-16 / 5.55s / 0 | Archived logical document/chunk identity is retained while provider IDs are removed from model delivery. |
+| Knowledge scope and retrieval regression | `tests/unit/knowledge/test_retrieval_receipts.py tests/unit/knowledge/test_effective_knowledge_scope.py` | passed | 2026-09-16 / 4.12s / 0 | 27 passed. |
+| Real RAGFlow provider marker run | `tests/test_knowledge_gate7_live.py` with `RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e` | passed | 2026-09-17 / 15.52s / 0 | 1 passed, 1 skipped; current candidate read the parent RAGFlow configuration through a temporary symlink and process environment, and removed the marker document by fixture cleanup. |
 | Focused frontend citation/evidence contracts | citation and receipt-card unit tests | passed | 2026-09-15 / 2s / 0 | 2 files, 14 passed. |
-| `backend-standard` child | `bash scripts/run-test-lane.sh backend-standard` | passed | 2026-09-15 / 1,012s / 0 | 25,929 passed, 147 skipped; 820 warnings. |
-| `frontend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 308s / 0 | 10,064 passed; Rstest 758/758. |
-| `frontend-smoke` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 120s / 0 | 29 passed. |
-| `pr-standard` parent | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-15 / 1,366s / 0 | `TEST_LANE_DURATION lane=pr-standard seconds=1366 status=0`. |
+| `backend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 976s / 0 | 25,937 passed, 146 skipped; warnings only. |
+| `backend-blocking-io` | `bash scripts/run-test-lane.sh backend-blocking-io` | passed | 2026-09-17 / 9s / 0 | 96 passed, 5 warnings. |
+| `frontend test:full` | `pnpm test:full` | passed | 2026-09-16 /  — / 0 | Rstest 758/758, Vitest coverage, ESLint and TypeScript completed after regenerating corrupted generated `.next/dev/types`; existing warnings only. |
+| `frontend-visual` | `bash scripts/run-test-lane.sh frontend-visual` | passed | 2026-09-17 / 500s / 0 | 173 passed, 1 skipped; landing screenshots freeze the 2200ms word-rotation timer so the visual baseline is deterministic. |
+| `frontend-a11y` | `bash scripts/run-test-lane.sh frontend-a11y` | passed | 2026-09-17 / 114s / 0 | 3 WCAG 2.1 AA scenarios passed. |
+| `frontend-real` preflight/matrix | `bash scripts/run-test-lane.sh frontend-real` | unexecuted | 2026-09-17 / 3s / 0 | Preflight passed with browser/socket permissions; all 9 real tests were explicitly skipped because the real backend/run environment variables were not supplied. |
+| Workflow real sub-agent receipt integration | `tests/integration/workflows/test_v2_subagent_receipt_executed_workflow.py` | skipped | 2026-09-16 / 153.63s / 0 | Dedicated asyncio thread hit the documented restricted-sandbox aiosqlite wakeup limitation. |
+| Test lane contracts | `bash scripts/run-test-lane.sh test-contracts` | passed | 2026-09-16 / 11s / 0 | Ownership and lane entry contracts passed. |
+| `frontend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 299s / 0 | 10,064 passed; warnings only. |
+| `frontend-smoke` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 28s / 0 | Preflight passed; canonical lane completed 29 smoke tests. |
+| `pr-standard` parent | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 1,304s / 0 | backend-standard, frontend-standard, and frontend-smoke all passed. |
 
 ## Required manual matrix
 

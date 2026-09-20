@@ -22,12 +22,19 @@ from typing import override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
+from langchain.agents.middleware.types import (
+    ModelCallResult,
+    ModelRequest,
+    ModelResponse,
+)
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
-from deerflow.agents.middlewares.message_utils import insert_after_leading_system_messages, is_genuine_user_message
+from deerflow.agents.middlewares.message_utils import (
+    insert_after_leading_system_messages,
+    is_genuine_user_message,
+)
 from deerflow.agents.middlewares.tool_receipt import (
     TOOL_RECEIPT_KEY,
     TOOL_RECEIPT_LEDGER_KEY,
@@ -73,7 +80,10 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             # AgentPlatform's optional extension harvests the same runtime-owned
             # receipt into the active Run Evidence Envelope. DeerFlow remains
             # usable without the extension package.
-            from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
+            from deerflow.extensions import (
+                get_loaded_extensions,
+                resolve_runtime_evidence_hooks,
+            )
 
             hooks = resolve_runtime_evidence_hooks(get_loaded_extensions())
             if hooks is not None:
@@ -83,7 +93,9 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             # be visible, or the ledger silently goes incomplete and citations lie.
             logger.warning("Failed to stamp tool receipt", exc_info=True)
 
-    def _stamp(self, result: ToolMessage | Command, request: ToolCallRequest) -> ToolMessage | Command:
+    def _stamp(
+        self, result: ToolMessage | Command, request: ToolCallRequest
+    ) -> ToolMessage | Command:
         if isinstance(result, ToolMessage):
             self._stamp_message(result, request)
             return result
@@ -99,7 +111,10 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
 
         tool_call_id = str(request.tool_call.get("id") or "")
         for message in messages:
-            if isinstance(message, ToolMessage) and str(message.tool_call_id) == tool_call_id:
+            if (
+                isinstance(message, ToolMessage)
+                and str(message.tool_call_id) == tool_call_id
+            ):
                 self._stamp_message(message, request)
         return result
 
@@ -109,7 +124,12 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command],
     ) -> ToolMessage | Command:
-        return self._stamp(handler(request), request)
+        try:
+            from agentplatform_extension.evidence import bind_tool_call_evidence
+        except ImportError:
+            return self._stamp(handler(request), request)
+        with bind_tool_call_evidence(request.tool_call.get("id")):
+            return self._stamp(handler(request), request)
 
     @override
     async def awrap_tool_call(
@@ -117,7 +137,12 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
     ) -> ToolMessage | Command:
-        return self._stamp(await handler(request), request)
+        try:
+            from agentplatform_extension.evidence import bind_tool_call_evidence
+        except ImportError:
+            return self._stamp(await handler(request), request)
+        with bind_tool_call_evidence(request.tool_call.get("id")):
+            return self._stamp(await handler(request), request)
 
     def _should_render(self, request: ModelRequest) -> bool:
         if self._render_mode == "always":
@@ -135,9 +160,13 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         for index, message in enumerate(messages):
             if is_genuine_user_message(message):
                 latest_user_index = index
-        turn_messages = messages[latest_user_index + 1 :] if latest_user_index >= 0 else messages
+        turn_messages = (
+            messages[latest_user_index + 1 :] if latest_user_index >= 0 else messages
+        )
         for message in turn_messages:
-            if isinstance(message, ToolMessage) and (message.additional_kwargs or {}).get("subagent_status"):
+            if isinstance(message, ToolMessage) and (
+                message.additional_kwargs or {}
+            ).get("subagent_status"):
                 return True
         return False
 
@@ -148,10 +177,14 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             content=ledger,
             additional_kwargs={"hide_from_ui": True, _RECEIPT_CONTEXT_KEY: True},
         )
-        messages = insert_after_leading_system_messages(list(request.messages), [ledger_message])
+        messages = insert_after_leading_system_messages(
+            list(request.messages), [ledger_message]
+        )
         return request.override(messages=messages)
 
-    def _prepare_model_call(self, request: ModelRequest) -> tuple[ModelRequest, list[ToolReceipt] | None]:
+    def _prepare_model_call(
+        self, request: ModelRequest
+    ) -> tuple[ModelRequest, list[ToolReceipt] | None]:
         if not self._should_render(request):
             return request, None
         receipts = extract_tool_receipts(list(request.messages))
@@ -168,7 +201,10 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         for message in messages:
             if not isinstance(message, AIMessage):
                 continue
-            from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
+            from deerflow.extensions import (
+                get_loaded_extensions,
+                resolve_runtime_evidence_hooks,
+            )
 
             hooks = resolve_runtime_evidence_hooks(get_loaded_extensions())
             if hooks is not None:
@@ -176,7 +212,9 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
                 hooks.record_retrieval_citations(content)
 
     @staticmethod
-    def _stamp_citing_ledger(result: ModelCallResult, receipts: list[ToolReceipt] | None) -> ModelCallResult:
+    def _stamp_citing_ledger(
+        result: ModelCallResult, receipts: list[ToolReceipt] | None
+    ) -> ModelCallResult:
         ToolReceiptMiddleware._record_citations(result)
         if receipts is None:
             return result

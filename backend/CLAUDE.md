@@ -669,6 +669,16 @@ For models with `supports_vision: true`:
 
 ## Documentation
 
+### Retrieval evidence delivery
+
+Knowledge retrieval receipts are built from the structured provider response
+before any display formatting. The adapter delivers the bounded archived item
+content to the model, records provider and delivered counts plus item/character
+truncation, and binds the exact active tool-call identifier through
+`bind_tool_call_evidence`. Evidence links can be resolved with
+`GET /api/runs/{run_id}/evidence?evidence_id=...`; this precise path is used by
+the citation UI and is not limited by the paginated receipt list.
+
 Knowledge revision publishing and reconciliation use the typed `knowledge`
 section in `packages/harness/deerflow/config/app_config.py`.
 

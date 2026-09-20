@@ -47,6 +47,9 @@ describe("Evidence citation interaction", () => {
     await user.keyboard("{Enter}");
 
     expect(await screen.findByTestId("evidence-panel")).toBeTruthy();
+    expect(rs.mocked(fetch).mock.calls[0]?.[0]).toContain(
+      "evidence_id=rr_test_i1",
+    );
     expect(
       await screen.findByText("Keep the policy fragment visible."),
     ).toBeTruthy();

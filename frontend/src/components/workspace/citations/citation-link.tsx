@@ -134,9 +134,8 @@ function EvidenceCitationLink({
     let cancelled = false;
     setItem(null);
     setError(null);
-    void fetch(
-      `${getBackendBaseURL()}/api/runs/${encodeURIComponent(runId)}/evidence`,
-    )
+    const evidenceUrl = `${getBackendBaseURL()}/api/runs/${encodeURIComponent(runId)}/evidence?evidence_id=${encodeURIComponent(evidenceId)}`;
+    void fetch(evidenceUrl)
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return (await response.json()) as {

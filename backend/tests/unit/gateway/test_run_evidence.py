@@ -6,7 +6,9 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_run_evidence_only_returns_receipts_from_the_run_knowledge_scope(monkeypatch) -> None:
+async def test_run_evidence_only_returns_receipts_from_the_run_knowledge_scope(
+    monkeypatch,
+) -> None:
     from app.gateway.routers.runs import run_evidence
 
     request = SimpleNamespace(_deerflow_test_bypass_auth=True)
@@ -19,8 +21,16 @@ async def test_run_evidence_only_returns_receipts_from_the_run_knowledge_scope(m
                 "run_evidence": {
                     "knowledge_scope": {"bindings": {"docs": "frozen-dataset"}},
                     "retrieval_receipts": [
-                        {"receipt_kind": "retrieval", "logical_knowledge_base": "docs", "receipt_id": "rr-1"},
-                        {"receipt_kind": "retrieval", "logical_knowledge_base": "other", "receipt_id": "rr-2"},
+                        {
+                            "receipt_kind": "retrieval",
+                            "logical_knowledge_base": "docs",
+                            "receipt_id": "rr-1",
+                        },
+                        {
+                            "receipt_kind": "retrieval",
+                            "logical_knowledge_base": "other",
+                            "receipt_id": "rr-2",
+                        },
                     ],
                 }
             },
@@ -28,13 +38,117 @@ async def test_run_evidence_only_returns_receipts_from_the_run_knowledge_scope(m
 
     monkeypatch.setattr("app.gateway.routers.runs._resolve_run", resolve_run)
 
-    response = await run_evidence.__wrapped__(run_id="run-1", request=request, receipt_id=None)
+    response = await run_evidence.__wrapped__(
+        run_id="run-1", request=request, receipt_id=None
+    )
 
     assert [receipt["receipt_id"] for receipt in response["receipts"]] == ["rr-1"]
 
 
 @pytest.mark.anyio
-async def test_run_evidence_redacts_receipts_when_current_kb_access_is_revoked(monkeypatch) -> None:
+async def test_run_evidence_can_fetch_one_item_without_list_limit_or_unrelated_restriction(
+    monkeypatch,
+) -> None:
+    from app.gateway.routers.runs import run_evidence
+
+    request = SimpleNamespace(_deerflow_test_bypass_auth=True)
+
+    async def resolve_run(run_id, request):
+        return {
+            "run_id": run_id,
+            "thread_id": "thread-1",
+            "metadata": {
+                "run_evidence": {
+                    "retrieval_receipts": [
+                        {
+                            "receipt_kind": "retrieval",
+                            "receipt_id": "rr-hidden",
+                            "knowledge_base_id": "kb-hidden",
+                            "items": [{"evidence_id": "rr-hidden_i1"}],
+                        },
+                        {
+                            "receipt_kind": "retrieval",
+                            "receipt_id": "rr-target",
+                            "knowledge_base_id": "kb-target",
+                            "items": [
+                                {"evidence_id": "rr-target_i1", "content": "target"}
+                            ],
+                        },
+                    ]
+                }
+            },
+        }
+
+    monkeypatch.setattr("app.gateway.routers.runs._resolve_run", resolve_run)
+    monkeypatch.setattr(
+        "app.gateway.routers.runs._authorize_receipts",
+        lambda receipts, user: _async_value(receipts),
+    )
+
+    response = await run_evidence.__wrapped__(
+        run_id="run-1",
+        request=request,
+        receipt_id=None,
+        evidence_id="rr-target_i1",
+        current_user=object(),
+    )
+
+    assert response["receipts"] == [
+        {
+            "receipt_kind": "retrieval",
+            "receipt_id": "rr-target",
+            "knowledge_base_id": "kb-target",
+            "items": [{"evidence_id": "rr-target_i1", "content": "target"}],
+        }
+    ]
+    assert response["has_more"] is False
+
+
+@pytest.mark.anyio
+async def test_run_evidence_exact_item_lookup_is_not_limited_by_fifty_receipts(
+    monkeypatch,
+) -> None:
+    from app.gateway.routers.runs import run_evidence
+
+    request = SimpleNamespace(_deerflow_test_bypass_auth=True)
+    receipts = [
+        {
+            "receipt_kind": "retrieval",
+            "receipt_id": f"rr-{index}",
+            "items": [{"evidence_id": f"rr-{index}_i1", "content": str(index)}],
+        }
+        for index in range(60)
+    ]
+
+    async def resolve_run(run_id, request):
+        return {
+            "run_id": run_id,
+            "thread_id": "thread-1",
+            "metadata": {"run_evidence": {"retrieval_receipts": receipts}},
+        }
+
+    monkeypatch.setattr("app.gateway.routers.runs._resolve_run", resolve_run)
+    monkeypatch.setattr(
+        "app.gateway.routers.runs._authorize_receipts",
+        lambda values, user: _async_value(values),
+    )
+
+    response = await run_evidence.__wrapped__(
+        run_id="run-1",
+        request=request,
+        receipt_id=None,
+        evidence_id="rr-59_i1",
+        current_user=object(),
+    )
+
+    assert [receipt["receipt_id"] for receipt in response["receipts"]] == ["rr-59"]
+    assert response["has_more"] is False
+
+
+@pytest.mark.anyio
+async def test_run_evidence_redacts_receipts_when_current_kb_access_is_revoked(
+    monkeypatch,
+) -> None:
     from app.gateway.routers.runs import run_evidence
 
     request = SimpleNamespace(_deerflow_test_bypass_auth=True)
@@ -51,7 +165,9 @@ async def test_run_evidence_redacts_receipts_when_current_kb_access_is_revoked(m
                             "knowledge_base_id": "kb-private",
                             "revision_no": 1,
                             "manifest_hash": "secret-manifest",
-                            "items": [{"evidence_id": "rr-1_i1", "content": "secret fragment"}],
+                            "items": [
+                                {"evidence_id": "rr-1_i1", "content": "secret fragment"}
+                            ],
                             "receipt_id": "rr-1",
                         }
                     ]
@@ -65,7 +181,9 @@ async def test_run_evidence_redacts_receipts_when_current_kb_access_is_revoked(m
         lambda current_user, ids: _async_value(set()),
     )
 
-    response = await run_evidence.__wrapped__(run_id="run-1", request=request, receipt_id=None, current_user=object())
+    response = await run_evidence.__wrapped__(
+        run_id="run-1", request=request, receipt_id=None, current_user=object()
+    )
 
     assert response["receipts"] == [
         {
@@ -84,7 +202,9 @@ async def _async_value(value):
 
 
 @pytest.mark.anyio
-async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_receipts(monkeypatch) -> None:
+async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_receipts(
+    monkeypatch,
+) -> None:
     from app.gateway.routers.runs import run_evidence
 
     request = SimpleNamespace(_deerflow_test_bypass_auth=True)
@@ -122,7 +242,13 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
 
         async def execute(self, statement):
             del statement
-            return SimpleNamespace(scalars=lambda: [resource for resource in resources if resource.lifecycle_status == "active"])
+            return SimpleNamespace(
+                scalars=lambda: [
+                    resource
+                    for resource in resources
+                    if resource.lifecycle_status == "active"
+                ]
+            )
 
     monkeypatch.setattr(
         "deerflow.persistence.engine.get_session_factory",
@@ -142,7 +268,12 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
                             "knowledge_base_id": "kb-public",
                             "revision_no": 1,
                             "manifest_hash": "rev1-manifest",
-                            "items": [{"evidence_id": "rr-public_i1", "content": "Rev1 fragment"}],
+                            "items": [
+                                {
+                                    "evidence_id": "rr-public_i1",
+                                    "content": "Rev1 fragment",
+                                }
+                            ],
                         },
                         {
                             "receipt_kind": "retrieval",
@@ -150,7 +281,12 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
                             "knowledge_base_id": "kb-private",
                             "revision_no": 1,
                             "manifest_hash": "private-manifest",
-                            "items": [{"evidence_id": "rr-private_i1", "content": "Private fragment"}],
+                            "items": [
+                                {
+                                    "evidence_id": "rr-private_i1",
+                                    "content": "Private fragment",
+                                }
+                            ],
                         },
                         {
                             "receipt_kind": "retrieval",
@@ -158,7 +294,12 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
                             "knowledge_base_id": "kb-archived",
                             "revision_no": 1,
                             "manifest_hash": "archived-manifest",
-                            "items": [{"evidence_id": "rr-archived_i1", "content": "Archived fragment"}],
+                            "items": [
+                                {
+                                    "evidence_id": "rr-archived_i1",
+                                    "content": "Archived fragment",
+                                }
+                            ],
                         },
                     ]
                 }
@@ -167,10 +308,16 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
 
     monkeypatch.setattr("app.gateway.routers.runs._resolve_run", resolve_run)
 
-    response = await run_evidence.__wrapped__(run_id="run-1", request=request, receipt_id=None, current_user=reader)
+    response = await run_evidence.__wrapped__(
+        run_id="run-1", request=request, receipt_id=None, current_user=reader
+    )
 
     public, private, archived = response["receipts"]
-    assert (public["revision_no"], public["manifest_hash"], public["items"][0]["content"]) == (1, "rev1-manifest", "Rev1 fragment")
+    assert (
+        public["revision_no"],
+        public["manifest_hash"],
+        public["items"][0]["content"],
+    ) == (1, "rev1-manifest", "Rev1 fragment")
     assert private["result_status"] == "access_restricted"
     assert archived["result_status"] == "access_restricted"
     assert "knowledge_base_id" not in private
@@ -178,7 +325,9 @@ async def test_run_evidence_applies_current_visibility_without_rewriting_frozen_
 
 
 @pytest.mark.anyio
-async def test_run_evidence_fails_closed_when_authorization_storage_is_unavailable(monkeypatch) -> None:
+async def test_run_evidence_fails_closed_when_authorization_storage_is_unavailable(
+    monkeypatch,
+) -> None:
     from app.gateway.routers.runs import run_evidence
 
     request = SimpleNamespace(_deerflow_test_bypass_auth=True)
@@ -215,7 +364,10 @@ async def test_run_evidence_fails_closed_when_authorization_storage_is_unavailab
             del statement
             raise RuntimeError("database offline")
 
-    monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: lambda: BrokenSession())
+    monkeypatch.setattr(
+        "deerflow.persistence.engine.get_session_factory",
+        lambda: lambda: BrokenSession(),
+    )
 
     response = await run_evidence.__wrapped__(
         run_id="run-1",

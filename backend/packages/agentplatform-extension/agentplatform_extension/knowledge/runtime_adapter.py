@@ -29,7 +29,9 @@ class KnowledgeSearchInput(BaseModel):
     """Model-facing arguments for a run-scoped knowledge search."""
 
     query: str = Field(min_length=1)
-    knowledge_base: str = Field(min_length=1, description="Logical knowledge base selector")
+    knowledge_base: str = Field(
+        min_length=1, description="Logical knowledge base selector"
+    )
     model_config = ConfigDict(extra="forbid")
 
 
@@ -40,7 +42,13 @@ class KnowledgeRuntimeAdapter:
         self.scope = scope
         self.search = search
 
-    async def search_knowledge(self, query: str, *, logical_kb: str | None = None, dataset_id: str | None = None) -> Any:
+    async def search_knowledge(
+        self,
+        query: str,
+        *,
+        logical_kb: str | None = None,
+        dataset_id: str | None = None,
+    ) -> Any:
         if dataset_id is not None or logical_kb is None:
             _record_denied(query, logical_kb)
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
@@ -51,7 +59,9 @@ class KnowledgeRuntimeAdapter:
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
         document_ids = self.scope.document_ids_for(resolved)
         if _accepts_dataset_ids(self.search):
-            if document_ids is not None and not _accepts_parameter(self.search, "document_ids"):
+            if document_ids is not None and not _accepts_parameter(
+                self.search, "document_ids"
+            ):
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
             search_options = {"dataset_ids": [resolved]}
             if document_ids is not None:
@@ -61,10 +71,19 @@ class KnowledgeRuntimeAdapter:
                 search_options["retrieval_profile"] = profile
             result = self.search(query, **search_options)
         else:
-            result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
+            result = _search_legacy_ragflow(
+                self.search, query, resolved, document_ids=document_ids
+            )
         result = await result if inspect.isawaitable(result) else result
         try:
-            from agentplatform_extension.evidence import current_delegation_evidence, current_run_evidence, record_retrieval_receipt
+            from agentplatform_extension.evidence import (
+                current_delegation_evidence,
+                current_receipt_archiver,
+                current_run_evidence,
+                current_tool_call_evidence,
+                mark_retrieval_receipt_archive_status,
+                record_retrieval_receipt,
+            )
 
             binding = current_run_evidence()
             if binding is not None:
@@ -74,13 +93,33 @@ class KnowledgeRuntimeAdapter:
                     logical_kb,
                     self.scope,
                     result,
-                    parent_tool_receipt_id=delegation.parent_tool_receipt_id if delegation else None,
+                    tool_call_id=current_tool_call_evidence(),
+                    parent_tool_receipt_id=delegation.parent_tool_receipt_id
+                    if delegation
+                    else None,
                     run_id=binding.run_id,
                     caller_user_id=binding.authorization.caller_user_id,
                     effective_agent_id=binding.authorization.effective_agent_id,
                     child_agent_id=delegation.child_agent_id if delegation else None,
                 )
                 record_retrieval_receipt(receipt)
+                archiver = current_receipt_archiver()
+                if archiver is not None:
+                    try:
+                        archived = await archiver(receipt)
+                    except Exception:
+                        archived = False
+                    mark_retrieval_receipt_archive_status(
+                        receipt["receipt_id"], "archived" if archived else "failed"
+                    )
+                    receipt = next(
+                        (
+                            item
+                            for item in current_run_evidence().retrieval_receipts
+                            if item.get("receipt_id") == receipt["receipt_id"]
+                        ),
+                        receipt,
+                    )
                 result = model_facing_retrieval_result(result, receipt)
         except (ImportError, KeyError, TypeError, ValueError):
             pass
@@ -105,10 +144,19 @@ def _accepts_parameter(search: Callable[..., Any], name: str) -> bool:
         parameters = inspect.signature(search).parameters.values()
     except (TypeError, ValueError):
         return False
-    return any(parameter.name == name or parameter.kind is parameter.VAR_KEYWORD for parameter in parameters)
+    return any(
+        parameter.name == name or parameter.kind is parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
 
 
-async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset_id: str, *, document_ids: tuple[str, ...] | None = None) -> Any:
+async def _search_legacy_ragflow(
+    search: Callable[..., Any],
+    query: str,
+    dataset_id: str,
+    *,
+    document_ids: tuple[str, ...] | None = None,
+) -> Any:
     """Use the unmodified provider implementation while retaining its helpers."""
 
     if "ragflow" not in getattr(search, "__module__", "").lower():
@@ -117,11 +165,16 @@ async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset
 
     settings, error = provider._settings_or_error()
     if settings is None:
-        return error or "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
+        return (
+            error
+            or "Error: Invalid RAGFlow settings for knowledge_search; check config.yaml."
+        )
     client = provider._build_client(settings)
     try:
         scoped_settings = settings.model_copy(update={"datasets": [dataset_id]})
-        datasets, resolution_error = await provider._resolve_datasets(client, scoped_settings)
+        datasets, resolution_error = await provider._resolve_datasets(
+            client, scoped_settings
+        )
         if resolution_error is not None:
             return resolution_error
         if not datasets:
@@ -134,8 +187,15 @@ async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset
             settings,
             query,
             groups,
-            document_ids_by_dataset={dataset_id: list(document_ids)} if document_ids is not None else None,
+            document_ids_by_dataset={dataset_id: list(document_ids)}
+            if document_ids is not None
+            else None,
         )
+        # Keep the structured provider response until the receipt has mapped
+        # each chunk to the frozen logical document. Formatting first discards
+        # provider document/chunk identity, making a complete source chain
+        # impossible to reconstruct. Model-facing projection happens after
+        # receipt construction and removes provider-only identifiers there.
         names_by_id = {dataset.dataset_id: dataset.name for dataset in datasets}
         formatted = provider.format_retrieval_result(
             result,
@@ -143,7 +203,12 @@ async def _search_legacy_ragflow(search: Callable[..., Any], query: str, dataset
             max_chars_per_chunk=settings.max_chars_per_chunk,
             max_total_chars=settings.max_total_chars,
         )
-        return provider._redact_api_key(formatted, provider._api_key(settings))
+        return {
+            **result,
+            "__agentplatform_model_text": provider._redact_api_key(
+                formatted, provider._api_key(settings)
+            ),
+        }
     except Exception as exc:
         return provider._tool_error(exc, settings)
 
@@ -164,7 +229,9 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
             if provider is None:
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
             try:
-                return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(query, logical_kb=knowledge_base)
+                return await KnowledgeRuntimeAdapter(scope, provider).search_knowledge(
+                    query, logical_kb=knowledge_base
+                )
             except TypeError as exc:
                 raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
 
@@ -175,7 +242,9 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
             try:
                 resolved = scope.resolve(knowledge_base)
                 document_ids = scope.document_ids_for(resolved)
-                if document_ids is not None and not _accepts_parameter(provider, "document_ids"):
+                if document_ids is not None and not _accepts_parameter(
+                    provider, "document_ids"
+                ):
                     raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
                 search_options = {"dataset_ids": [resolved]}
                 if document_ids is not None:
