@@ -2,7 +2,7 @@
 
 Date: 2026-09-21
 Baseline: `develop@ca65c5770`  
-Candidate: `develop@9d1e235f`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification updates.
+Candidate: `develop@b2d67be9`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification updates.
 
 Status: **本机集成完成；正式收口未完成**. The candidate is now fast-forwarded into `develop`; external acceptance gates remain open.
 
