@@ -39,6 +39,7 @@ from app.gateway.routers import (
     feedback,
     input_polish,
     integrations,
+    knowledge_tests,
     mcp,
     mcp_tasks,
     memory,
@@ -851,6 +852,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # UUID-first canonical Skill, Agent, and Workflow resources API
     app.include_router(resources.router)
+
+    # KnowledgeBase management retrieval tests share the /api/resources prefix
+    app.include_router(knowledge_tests.router)
 
     # Automations API is mounted at /api/automations
     app.include_router(automations.router)

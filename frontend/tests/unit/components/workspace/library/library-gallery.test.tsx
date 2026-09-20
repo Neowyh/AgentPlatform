@@ -35,6 +35,14 @@ vi.mock("@/core/i18n/hooks", () => ({
         documents: "Documents",
         knowledgeBases: "Knowledge Bases",
         revisions: "Revisions",
+        evalCases: "Eval Cases",
+        retrievalTestTab: "Retrieval Test",
+        retrievalTest: {
+          selectKnowledgeBase: "Select a knowledge base",
+          loading: "Loading...",
+          revisionsLoadFailed: "Unable to load revisions.",
+          noPublishedRevision: "No published revision",
+        },
       },
     },
   }),
@@ -42,6 +50,53 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 vi.mock("@/core/library", () => ({
   useKnowledgeBases: () => ({ knowledgeBases: [] }),
+  useKnowledgeRevisions: () => ({
+    revisions: [],
+    isLoading: false,
+    error: null,
+  }),
+  useKnowledgeEvalCases: () => ({
+    evalCases: [],
+    isLoading: false,
+    error: null,
+  }),
+  useKnowledgeEvaluations: () => ({
+    evaluations: [],
+    isLoading: false,
+    error: null,
+  }),
+  useKnowledgeEvaluation: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+  }),
+  useStartKnowledgeEvaluation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useRetryKnowledgeEvaluation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useStartKnowledgeEvaluationComparison: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useKnowledgeEvaluationComparison: () => ({ data: undefined }),
+  useKnowledgeEvaluationPolicy: () => ({ data: { configured: false } }),
+  useUpdateKnowledgeEvaluationPolicy: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
+  useRetrievalTests: () => ({ tests: [], isLoading: false, error: null }),
+  useRetrievalTest: () => ({ data: undefined, isLoading: false, error: null }),
+  useRunRetrievalTest: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+    data: undefined,
+  }),
 }));
 
 vi.mock("@/components/ui/tabs", () => ({
@@ -97,6 +152,16 @@ vi.mock("@/components/workspace/library/revision-list", () => ({
   RevisionList: () => <div data-testid="revision-list">Revision List</div>,
 }));
 
+vi.mock("@/components/workspace/library/eval-case-list", () => ({
+  EvalCaseList: () => <div data-testid="eval-case-list">Eval Case List</div>,
+}));
+
+vi.mock("@/components/workspace/library/retrieval-test-panel", () => ({
+  RetrievalTestPanel: () => (
+    <div data-testid="retrieval-test-panel">Retrieval Test Panel</div>
+  ),
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let LibraryGallery: typeof import("@/components/workspace/library/library-gallery").LibraryGallery;
@@ -141,6 +206,8 @@ describe("LibraryGallery", () => {
     expect(screen.getByText("Documents")).toBeInTheDocument();
     expect(screen.getByText("Knowledge Bases")).toBeInTheDocument();
     expect(screen.getByText("Revisions")).toBeInTheDocument();
+    expect(screen.getByText("Eval Cases")).toBeInTheDocument();
+    expect(screen.getByText("Retrieval Test")).toBeInTheDocument();
   });
 
   test("renders tab content sections", () => {
@@ -148,6 +215,8 @@ describe("LibraryGallery", () => {
     expect(screen.getByTestId("document-list")).toBeInTheDocument();
     expect(screen.getByTestId("knowledge-base-list")).toBeInTheDocument();
     expect(screen.getByTestId("revision-list")).toBeInTheDocument();
+    expect(screen.getByTestId("eval-case-list")).toBeInTheDocument();
+    expect(screen.getByTestId("retrieval-test-panel")).toBeInTheDocument();
   });
 
   test("has correct default tab value", () => {
@@ -162,5 +231,7 @@ describe("LibraryGallery", () => {
     expect(triggers[0]?.getAttribute("data-value")).toBe("documents");
     expect(triggers[1]?.getAttribute("data-value")).toBe("knowledge-bases");
     expect(triggers[2]?.getAttribute("data-value")).toBe("revisions");
+    expect(triggers[3]?.getAttribute("data-value")).toBe("eval-cases");
+    expect(triggers[4]?.getAttribute("data-value")).toBe("retrieval-test");
   });
 });

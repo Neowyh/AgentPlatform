@@ -158,6 +158,7 @@ class SubagentResult:
     usage_reported: bool = False
     admission_failure: bool = False
     tool_receipts: list[dict[str, Any]] | None = field(default=None, kw_only=True)
+    retrieval_receipts: list[dict[str, Any]] | None = field(default=None, kw_only=True)
     bash_executions: list[dict[str, Any]] | None = field(default=None, kw_only=True)
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _state_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -203,12 +204,24 @@ class SubagentResult:
                 merged[str(execution.get("tool_call_id"))] = dict(execution)
             self.bash_executions = list(merged.values())[-_BASH_EVIDENCE_MAX_ENTRIES:]
 
+    def update_retrieval_receipts(self, receipts: list[dict[str, Any]] | None) -> None:
+        if receipts is None:
+            return
+        with self._state_lock:
+            self.retrieval_receipts = [dict(receipt) for receipt in receipts]
+
     def snapshot_tool_receipts(self) -> list[dict[str, Any]] | None:
         """Copy the latest published receipts for a racing terminal writer."""
         with self._state_lock:
             if self.tool_receipts is None:
                 return None
             return [dict(receipt) for receipt in self.tool_receipts]
+
+    def snapshot_retrieval_receipts(self) -> list[dict[str, Any]] | None:
+        with self._state_lock:
+            if self.retrieval_receipts is None:
+                return None
+            return [dict(receipt) for receipt in self.retrieval_receipts]
 
     def try_set_terminal(
         self,
@@ -1333,7 +1346,7 @@ class SubagentExecutor:
         execution_context: dict[str, Any] | None = None
         from deerflow_extension_api import ExtensionData, TaskInfo
 
-        from deerflow.extensions import get_loaded_extensions
+        from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
         from deerflow.extensions.notify import (
             lead_task_id,
             notify_task_start,
@@ -1393,6 +1406,13 @@ class SubagentExecutor:
             if not self.acceptance_criteria:
                 return None
             return _harvest_bash_executions(final_state)
+
+        def current_retrieval_receipts() -> list[dict[str, Any]] | None:
+            hooks = resolve_runtime_evidence_hooks(loaded_extensions)
+            binding = hooks.current_run_evidence() if hooks is not None else None
+            if binding is None:
+                return None
+            return [dict(receipt) for receipt in binding.retrieval_receipts]
 
         try:
             if task_info is not None and task_store is not None:
@@ -1663,6 +1683,7 @@ class SubagentExecutor:
                         self.config.name,
                         exc_info=True,
                     )
+            result.update_retrieval_receipts(current_retrieval_receipts())
             if task_info is not None and task_store is not None:
                 try:
                     await notify_task_stop(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -139,6 +139,67 @@ class KnowledgeRevision(Base):
     )
 
 
+class KnowledgeEvalCase(Base):
+    """A regression eval case maintained against one canonical KnowledgeBase (M6).
+
+    Expected documents use canonical document identities (platform UUIDs),
+    never provider ids. ``content_hash`` is deterministic over the case
+    content so a later Eval run can freeze exactly the version it evaluated.
+    """
+
+    __tablename__ = "knowledge_eval_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question: Mapped[str] = mapped_column(String(4000), nullable=False)
+    expected_document_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        CheckConstraint("version_no >= 1", name="ck_knowledge_eval_cases_version_no"),
+        Index("ix_knowledge_eval_cases_kb_created", "knowledge_base_id", "created_at"),
+    )
+
+
+class KnowledgeEvalCaseVersion(Base):
+    """Append-only snapshot of one eval case version (M6).
+
+    Rows are never rewritten: updates append the next version so the history
+    stays auditable, and deleting a case removes its history with it.
+    """
+
+    __tablename__ = "knowledge_eval_case_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_eval_cases.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    question: Mapped[str] = mapped_column(String(4000), nullable=False)
+    expected_document_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    tags_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(16), nullable=False, default="created")
+    changed_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("case_id", "version_no", name="uq_knowledge_eval_case_versions_no"),
+        CheckConstraint("change_type in ('created','updated')", name="ck_knowledge_eval_case_versions_change_type"),
+        Index("ix_knowledge_eval_case_versions_case", "case_id", "version_no"),
+    )
+
+
 class KnowledgeRevisionCheck(Base):
     """One read-only reconciliation observation recorded by a run (M4).
 
@@ -170,4 +231,169 @@ class KnowledgeRevisionCheck(Base):
     __table_args__ = (
         CheckConstraint("trigger in ('manual','scheduled')", name="ck_knowledge_revision_checks_trigger"),
         Index("ix_knowledge_revision_checks_kb_checked", "knowledge_base_id", "checked_at"),
+    )
+
+
+class KnowledgeRetrievalTest(Base):
+    """One archived management retrieval test against a published revision (M6).
+
+    Rows record the initiator, the exact revision identity, the frozen
+    retrieval profile selected for the test, the parameters actually applied,
+    and the bounded hits. Reads re-check current KnowledgeBase visibility, so
+    an archive never outlives the reader's authorization. Provider dataset
+    and document identifiers are deliberately not persisted: the archive
+    speaks canonical identities only.
+    """
+
+    __tablename__ = "knowledge_retrieval_tests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    query: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    retrieval_profile_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    applied_parameters_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    result_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    results_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    returned_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        CheckConstraint("result_status in ('success','empty_hit','provider_error')", name="ck_knowledge_retrieval_tests_result_status"),
+        CheckConstraint("requested_top_k >= 1", name="ck_knowledge_retrieval_tests_top_k"),
+        Index("ix_knowledge_retrieval_tests_kb_created", "knowledge_base_id", "created_at"),
+        Index("ix_knowledge_retrieval_tests_revision", "revision_id"),
+    )
+
+
+class KnowledgeEvalRun(Base):
+    """Durable execution of one frozen profile against a case snapshot."""
+
+    __tablename__ = "knowledge_eval_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    retry_of_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), nullable=False)
+    revision_id: Mapped[str] = mapped_column(ForeignKey("knowledge_base_revisions.id", ondelete="CASCADE"), nullable=False)
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    profile_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    policy_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    qualification_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default=text("'pending'"))
+    qualification_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    case_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    case_snapshot_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics_version: Mapped[str] = mapped_column(String(32), nullable=False, default="retrieval-metrics-v1")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    total_cases: Mapped[int] = mapped_column(Integer, nullable=False)
+    completed_cases: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_cases: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    aggregate_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("profile_id in ('frozen','configured')", name="ck_knowledge_eval_runs_profile"),
+        CheckConstraint("top_k >= 1", name="ck_knowledge_eval_runs_top_k"),
+        CheckConstraint("status in ('queued','running','completed','partial','failed')", name="ck_knowledge_eval_runs_status"),
+        CheckConstraint("qualification_status in ('pending','passed','rejected')", name="ck_knowledge_eval_runs_qualification"),
+        Index("ix_knowledge_eval_runs_kb_created", "knowledge_base_id", "created_at"),
+        Index("ix_knowledge_eval_runs_status_lease", "status", "lease_until"),
+    )
+
+
+class KnowledgeEvaluationPolicy(Base):
+    """The versioned publish-evaluation contract for one KnowledgeBase."""
+
+    __tablename__ = "knowledge_evaluation_policies"
+
+    knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    profile_id: Mapped[str] = mapped_column(String(32), nullable=False, default="frozen")
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    min_expected_hit_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    min_recall_at_k: Mapped[float] = mapped_column(Float, nullable=False)
+    min_mrr_at_k: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        CheckConstraint("profile_id in ('frozen','configured')", name="ck_knowledge_eval_policies_profile"),
+        CheckConstraint("top_k >= 1", name="ck_knowledge_eval_policies_top_k"),
+        CheckConstraint("min_expected_hit_rate >= 0 and min_expected_hit_rate <= 1", name="ck_knowledge_eval_policies_hit_rate"),
+        CheckConstraint("min_recall_at_k >= 0 and min_recall_at_k <= 1", name="ck_knowledge_eval_policies_recall"),
+        CheckConstraint("min_mrr_at_k >= 0 and min_mrr_at_k <= 1", name="ck_knowledge_eval_policies_mrr"),
+    )
+
+
+class KnowledgeEvalComparison(Base):
+    """Durable pairing of two independent frozen evaluation runs."""
+
+    __tablename__ = "knowledge_eval_comparisons"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    knowledge_base_id: Mapped[str] = mapped_column(ForeignKey("knowledge_bases.resource_id", ondelete="CASCADE"), nullable=False)
+    left_run_id: Mapped[str] = mapped_column(ForeignKey("knowledge_eval_runs.id", ondelete="CASCADE"), nullable=False)
+    right_run_id: Mapped[str] = mapped_column(ForeignKey("knowledge_eval_runs.id", ondelete="CASCADE"), nullable=False)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users_ext.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        CheckConstraint("top_k >= 1", name="ck_knowledge_eval_comparisons_top_k"),
+        CheckConstraint("status in ('queued','running','completed','incomplete')", name="ck_knowledge_eval_comparisons_status"),
+        Index("ix_knowledge_eval_comparisons_kb_created", "knowledge_base_id", "created_at"),
+    )
+
+
+class KnowledgeEvalResult(Base):
+    """Immutable per-case evidence and facts from an eval run."""
+
+    __tablename__ = "knowledge_eval_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("knowledge_eval_runs.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    case_version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    query: Mapped[str] = mapped_column(String(4000), nullable=False)
+    expected_document_ids_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ranked_items_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    expected_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    recall_at_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mrr_at_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+    __table_args__ = (
+        CheckConstraint("status in ('success','empty_hit','provider_error','invalid')", name="ck_knowledge_eval_results_status"),
+        UniqueConstraint("run_id", "case_id", name="uq_knowledge_eval_results_case"),
+        Index("ix_knowledge_eval_results_run", "run_id", "created_at"),
     )

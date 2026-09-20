@@ -31,6 +31,7 @@ from deerflow_extension_api.contracts import (
     HostPolicySnapshot,
     MiddlewareContributor,
     RunEvidenceEnvelope,
+    RuntimeEvidenceHooks,
     SystemModelCallObserver,
     SystemModelRequest,
     SystemModelResult,
@@ -40,6 +41,8 @@ from deerflow_extension_api.contracts import (
     TaskOutcome,
     ToolContributor,
     extension,
+    get_runtime_evidence_hooks,
+    set_runtime_evidence_hooks,
 )
 from deerflow_extension_api.placement import (
     AgentBuildContext,
@@ -103,6 +106,7 @@ __all__ = [
     "Placement",
     "ReleasePolicyProvider",
     "RunEvidenceEnvelope",
+    "RuntimeEvidenceHooks",
     "SystemModelCallObserver",
     "SystemModelRequest",
     "SystemModelResult",
@@ -115,9 +119,11 @@ __all__ = [
     "canonical_json",
     "collect_release_policies",
     "extension",
+    "get_runtime_evidence_hooks",
     "provenance_kwargs",
     "read_provenance",
     "require_admin",
     "resolve_principal",
     "task_store_from_runtime",
+    "set_runtime_evidence_hooks",
 ]

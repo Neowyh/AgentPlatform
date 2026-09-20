@@ -8,6 +8,7 @@ import {
   useCreateKnowledgeRevision,
   useKnowledgeRevision,
   useKnowledgeRevisions,
+  usePrepareKnowledgeRevision,
   usePublishKnowledgeRevision,
 } from "@/core/library";
 
@@ -41,6 +42,7 @@ export function RevisionList({
     useKnowledgeRevisions(knowledgeBaseId);
   const create = useCreateKnowledgeRevision(knowledgeBaseId ?? "");
   const publish = usePublishKnowledgeRevision(knowledgeBaseId ?? "");
+  const prepare = usePrepareKnowledgeRevision(knowledgeBaseId ?? "");
   const [expandedId, setExpandedId] = useState<string>();
 
   if (!knowledgeBaseId) {
@@ -81,6 +83,11 @@ export function RevisionList({
       {publish.error ? (
         <div role="alert" className="text-destructive">
           {i.publishFailed}
+        </div>
+      ) : null}
+      {prepare.error ? (
+        <div role="alert" className="text-destructive">
+          {i.prepareFailed}
         </div>
       ) : null}
       {revisions.length === 0 ? (
@@ -140,11 +147,24 @@ export function RevisionList({
                     <button
                       type="button"
                       aria-label={i.publishAria(revision.revision_no)}
-                      disabled={publish.isPending}
+                      disabled={publish.isPending || prepare.isPending}
                       aria-busy={publish.isPending}
                       onClick={() => void publish.mutateAsync(revision.id)}
                     >
                       {publish.isPending ? i.publishingAction : i.publish}
+                    </button>
+                  ) : null}
+                  {canModify &&
+                  (revision.status === "draft" ||
+                    revision.status === "failed") ? (
+                    <button
+                      type="button"
+                      aria-label={i.prepareAria(revision.revision_no)}
+                      disabled={prepare.isPending || publish.isPending}
+                      aria-busy={prepare.isPending}
+                      onClick={() => void prepare.mutateAsync(revision.id)}
+                    >
+                      {prepare.isPending ? i.preparing : i.prepare}
                     </button>
                   ) : null}
                 </div>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -201,4 +202,4 @@ async def test_start_run_binds_dynamic_evidence_to_background_worker():
         await start_run(body, "thread-1", request)
         await record.task
 
-    assert observed == [binding]
+    assert observed == [replace(binding, run_id="run-1")]

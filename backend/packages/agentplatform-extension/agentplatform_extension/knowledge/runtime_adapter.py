@@ -9,6 +9,11 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
+from agentplatform_extension.knowledge.retrieval_receipts import (
+    build_denied_retrieval_receipt,
+    build_retrieval_receipt,
+    model_facing_retrieval_result,
+)
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 KNOWLEDGE_ACCESS_DENIED = "KNOWLEDGE_ACCESS_DENIED"
@@ -37,10 +42,12 @@ class KnowledgeRuntimeAdapter:
 
     async def search_knowledge(self, query: str, *, logical_kb: str | None = None, dataset_id: str | None = None) -> Any:
         if dataset_id is not None or logical_kb is None:
+            _record_denied(query, logical_kb)
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED)
         try:
             resolved = self.scope.resolve(logical_kb)
         except KeyError as exc:
+            _record_denied(query, logical_kb)
             raise KnowledgeAccessDenied(KNOWLEDGE_ACCESS_DENIED) from exc
         document_ids = self.scope.document_ids_for(resolved)
         if _accepts_dataset_ids(self.search):
@@ -55,7 +62,38 @@ class KnowledgeRuntimeAdapter:
             result = self.search(query, **search_options)
         else:
             result = _search_legacy_ragflow(self.search, query, resolved, document_ids=document_ids)
-        return await result if inspect.isawaitable(result) else result
+        result = await result if inspect.isawaitable(result) else result
+        try:
+            from agentplatform_extension.evidence import current_delegation_evidence, current_run_evidence, record_retrieval_receipt
+
+            binding = current_run_evidence()
+            if binding is not None:
+                delegation = current_delegation_evidence()
+                receipt = build_retrieval_receipt(
+                    query,
+                    logical_kb,
+                    self.scope,
+                    result,
+                    parent_tool_receipt_id=delegation.parent_tool_receipt_id if delegation else None,
+                    run_id=binding.run_id,
+                    caller_user_id=binding.authorization.caller_user_id,
+                    effective_agent_id=binding.authorization.effective_agent_id,
+                    child_agent_id=delegation.child_agent_id if delegation else None,
+                )
+                record_retrieval_receipt(receipt)
+                result = model_facing_retrieval_result(result, receipt)
+        except (ImportError, KeyError, TypeError, ValueError):
+            pass
+        return result
+
+
+def _record_denied(query: str, logical_kb: str | None) -> None:
+    try:
+        from agentplatform_extension.evidence import record_retrieval_receipt
+
+        record_retrieval_receipt(build_denied_retrieval_receipt(query, logical_kb))
+    except ImportError:
+        pass
 
 
 def _accepts_dataset_ids(search: Callable[..., Any]) -> bool:

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence, current_run_evidence, record_retrieval_receipt
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
@@ -552,6 +553,35 @@ async def test_delivery_is_durable_before_terminal_run_status():
     )
 
     assert (await run_store.get(record.run_id))["status"] == "success"
+
+
+@pytest.mark.anyio
+async def test_retrieval_evidence_is_persisted_with_terminal_run():
+    run_store = MemoryRunStore()
+    run_manager = RunManager(store=run_store)
+    record = await run_manager.create("thread-1")
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
+
+    class DummyAgent:
+        async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+            record_retrieval_receipt({"receipt_kind": "retrieval", "receipt_id": "rr-1"})
+            assert current_run_evidence() is not None
+            yield {"messages": []}
+
+    with bind_run_evidence(binding):
+        await run_agent(
+            _make_bridge(),
+            run_manager,
+            record,
+            ctx=RunContext(checkpointer=None, event_store=MemoryRunEventStore()),
+            agent_factory=lambda *, config: DummyAgent(),
+            graph_input={},
+            config={},
+        )
+
+    stored = await run_store.get(record.run_id)
+    assert stored["metadata"]["run_evidence"]["retrieval_receipts"] == [{"receipt_kind": "retrieval", "receipt_id": "rr-1"}]
+    assert stored["metadata"]["run_evidence"]["archive_status"] == "archived"
 
 
 @pytest.mark.anyio

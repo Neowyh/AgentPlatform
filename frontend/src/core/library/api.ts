@@ -79,6 +79,7 @@ export interface KnowledgeRevision {
   failure_message?: string | null;
   integrity_status?: string | null;
   integrity_checked_at?: string | null;
+  knowledge_profiles?: Record<string, unknown>;
   created_at: string | null;
   published_at: string | null;
 }
@@ -138,6 +139,18 @@ export async function publishKnowledgeRevision(
     { method: "POST" },
   );
   if (!res.ok) await extractError(res, "Failed to publish revision");
+  return (await res.json()) as KnowledgeRevision;
+}
+
+export async function prepareKnowledgeRevision(
+  resourceId: string,
+  revisionId: string,
+): Promise<KnowledgeRevision> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/knowledge-revisions/${encodeURIComponent(revisionId)}/prepare`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to prepare revision");
   return (await res.json()) as KnowledgeRevision;
 }
 
@@ -242,4 +255,494 @@ export async function editKnowledgeDocument(
   );
   if (!res.ok) await extractError(res, "Failed to edit document");
   return (await res.json()) as KnowledgeDocument;
+}
+
+export interface KnowledgeEvalCase {
+  id: string;
+  resource_id: string;
+  question: string;
+  expected_document_ids: string[];
+  tags: string[];
+  content_hash: string;
+  version_no: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface KnowledgeEvalCaseVersion {
+  version_no: number;
+  question: string;
+  expected_document_ids: string[];
+  tags: string[];
+  content_hash: string;
+  change_type: "created" | "updated";
+  changed_by: string;
+  changed_at: string | null;
+}
+
+export interface KnowledgeEvalCaseDetail extends KnowledgeEvalCase {
+  versions: KnowledgeEvalCaseVersion[];
+}
+
+export interface CreateKnowledgeEvalCaseRequest {
+  question: string;
+  expectedDocumentIds: string[];
+  tags: string[];
+}
+
+export interface UpdateKnowledgeEvalCaseRequest {
+  question?: string;
+  expectedDocumentIds?: string[];
+  tags?: string[];
+}
+
+export interface EvalCaseApplicabilityItem {
+  case_id: string;
+  question: string;
+  content_hash: string;
+  version_no: number;
+  expected_document_count: number;
+  missing_document_ids: string[];
+  applicable: boolean;
+}
+
+export interface EvalCaseRevisionApplicability {
+  revision_id: string;
+  revision_no: number;
+  status: KnowledgeRevisionStatus;
+  manifest_hash: string;
+  items: EvalCaseApplicabilityItem[];
+  total: number;
+}
+
+export async function listKnowledgeEvalCases(
+  resourceId: string,
+): Promise<KnowledgeEvalCase[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load eval cases");
+  const data = (await res.json()) as { items: KnowledgeEvalCase[] };
+  return data.items;
+}
+
+export async function getKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+): Promise<KnowledgeEvalCaseDetail> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load eval case");
+  return (await res.json()) as KnowledgeEvalCaseDetail;
+}
+
+export async function createKnowledgeEvalCase(
+  resourceId: string,
+  request: CreateKnowledgeEvalCaseRequest,
+): Promise<KnowledgeEvalCase> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: request.question,
+        expected_document_ids: request.expectedDocumentIds,
+        tags: request.tags,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to create eval case");
+  return (await res.json()) as KnowledgeEvalCase;
+}
+
+export async function updateKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+  update: UpdateKnowledgeEvalCaseRequest,
+): Promise<KnowledgeEvalCase> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: update.question,
+        expected_document_ids: update.expectedDocumentIds,
+        tags: update.tags,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to update eval case");
+  return (await res.json()) as KnowledgeEvalCase;
+}
+
+export async function deleteKnowledgeEvalCase(
+  resourceId: string,
+  caseId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/${encodeURIComponent(caseId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) await extractError(res, "Failed to delete eval case");
+}
+
+export async function getEvalCaseRevisionApplicability(
+  resourceId: string,
+  revisionId: string,
+): Promise<EvalCaseRevisionApplicability> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/eval-cases/revisions/${encodeURIComponent(revisionId)}/applicability`,
+  );
+  if (!res.ok)
+    await extractError(res, "Failed to load eval case applicability");
+  return (await res.json()) as EvalCaseRevisionApplicability;
+}
+
+export interface RetrievalTestItem {
+  rank: number;
+  document_id: string | null;
+  display_name: string | null;
+  content_hash: string | null;
+  chunk_ref: string | null;
+  content: string;
+  score: number | null;
+  rerank_score: number | null;
+  position: Record<string, unknown>;
+}
+
+export interface RetrievalTestRecord {
+  id: string;
+  resource_id: string;
+  revision_id: string;
+  revision_no: number;
+  manifest_hash: string;
+  query: string;
+  requested_top_k: number;
+  retrieval_profile: Record<string, unknown>;
+  result_status: "success" | "empty_hit" | "provider_error";
+  error_code: string | null;
+  returned_count: number;
+  truncated: boolean;
+  duration_ms: number | null;
+  created_by: string;
+  created_at: string | null;
+  items?: RetrievalTestItem[];
+  applied_parameters?: Record<string, number>;
+}
+
+export interface RunRetrievalTestRequest {
+  revisionId: string;
+  profileId?: "frozen" | "configured";
+  query: string;
+  topK?: number;
+}
+
+export interface KnowledgeEvaluationResult {
+  id: string;
+  run_id: string;
+  case_id: string;
+  case_version_no: number;
+  case_content_hash: string;
+  query: string;
+  expected_document_ids: string[];
+  status: "success" | "empty_hit" | "provider_error" | "invalid";
+  error_code: string | null;
+  ranked_items: RetrievalTestItem[];
+  expected_hit: boolean;
+  recall_at_k: number | null;
+  mrr_at_k: number | null;
+}
+
+export interface KnowledgeEvaluationRun {
+  id: string;
+  retry_of_run_id: string | null;
+  resource_id: string;
+  revision_id: string;
+  revision_no: number;
+  manifest_hash: string;
+  profile_id: "frozen" | "configured";
+  profile_hash: string;
+  profile: Record<string, unknown>;
+  top_k: number;
+  metrics_version: string;
+  status: "queued" | "running" | "completed" | "partial" | "failed";
+  total_cases: number;
+  completed_cases: number;
+  failed_cases: number;
+  case_ids: string[];
+  aggregate: {
+    denominator?: number;
+    expected_hit_rate?: number | null;
+    recall_at_k?: number | null;
+    mrr_at_k?: number | null;
+  };
+  results?: KnowledgeEvaluationResult[];
+  results_total?: number;
+  policy_version?: number | null;
+  policy?: KnowledgeEvaluationPolicy | null;
+  qualification_status?: "pending" | "passed" | "rejected";
+  qualification_reason?: string | null;
+}
+
+export interface KnowledgeEvaluationPolicy {
+  configured?: boolean;
+  version: number;
+  profile_id: "frozen" | "configured";
+  top_k: number;
+  case_ids: string[];
+  min_expected_hit_rate: number;
+  min_recall_at_k: number;
+  min_mrr_at_k: number;
+}
+
+export interface UpdateKnowledgeEvaluationPolicyRequest {
+  profileId: "frozen" | "configured";
+  topK: number;
+  caseIds: string[];
+  minExpectedHitRate: number;
+  minRecallAtK: number;
+  minMrrAtK: number;
+}
+
+export async function getKnowledgeEvaluationPolicy(
+  resourceId: string,
+): Promise<KnowledgeEvaluationPolicy> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-policy`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation policy");
+  return (await res.json()) as KnowledgeEvaluationPolicy;
+}
+
+export async function updateKnowledgeEvaluationPolicy(
+  resourceId: string,
+  request: UpdateKnowledgeEvaluationPolicyRequest,
+): Promise<KnowledgeEvaluationPolicy> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-policy`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile_id: request.profileId,
+        top_k: request.topK,
+        case_ids: request.caseIds,
+        min_expected_hit_rate: request.minExpectedHitRate,
+        min_recall_at_k: request.minRecallAtK,
+        min_mrr_at_k: request.minMrrAtK,
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to save evaluation policy");
+  return (await res.json()) as KnowledgeEvaluationPolicy;
+}
+
+export interface StartKnowledgeEvaluationRequest {
+  revisionId: string;
+  profileId?: "frozen" | "configured";
+  topK?: number;
+  caseIds?: string[];
+}
+
+export interface KnowledgeEvaluationComparison {
+  id: string;
+  resource_id: string;
+  status: "queued" | "incomplete" | "completed";
+  top_k: number;
+  metrics_version: string;
+  left: KnowledgeEvaluationRun;
+  right: KnowledgeEvaluationRun;
+  comparison: {
+    eligible: boolean;
+    reason: string | null;
+    delta: Record<
+      "expected_hit_rate" | "recall_at_k" | "mrr_at_k",
+      number | null
+    >;
+    cases: Array<{
+      case_id: string;
+      outcome: "improved" | "regressed" | "unchanged" | "incomplete";
+      left: KnowledgeEvaluationResult | null;
+      right: KnowledgeEvaluationResult | null;
+    }>;
+  };
+}
+
+export interface StartKnowledgeEvaluationComparisonRequest {
+  leftRevisionId: string;
+  leftProfileId: "frozen" | "configured";
+  rightRevisionId: string;
+  rightProfileId: "frozen" | "configured";
+  topK?: number;
+  caseIds?: string[];
+}
+
+export async function startKnowledgeEvaluation(
+  resourceId: string,
+  request: StartKnowledgeEvaluationRequest,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        revision_id: request.revisionId,
+        profile_id: request.profileId ?? "frozen",
+        top_k: request.topK ?? 8,
+        ...(request.caseIds ? { case_ids: request.caseIds } : {}),
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to start evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function listKnowledgeEvaluations(
+  resourceId: string,
+): Promise<KnowledgeEvaluationRun[]> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations?limit=100`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluations");
+  return ((await res.json()) as { items: KnowledgeEvaluationRun[] }).items;
+}
+
+export async function getKnowledgeEvaluation(
+  resourceId: string,
+  runId: string,
+  resultOffset = 0,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations/${encodeURIComponent(runId)}?result_offset=${resultOffset}&result_limit=100`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function retryKnowledgeEvaluation(
+  resourceId: string,
+  runId: string,
+): Promise<KnowledgeEvaluationRun> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluations/${encodeURIComponent(runId)}/retry`,
+    { method: "POST" },
+  );
+  if (!res.ok) await extractError(res, "Failed to retry evaluation");
+  return (await res.json()) as KnowledgeEvaluationRun;
+}
+
+export async function startKnowledgeEvaluationComparison(
+  resourceId: string,
+  request: StartKnowledgeEvaluationComparisonRequest,
+): Promise<KnowledgeEvaluationComparison> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-comparisons`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        left_revision_id: request.leftRevisionId,
+        left_profile_id: request.leftProfileId,
+        right_revision_id: request.rightRevisionId,
+        right_profile_id: request.rightProfileId,
+        top_k: request.topK ?? 8,
+        ...(request.caseIds ? { case_ids: request.caseIds } : {}),
+      }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to start evaluation comparison");
+  return (await res.json()) as KnowledgeEvaluationComparison;
+}
+
+export async function getKnowledgeEvaluationComparison(
+  resourceId: string,
+  comparisonId: string,
+): Promise<KnowledgeEvaluationComparison> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/evaluation-comparisons/${encodeURIComponent(comparisonId)}`,
+  );
+  if (!res.ok) await extractError(res, "Failed to load evaluation comparison");
+  return (await res.json()) as KnowledgeEvaluationComparison;
+}
+
+/** Access to the KnowledgeBase or archived record was lost (403/404). */
+export class RetrievalTestAccessError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function runRetrievalTest(
+  resourceId: string,
+  request: RunRetrievalTestRequest,
+): Promise<RetrievalTestRecord> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        revision_id: request.revisionId,
+        profile_id: request.profileId ?? "frozen",
+        query: request.query,
+        ...(request.topK === undefined ? {} : { top_k: request.topK }),
+      }),
+    },
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "Access to this knowledge base was denied",
+      );
+    await extractError(res, "Failed to run the retrieval test");
+  }
+  return (await res.json()) as RetrievalTestRecord;
+}
+
+export async function listRetrievalTests(
+  resourceId: string,
+): Promise<RetrievalTestRecord[]> {
+  // The panel renders one page; ask for the API maximum so archived records
+  // stay visible as history accumulates.
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests?limit=50`,
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "Access to this knowledge base was denied",
+      );
+    await extractError(res, "Failed to load archived retrieval tests");
+  }
+  const data = (await res.json()) as { items: RetrievalTestRecord[] };
+  return data.items;
+}
+
+export async function getRetrievalTest(
+  resourceId: string,
+  testId: string,
+): Promise<RetrievalTestRecord> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/retrieval-tests/${encodeURIComponent(testId)}`,
+  );
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404)
+      throw new RetrievalTestAccessError(
+        res.status,
+        "This retrieval test record is not accessible",
+      );
+    await extractError(res, "Failed to load the retrieval test record");
+  }
+  return (await res.json()) as RetrievalTestRecord;
 }

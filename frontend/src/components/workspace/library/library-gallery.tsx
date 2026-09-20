@@ -7,7 +7,10 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
+import { EvalCaseList } from "./eval-case-list";
+import { EvaluationPanel } from "./evaluation-panel";
 import { KnowledgeBaseList } from "./knowledge-base-list";
+import { RetrievalTestPanel } from "./retrieval-test-panel";
 import { RevisionList } from "./revision-list";
 
 export function LibraryGallery() {
@@ -70,6 +73,11 @@ export function LibraryGallery() {
             {t.library.knowledgeBases}
           </TabsTrigger>
           <TabsTrigger value="revisions">{t.library.revisions}</TabsTrigger>
+          <TabsTrigger value="eval-cases">{t.library.evalCases}</TabsTrigger>
+          <TabsTrigger value="retrieval-test">
+            {t.library.retrievalTestTab}
+          </TabsTrigger>
+          <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
@@ -82,6 +90,27 @@ export function LibraryGallery() {
 
         <TabsContent value="revisions" className="flex-1">
           <RevisionList
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
+        </TabsContent>
+
+        <TabsContent value="eval-cases" className="flex-1">
+          <EvalCaseList
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
+        </TabsContent>
+
+        <TabsContent value="retrieval-test" className="flex-1">
+          <RetrievalTestPanel
+            knowledgeBaseId={selectedId}
+            canModify={selectedKnowledgeBase?.can_modify}
+          />
+        </TabsContent>
+
+        <TabsContent value="evaluation" className="flex-1">
+          <EvaluationPanel
             knowledgeBaseId={selectedId}
             canModify={selectedKnowledgeBase?.can_modify}
           />

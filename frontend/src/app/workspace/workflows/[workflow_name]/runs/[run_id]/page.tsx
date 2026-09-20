@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/collapsible";
 import { KnowledgeSnapshotCard } from "@/components/workspace/workflows/knowledge-snapshot-card";
 import { NodeDetailPanel } from "@/components/workspace/workflows/node-detail";
+import { RetrievalReceiptCard } from "@/components/workspace/workflows/retrieval-receipt-card";
 import { RunGraph } from "@/components/workspace/workflows/run-graph";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { fetch as apiFetch } from "@/core/api/fetcher";
@@ -279,6 +280,7 @@ export default function WorkflowRunDetailPage() {
               </p>
             )}
           <KnowledgeSnapshotCard snapshot={runStatus.snapshot} />
+          <RetrievalReceiptCard snapshot={runStatus.snapshot} />
           <Card className="overflow-hidden">
             <CardHeader className="border-b">
               <CardTitle>{t.workflows.runStatus}</CardTitle>

@@ -73,12 +73,11 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             # AgentPlatform's optional extension harvests the same runtime-owned
             # receipt into the active Run Evidence Envelope. DeerFlow remains
             # usable without the extension package.
-            try:
-                from agentplatform_extension.evidence import record_tool_receipt
+            from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
 
-                record_tool_receipt(receipt)
-            except ImportError:
-                pass
+            hooks = resolve_runtime_evidence_hooks(get_loaded_extensions())
+            if hooks is not None:
+                hooks.record_tool_receipt(receipt)
         except Exception:
             # Never block tool execution — but a systematic stamping failure must
             # be visible, or the ledger silently goes incomplete and citations lie.
@@ -160,7 +159,25 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         return self._inject(request, ledger), rendered_receipts
 
     @staticmethod
+    def _record_citations(result: ModelCallResult) -> None:
+        if isinstance(result, AIMessage):
+            messages = [result]
+        else:
+            response = getattr(result, "model_response", result)
+            messages = getattr(response, "result", [])
+        for message in messages:
+            if not isinstance(message, AIMessage):
+                continue
+            from deerflow.extensions import get_loaded_extensions, resolve_runtime_evidence_hooks
+
+            hooks = resolve_runtime_evidence_hooks(get_loaded_extensions())
+            if hooks is not None:
+                content = message.content if isinstance(message.content, str) else ""
+                hooks.record_retrieval_citations(content)
+
+    @staticmethod
     def _stamp_citing_ledger(result: ModelCallResult, receipts: list[ToolReceipt] | None) -> ModelCallResult:
+        ToolReceiptMiddleware._record_citations(result)
         if receipts is None:
             return result
         if isinstance(result, AIMessage):

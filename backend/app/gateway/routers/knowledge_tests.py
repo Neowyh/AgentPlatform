@@ -1,0 +1,272 @@
+"""KnowledgeBase management retrieval test endpoints (M6 ticket 01).
+
+Lives outside ``resources.py`` so the eval-case and retrieval-test verticals
+stay independent; it deliberately reuses the Resource Governance helpers so
+visibility, error translation, and audit semantics cannot drift.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.agentplatform.knowledge.eval_gate import normalize_case_ids, policy_payload
+from app.agentplatform.knowledge.evaluation import KnowledgeEvaluationService, KnowledgeEvaluationValidationError
+from app.agentplatform.knowledge.models import KnowledgeEvalCase, KnowledgeEvaluationPolicy
+from app.agentplatform.knowledge.retrieval_test import KnowledgeRetrievalTestService, KnowledgeRetrievalTestValidationError, RetrievalTestUnavailable
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resources.service import ResourceConflict, ResourceService
+from app.gateway.audit import record_audit
+from app.gateway.authz import get_current_rbac_user
+from app.gateway.routers.resources import _factory, _resource_actor, _translate_resource_errors
+
+router = APIRouter(prefix="/api/resources", tags=["knowledge-tests"])
+
+
+class RetrievalTestCreateRequest(BaseModel):
+    """Only the parameters the shared retrieval path supports; anything else
+    is an explicit 422 instead of a silently applied default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: str = Field(min_length=1, max_length=36)
+    profile_id: Literal["frozen", "configured"] = "frozen"
+    query: str = Field(min_length=1, max_length=500)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+
+
+class EvaluationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: str = Field(min_length=1, max_length=36)
+    profile_id: Literal["frozen", "configured"] = "frozen"
+    top_k: int = Field(default=8, ge=1, le=20)
+    case_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
+class EvaluationComparisonCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    left_revision_id: str = Field(min_length=1, max_length=36)
+    left_profile_id: Literal["frozen", "configured"] = "frozen"
+    right_revision_id: str = Field(min_length=1, max_length=36)
+    right_profile_id: Literal["frozen", "configured"] = "configured"
+    top_k: int = Field(default=8, ge=1, le=20)
+    case_ids: list[str] | None = Field(default=None, max_length=1000)
+
+
+class EvaluationPolicyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: Literal["frozen", "configured"] = "frozen"
+    top_k: int = Field(ge=1, le=20)
+    case_ids: list[str] = Field(min_length=1, max_length=1000)
+    min_expected_hit_rate: float = Field(ge=0, le=1)
+    min_recall_at_k: float = Field(ge=0, le=1)
+    min_mrr_at_k: float = Field(ge=0, le=1)
+
+
+@router.get("/{resource_id}/evaluation-policy")
+@_translate_resource_errors
+async def get_evaluation_policy(resource_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> dict[str, Any]:
+    async with _factory()() as session:
+        resource = await ResourceService(session, _resource_actor(current_user)).get_visible(resource_id)
+        if resource.type != "knowledge_base":
+            raise ResourceConflict("KnowledgeBase not found")
+        policy = await session.get(KnowledgeEvaluationPolicy, resource_id)
+        return policy_payload(policy) or {"configured": False}
+
+
+@router.put("/{resource_id}/evaluation-policy")
+@_translate_resource_errors
+async def put_evaluation_policy(resource_id: str, body: EvaluationPolicyRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> dict[str, Any]:
+    async with _factory()() as session:
+        actor = _resource_actor(current_user)
+        service = ResourceService(session, actor)
+        resource = await service.get_visible(resource_id)
+        if resource.type != "knowledge_base":
+            raise ResourceConflict("KnowledgeBase not found")
+        service.assert_modify(resource)
+        case_ids = normalize_case_ids(body.case_ids)
+        count = await session.scalar(select(func.count()).select_from(KnowledgeEvalCase).where(KnowledgeEvalCase.knowledge_base_id == resource_id, KnowledgeEvalCase.id.in_(case_ids)))
+        if int(count or 0) != len(case_ids):
+            raise KnowledgeEvaluationValidationError("one or more evaluation cases were not found")
+        policy = await session.get(KnowledgeEvaluationPolicy, resource_id)
+        if policy is None:
+            policy = KnowledgeEvaluationPolicy(knowledge_base_id=resource_id, version=1, updated_by=str(current_user.id))
+            session.add(policy)
+        else:
+            policy.version += 1
+            policy.updated_by = str(current_user.id)
+        policy.profile_id = body.profile_id
+        policy.top_k = body.top_k
+        policy.case_ids_json = case_ids
+        policy.min_expected_hit_rate = body.min_expected_hit_rate
+        policy.min_recall_at_k = body.min_recall_at_k
+        policy.min_mrr_at_k = body.min_mrr_at_k
+        await session.commit()
+        return policy_payload(policy) or {}
+
+
+@router.post("/{resource_id}/retrieval-tests", status_code=201)
+@_translate_resource_errors
+async def create_retrieval_test(
+    resource_id: str,
+    body: RetrievalTestCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Run and archive a bounded retrieval test."""
+    async with _factory()() as session:
+        service = KnowledgeRetrievalTestService(session, _resource_actor(current_user))
+        try:
+            payload = await service.execute(resource_id, body.revision_id, query=body.query, top_k=body.top_k, profile_id=body.profile_id)
+            await session.commit()
+        except RetrievalTestUnavailable as exc:
+            raise HTTPException(status_code=503, detail={"code": "retrieval_test_unavailable", "message": str(exc)}) from exc
+        except KnowledgeRetrievalTestValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_retrieval_test", "message": str(exc)}) from exc
+        except SQLAlchemyError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "retrieval_test_storage_unavailable", "message": "The retrieval test could not be archived; try again later."},
+            ) from exc
+    await record_audit(
+        str(current_user.id),
+        "knowledge_retrieval_test_executed",
+        "knowledge_base",
+        resource_id,
+        {
+            "resource_id": resource_id,
+            "revision_id": payload["revision_id"],
+            "test_id": payload["id"],
+            "result_status": payload["result_status"],
+        },
+    )
+    return payload
+
+
+@router.get("/{resource_id}/retrieval-tests")
+@_translate_resource_errors
+async def list_retrieval_tests(
+    resource_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """List archived retrieval tests for a visible knowledge base."""
+    async with _factory()() as session:
+        return await KnowledgeRetrievalTestService(session, _resource_actor(current_user)).list_tests(resource_id, offset=offset, limit=limit)
+
+
+@router.get("/{resource_id}/retrieval-tests/{test_id}")
+@_translate_resource_errors
+async def get_retrieval_test(
+    resource_id: str,
+    test_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Read one archived retrieval test after rechecking access."""
+    async with _factory()() as session:
+        return await KnowledgeRetrievalTestService(session, _resource_actor(current_user)).get_test(resource_id, test_id)
+
+
+@router.post("/{resource_id}/evaluations", status_code=202)
+@_translate_resource_errors
+async def create_evaluation(
+    resource_id: str,
+    body: EvaluationCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Freeze and enqueue one bounded profile evaluation."""
+    async with _factory()() as session:
+        try:
+            payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).start(
+                resource_id,
+                body.revision_id,
+                profile_id=body.profile_id,
+                top_k=body.top_k,
+                case_ids=body.case_ids,
+            )
+            await session.commit()
+        except KnowledgeEvaluationValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_evaluation", "message": str(exc)}) from exc
+    await record_audit(str(current_user.id), "knowledge_evaluation_started", "knowledge_base", resource_id, {"run_id": payload["id"], "revision_id": payload["revision_id"]})
+    return payload
+
+
+@router.get("/{resource_id}/evaluations")
+@_translate_resource_errors
+async def list_evaluations(
+    resource_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).list_runs(resource_id, offset=offset, limit=limit)
+
+
+@router.get("/{resource_id}/evaluations/{run_id}")
+@_translate_resource_errors
+async def get_evaluation(
+    resource_id: str,
+    run_id: str,
+    result_offset: int = Query(default=0, ge=0),
+    result_limit: int = Query(default=20, ge=1, le=100),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).get_run(resource_id, run_id, result_offset=result_offset, result_limit=result_limit)
+
+
+@router.post("/{resource_id}/evaluations/{run_id}/retry", status_code=202)
+@_translate_resource_errors
+async def retry_evaluation(
+    resource_id: str,
+    run_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).retry(resource_id, run_id)
+        await session.commit()
+    return payload
+
+
+@router.post("/{resource_id}/evaluation-comparisons", status_code=202)
+@_translate_resource_errors
+async def create_evaluation_comparison(
+    resource_id: str,
+    body: EvaluationComparisonCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        try:
+            payload = await KnowledgeEvaluationService(session, _resource_actor(current_user)).start_comparison(
+                resource_id,
+                left_revision_id=body.left_revision_id,
+                left_profile_id=body.left_profile_id,
+                right_revision_id=body.right_revision_id,
+                right_profile_id=body.right_profile_id,
+                top_k=body.top_k,
+                case_ids=body.case_ids,
+            )
+            await session.commit()
+        except KnowledgeEvaluationValidationError as exc:
+            raise HTTPException(status_code=422, detail={"code": "invalid_evaluation_comparison", "message": str(exc)}) from exc
+    await record_audit(str(current_user.id), "knowledge_evaluation_comparison_started", "knowledge_base", resource_id, {"comparison_id": payload["id"]})
+    return payload
+
+
+@router.get("/{resource_id}/evaluation-comparisons/{comparison_id}")
+@_translate_resource_errors
+async def get_evaluation_comparison(
+    resource_id: str,
+    comparison_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await KnowledgeEvaluationService(session, _resource_actor(current_user)).get_comparison(resource_id, comparison_id)

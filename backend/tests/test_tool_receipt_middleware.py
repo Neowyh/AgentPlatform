@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence, current_run_evidence
 from langchain.agents.middleware.types import ExtendedModelResponse, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
@@ -179,6 +180,25 @@ def test_delegation_only_mode_skips_plain_conversation():
 
     middleware.wrap_model_call(request, handler)
     assert seen["request"] is request  # no completed delegation -> no ledger
+
+
+def test_delegation_only_mode_still_records_citations_from_plain_conversation():
+    evidence_id = "rr_plain_chat_i1"
+    binding = RunEvidenceBinding(
+        [],
+        AuthorizationContext("caller", "agent", "policy"),
+        retrieval_receipts=({"items": [{"evidence_id": evidence_id}]},),
+    )
+    middleware = ToolReceiptMiddleware(render_mode="delegation_only")
+    request = _delegation_only_request([HumanMessage(content="go")])
+    response = ModelResponse(result=[AIMessage(content=f"[citation:Policy](evidence://{evidence_id})")])
+
+    with bind_run_evidence(binding):
+        middleware.wrap_model_call(request, lambda req: response)
+        recorded = current_run_evidence()
+
+    assert recorded is not None
+    assert recorded.retrieval_receipts[0]["cited_item_ids"] == [evidence_id]
 
 
 def test_delegation_only_mode_renders_when_processing_subagent_result():

@@ -9,7 +9,8 @@ Compatibility rules enforced throughout this module:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, runtime_checkable
@@ -22,6 +23,18 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from deerflow_extension_api.placement import AgentBuildContext, MiddlewarePlacement
 
 F = TypeVar("F", bound=Callable[..., Any])
+_runtime_evidence_hooks: Any | None = None
+
+
+def set_runtime_evidence_hooks(hooks: Any | None) -> None:
+    """Set the optional process default used by host middleware."""
+    global _runtime_evidence_hooks
+    _runtime_evidence_hooks = hooks
+
+
+def get_runtime_evidence_hooks() -> Any | None:
+    """Return the optional process default evidence hooks."""
+    return _runtime_evidence_hooks
 
 
 # --- Host projections -------------------------------------------------------
@@ -85,6 +98,7 @@ class RunEvidenceEnvelope:
     authorization_context: Mapping[str, Any] = field(default_factory=dict)
     policy_revision: str | None = None
     tool_receipts: Sequence[Mapping[str, Any]] = ()
+    retrieval_receipts: Sequence[Mapping[str, Any]] = ()
     subagent_verification: Sequence[Mapping[str, Any]] = ()
     artifact_receipts: Sequence[Mapping[str, Any]] = ()
 
@@ -106,6 +120,35 @@ class TaskLifecycleContributor(Protocol):
         outcome: TaskOutcome,
     ) -> None:
         return None
+
+
+class RuntimeEvidenceHooks(Protocol):
+    """Optional runtime callbacks for host-owned evidence projections."""
+
+    def current_run_evidence(self) -> Any | None:
+        return None
+
+    def record_subagent_verification(self, verification: Mapping[str, Any]) -> None:
+        return None
+
+    def record_tool_receipt(self, receipt: Mapping[str, Any]) -> None:
+        return None
+
+    def record_retrieval_citations(self, content: str) -> None:
+        return None
+
+    def bind_delegation_evidence(self, parent_tool_receipt_id: str, child_agent_id: str | None = None) -> AbstractContextManager[None]:
+        return nullcontext()
+
+    def record_delegated_retrieval_receipts(
+        self,
+        receipts: Iterable[Mapping[str, Any]],
+        *,
+        parent_tool_receipt_id: str,
+        child_task_id: str,
+        child_agent_id: str | None = None,
+    ) -> int:
+        return 0
 
 
 # --- System model calls not wrapped by middleware model-call hooks ----------
@@ -223,6 +266,9 @@ class ExtensionRegistry(Protocol):
         return None
 
     def task_lifecycle(self, contributor: TaskLifecycleContributor) -> None:
+        return None
+
+    def runtime_evidence(self, hooks: RuntimeEvidenceHooks) -> None:
         return None
 
     def system_model_observer(self, observer: SystemModelCallObserver) -> None:

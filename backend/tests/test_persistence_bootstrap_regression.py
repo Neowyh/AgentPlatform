@@ -111,7 +111,7 @@ async def test_legacy_database_recovers_token_usage_column(tmp_path: Path) -> No
             cols = {row[1] for row in raw.execute("PRAGMA table_info(runs)").fetchall()}
             assert "token_usage_by_model" in cols
             version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
-            assert version_row[0] == "20260915_knowledge_publish_lease"
+        assert version_row[0] == "20260917_knowledge_eval_comparisons"
 
         # And the read path that originally 500'd must now succeed.
         sf = get_session_factory()
@@ -156,6 +156,6 @@ async def test_legacy_database_with_manual_alter_still_bootstraps(tmp_path: Path
             # No duplicate column -- list, not set, to catch dupes.
             assert cols.count("token_usage_by_model") == 1
             version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
-            assert version_row[0] == "20260915_knowledge_publish_lease"
+            assert version_row[0] == "20260915_knowledge_retrieval_tests"
     finally:
         await close_engine()

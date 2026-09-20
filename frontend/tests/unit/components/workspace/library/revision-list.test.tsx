@@ -62,6 +62,7 @@ vi.mock("@/core/i18n/hooks", () => ({
           createFailed:
             "Unable to create a revision candidate. A candidate requires at least one ready document.",
           publishFailed: "Unable to publish this revision.",
+          prepareFailed: "Unable to prepare this revision.",
           viewDetails: "View details",
           hideDetails: "Hide details",
           documentsAndManifest: (count: number, hash: string) =>
@@ -72,6 +73,9 @@ vi.mock("@/core/i18n/hooks", () => ({
           publish: "Publish",
           publishingAction: "Publishing...",
           publishAria: (no: number) => `Publish v${no}`,
+          prepare: "Prepare index",
+          preparing: "Preparing...",
+          prepareAria: (no: number) => `Prepare index for v${no}`,
         },
       },
     },
@@ -80,6 +84,7 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 const createRevision = vi.fn();
 const publishRevision = vi.fn();
+const prepareRevision = vi.fn();
 
 let mockState: {
   revisions: typeof mockRevisions;
@@ -112,6 +117,11 @@ vi.mock("@/core/library", () => ({
     isPending: false,
     error: null,
     mutateAsync: publishRevision,
+  }),
+  usePrepareKnowledgeRevision: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: prepareRevision,
   }),
 }));
 

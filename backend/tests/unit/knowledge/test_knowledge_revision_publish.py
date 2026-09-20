@@ -18,6 +18,7 @@ import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
 import app.agentplatform.resource_models  # noqa: F401 - register resource tables
 import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
+from app.agentplatform.knowledge.integrity import INTEGRITY_DRIFTED
 from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeRevision
 from app.agentplatform.knowledge.provider import KnowledgeProviderError, ProviderIngestionResult
 from app.agentplatform.knowledge.revisions import (
@@ -229,6 +230,112 @@ async def test_publish_switches_pointer_only_after_dataset_verification(
 
 
 @pytest.mark.asyncio
+async def test_prepare_builds_ready_candidate_without_switching_pointer(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    kb = await _seed_kb(session, slug="prepare")
+    candidate = await _seed_candidate(session, tmp_path, kb, documents=1)
+    provider = FakePublishProvider()
+    service = KnowledgeRevisionService(session, _actor())
+    requested = await service.prepare_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+
+    await execute_publish(
+        factory,
+        resource_id=kb.id,
+        revision_id=str(candidate["id"]),
+        actor_id="owner",
+        provider=provider,
+        execution_token=requested["publish_execution_token"],
+        poll_interval=0,
+        parse_timeout=5,
+        activate=False,
+    )
+
+    revision = await _revision(factory, str(candidate["id"]))
+    assert revision.status == "ready"
+    assert (await _kb_row(factory, kb.id)).active_revision_id is None
+
+
+@pytest.mark.asyncio
+async def test_prepare_rejects_revision_known_to_be_drifted(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, _factory = store
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    kb = await _seed_kb(session, slug="drifted-prepare")
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    revision = await session.get(KnowledgeRevision, str(candidate["id"]))
+    assert revision is not None
+    revision.status = "ready"
+    revision.integrity_status = INTEGRITY_DRIFTED
+    revision.provider_dataset_id = "drifted-dataset"
+    await session.commit()
+
+    with pytest.raises(ResourceConflict, match="not preparable"):
+        await KnowledgeRevisionService(session, _actor()).prepare_revision(
+            kb.id,
+            str(candidate["id"]),
+            provider=FakePublishProvider(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_prepare_failure_can_be_retried_without_duplicate_dataset(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    kb = await _seed_kb(session, slug="prepare-retry")
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    revision_id = str(candidate["id"])
+
+    failing = FakePublishProvider(fail_create_dataset=True)
+    requested = await KnowledgeRevisionService(session, _actor()).prepare_revision(kb.id, revision_id, provider=failing)
+    await session.commit()
+    await execute_publish(factory, resource_id=kb.id, revision_id=revision_id, actor_id="owner", provider=failing, execution_token=requested["publish_execution_token"], poll_interval=0, parse_timeout=5, activate=False)
+    failed = await _revision(factory, revision_id)
+    assert failed.status == "failed"
+
+    retry_provider = FakePublishProvider()
+    retried = await KnowledgeRevisionService(session, _actor()).prepare_revision(kb.id, revision_id, provider=retry_provider)
+    await session.commit()
+    await execute_publish(factory, resource_id=kb.id, revision_id=revision_id, actor_id="owner", provider=retry_provider, execution_token=retried["publish_execution_token"], poll_interval=0, parse_timeout=5, activate=False)
+    ready = await _revision(factory, revision_id)
+    assert ready.status == "ready"
+    assert len(retry_provider.created_datasets) == 1
+
+
+@pytest.mark.asyncio
+async def test_ready_candidate_publish_still_requires_eval_evidence(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    kb = await _seed_kb(session, slug="ready-eval")
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    provider = FakePublishProvider()
+    requested = await KnowledgeRevisionService(session, _actor()).prepare_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+    await execute_publish(factory, resource_id=kb.id, revision_id=str(candidate["id"]), actor_id="owner", provider=provider, execution_token=requested["publish_execution_token"], poll_interval=0, parse_timeout=5, activate=False)
+
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.eval_required", lambda: True)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.load_eval_evidence", lambda kb_id, manifest: None)
+    with pytest.raises(ResourceConflict, match="evaluation"):
+        await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=provider)
+
+
+@pytest.mark.asyncio
 async def test_publish_accepts_provider_without_comparable_content_hash(
     store: tuple[AsyncSession, async_sessionmaker],
     tmp_path,
@@ -361,6 +468,45 @@ async def test_duplicate_and_concurrent_publish_are_rejected(
     other = await service.create_revision(kb.id)
     with pytest.raises(ResourceConflict):
         await service.publish_revision(kb.id, str(other["id"]), provider=FakePublishProvider())
+
+
+@pytest.mark.asyncio
+async def test_execute_publish_rechecks_evaluation_before_switching_live_pointer(
+    store: tuple[AsyncSession, async_sessionmaker],
+    tmp_path,
+    monkeypatch,
+) -> None:
+    session, factory = store
+    kb = await _seed_kb(session)
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    candidate = await _seed_candidate(session, tmp_path, kb)
+    provider = FakePublishProvider()
+    requested = await KnowledgeRevisionService(session, _actor()).publish_revision(kb.id, str(candidate["id"]), provider=provider)
+    await session.commit()
+
+    checks = 0
+
+    async def gate(*args, **kwargs) -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise ResourceConflict("evaluation policy changed during publish")
+
+    monkeypatch.setattr("app.agentplatform.knowledge.revisions._require_eval_evidence", gate)
+    await execute_publish(
+        factory,
+        resource_id=kb.id,
+        revision_id=str(candidate["id"]),
+        actor_id="owner",
+        provider=provider,
+        execution_token=requested["publish_execution_token"],
+        poll_interval=0,
+        parse_timeout=5,
+    )
+
+    revision = await _revision(factory, str(candidate["id"]))
+    assert checks == 2
+    assert revision.status == "failed"
 
 
 @pytest.mark.asyncio

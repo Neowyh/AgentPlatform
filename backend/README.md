@@ -531,6 +531,15 @@ reachability.
 
 ## Technology Stack
 
+### Knowledge retrieval testing
+
+The Gateway exposes Retrieval Test and Eval Case APIs under the canonical
+`/api/resources/{resource_id}` boundary. Retrieval tests run against immutable
+published revisions, allow the revision-frozen or current configured retrieval
+profile, enforce the configured timeout, archive caller-safe results, and
+re-check authorization on reads. Eval cases keep canonical expected-document
+identities and immutable content versions.
+
 - **LangGraph** (1.0.6+) - Agent framework and multi-agent orchestration
 - **LangChain** (1.2.3+) - LLM abstractions and tool system
 - **FastAPI** (0.115.0+) - Gateway REST API
