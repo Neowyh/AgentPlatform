@@ -1421,7 +1421,15 @@ async def start_run(
     # Deep module owns evidence/manifest/alias parallelism and snapshot freeze.
     from app.gateway.run_preparation import discard_canonical_snapshot, prepare_run
 
-    prepared = await prepare_run(body, thread_id, request)
+    preparation_started = asyncio.get_running_loop().time()
+    trace_id = ensure_trace_id()
+    prepared = await prepare_run(body, thread_id, request, trace_id=trace_id)
+    logger.info(
+        "first_token_timing trace_id=%s stage=run_preparation thread_id=%s run_preparation_ms=%.1f pre_llm_stage=completed",
+        trace_id,
+        thread_id,
+        (asyncio.get_running_loop().time() - preparation_started) * 1000,
+    )
     body_context = prepared.body_context
     canonical_run_id = prepared.canonical_run_id
     canonical_factory = prepared.canonical_factory
@@ -1433,7 +1441,6 @@ async def start_run(
         run_metadata = {
             key: value for key, value in run_metadata.items() if key != "evidence_mode"
         }
-    trace_id = ensure_trace_id()
     run_metadata = {**run_metadata, DEERFLOW_TRACE_METADATA_KEY: trace_id}
 
     owner_user_id = get_trusted_internal_owner_user_id(request)

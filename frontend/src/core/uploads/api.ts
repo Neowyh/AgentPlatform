@@ -25,6 +25,7 @@ export interface UploadResponse {
   files: UploadedFileInfo[];
   message: string;
   skipped_files: string[];
+  trace_id?: string;
 }
 
 export interface ListFilesResponse {
@@ -44,6 +45,7 @@ export interface UploadLimits {
 export async function uploadFiles(
   threadId: string,
   files: File[],
+  traceId?: string,
 ): Promise<UploadResponse> {
   const formData = new FormData();
 
@@ -56,6 +58,7 @@ export async function uploadFiles(
     {
       method: "POST",
       body: formData,
+      ...(traceId ? { headers: { "X-Trace-Id": traceId } } : {}),
     },
   );
 

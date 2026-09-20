@@ -86,6 +86,8 @@ export type ThreadStreamOptions = {
 type SendMessageOptions = {
   additionalKwargs?: Record<string, unknown>;
   additionalInputMessages?: Message[];
+  preuploadedFiles?: ReadonlyMap<File, UploadedFileInfo>;
+  traceId?: string;
   /**
    * Invoked exactly once when the send passes the in-flight guard and is
    * genuinely dispatched. It never fires on the early-return path, so callers
@@ -1676,7 +1678,13 @@ export function useThreadStream({
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
-    listeners.current = { onSend, onStart, onFinish, onToolEnd, onThreadCreated };
+    listeners.current = {
+      onSend,
+      onStart,
+      onFinish,
+      onToolEnd,
+      onThreadCreated,
+    };
   }, [onSend, onStart, onFinish, onToolEnd, onThreadCreated]);
 
   useEffect(() => {
@@ -1989,6 +1997,8 @@ export function useThreadStream({
   ).length;
   const latestMessageCountsRef = useRef({ humanMessageCount });
   const sendInFlightRef = useRef(false);
+  const activeTraceIdRef = useRef<string | null>(null);
+  const firstDisplayedTraceIdRef = useRef<string | null>(null);
   const messagesRef = useRef<Message[]>([]);
   // Non-null only after a turn submitted by this mounted client. Keep it after
   // finish/stop/error because the SDK can retain its transient event order in
@@ -2033,6 +2043,8 @@ export function useThreadStream({
   useEffect(() => {
     startedRef.current = false;
     sendInFlightRef.current = false;
+    activeTraceIdRef.current = null;
+    firstDisplayedTraceIdRef.current = null;
     messagesRef.current = [];
     transientHistoryBridgeRef.current = [];
     transientHistoryOrderRef.current = [];
@@ -2135,6 +2147,12 @@ export function useThreadStream({
       // The send has genuinely proceeded past the in-flight guard, so callers
       // can now run one-time cleanup that must not fire on the dropped path.
       options?.onSent?.();
+      const traceId = options?.traceId ?? crypto.randomUUID();
+      activeTraceIdRef.current = traceId;
+      firstDisplayedTraceIdRef.current = null;
+      if (typeof performance !== "undefined") {
+        performance.mark(`deerflow:send:${traceId}`);
+      }
 
       const text = message.text.trim();
 
@@ -2223,7 +2241,9 @@ export function useThreadStream({
           listeners.current.onThreadCreated?.(submitThreadId);
         }
 
-        // Upload files first if any
+        // Upload files first if any. Attachments selected in an existing
+        // thread are pre-uploaded by the composer; reuse those results to
+        // remove upload time from the send-to-first-token path.
         if (conversionPromise) {
           setIsUploading(true);
           try {
@@ -2244,8 +2264,22 @@ export function useThreadStream({
             }
 
             if (files.length > 0) {
-              const uploadResponse = await uploadFiles(submitThreadId, files);
-              uploadedFileInfo = uploadResponse.files;
+              const preuploadedFiles = options?.preuploadedFiles;
+              const canReusePreuploads =
+                preuploadedFiles &&
+                files.every((file) => preuploadedFiles.has(file));
+              if (canReusePreuploads) {
+                uploadedFileInfo = files.map(
+                  (file) => preuploadedFiles.get(file)!,
+                );
+              } else {
+                const uploadResponse = await uploadFiles(
+                  submitThreadId,
+                  files,
+                  traceId,
+                );
+                uploadedFileInfo = uploadResponse.files;
+              }
 
               // Update optimistic human message with uploaded status + paths
               const uploadedFiles: FileInMessage[] = uploadedFileInfo.map(
@@ -2317,6 +2351,7 @@ export function useThreadStream({
               ...preparedContext,
               ...extraContext,
               ...context,
+              trace_id: traceId,
               thinking_enabled: context.mode !== "flash",
               is_plan_mode: context.mode === "pro" || context.mode === "ultra",
               subagent_enabled: context.mode === "ultra",
@@ -2670,6 +2705,32 @@ export function useThreadStream({
         .map(messageIdentity)
         .filter(isNonEmptyString),
     };
+
+    // This effect runs after React commits the merged list. Mark the first
+    // newly displayed assistant正文 for browser click-to-display timing.
+    const traceId = activeTraceIdRef.current;
+    if (traceId && firstDisplayedTraceIdRef.current !== traceId) {
+      const baseline = pendingUsageBaselineMessageIdsRef.current;
+      const hasNewAssistantText = visibleMergedMessages.some(
+        (message) =>
+          message.type === "ai" &&
+          hasContent(message) &&
+          !baseline.has(messageIdentity(message) ?? ""),
+      );
+      if (hasNewAssistantText && typeof performance !== "undefined") {
+        performance.mark(`deerflow:display:${traceId}`);
+        try {
+          performance.measure(
+            `deerflow:e2e-ttft:${traceId}`,
+            `deerflow:send:${traceId}`,
+            `deerflow:display:${traceId}`,
+          );
+        } catch {
+          // The send mark may be unavailable after a page lifecycle reset.
+        }
+        firstDisplayedTraceIdRef.current = traceId;
+      }
+    }
   }, [mergedMessages, pendingSupersededMessageIds, thread.isLoading, threadId]);
   const pendingUsageMessages = thread.isLoading
     ? getMessagesAfterBaseline(

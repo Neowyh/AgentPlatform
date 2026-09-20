@@ -26,16 +26,32 @@ import { forceChatRunStreamOptions } from "./stream-mode";
  * the contract stays in lockstep.
  */
 function injectCsrfHeader(_url: URL, init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  const traceId = (() => {
+    if (typeof init.body !== "string") return null;
+    try {
+      const body = JSON.parse(init.body) as {
+        context?: { trace_id?: unknown };
+      };
+      return typeof body.context?.trace_id === "string"
+        ? body.context.trace_id
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  if (traceId && !headers.has("X-Trace-Id")) {
+    headers.set("X-Trace-Id", traceId);
+  }
+
   if (!isStateChangingMethod(init.method ?? "GET")) {
-    return init;
+    return traceId ? { ...init, headers } : init;
   }
   const token = readCsrfCookie();
-  if (!token) return init;
-  const headers = new Headers(init.headers);
-  if (!headers.has("X-CSRF-Token")) {
+  if (token && !headers.has("X-CSRF-Token")) {
     headers.set("X-CSRF-Token", token);
   }
-  return { ...init, headers };
+  return token || traceId ? { ...init, headers } : init;
 }
 
 // Run statuses that have reached a terminal state where no further streaming

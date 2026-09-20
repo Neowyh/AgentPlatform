@@ -101,8 +101,11 @@ import {
   splitUnsupportedUploadFiles,
   useUploadLimits,
   validateUploadLimits,
+  promptInputFilePartToFile,
+  uploadFiles,
   type UploadLimits,
   type UploadLimitViolation,
+  type UploadedFileInfo,
 } from "@/core/uploads";
 import {
   appendSpeechTranscript,
@@ -230,6 +233,8 @@ function escapeXmlAttribute(value: string) {
 export type InputBoxSubmitOptions = {
   additionalKwargs?: Record<string, unknown>;
   additionalInputMessages?: Message[];
+  preuploadedFiles?: ReadonlyMap<File, UploadedFileInfo>;
+  traceId?: string;
   onSent?: () => void;
 };
 
@@ -418,6 +423,74 @@ export function InputBox({
   });
   const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceBaseTextRef = useRef("");
+  const preuploadedFilesRef = useRef(new Map<File, UploadedFileInfo>());
+  const attachmentTraceIdRef = useRef<string | null>(null);
+  const preuploadPromisesRef = useRef(
+    new Map<File, Promise<UploadedFileInfo>>(),
+  );
+
+  const ensurePreuploaded = useCallback(
+    (file: File) => {
+      const uploaded = preuploadedFilesRef.current.get(file);
+      if (uploaded) return Promise.resolve(uploaded);
+
+      const existing = preuploadPromisesRef.current.get(file);
+      if (existing) return existing;
+
+      const promise = (async () => {
+        const response = await uploadFiles(
+          threadId,
+          [file],
+          attachmentTraceIdRef.current ?? undefined,
+        );
+        const uploadedFile = response.files[0];
+        if (!uploadedFile) {
+          throw new Error(`Failed to upload attachment: ${file.name}`);
+        }
+        preuploadedFilesRef.current.set(file, uploadedFile);
+        attachmentTraceIdRef.current ??= response.trace_id ?? null;
+        return uploadedFile;
+      })();
+      preuploadPromisesRef.current.set(file, promise);
+      void promise
+        .finally(() => {
+          if (preuploadPromisesRef.current.get(file) === promise) {
+            preuploadPromisesRef.current.delete(file);
+          }
+        })
+        .catch(() => undefined);
+      return promise;
+    },
+    [threadId],
+  );
+
+  useEffect(() => {
+    if (threadId === "new") {
+      preuploadedFilesRef.current.clear();
+      preuploadPromisesRef.current.clear();
+      attachmentTraceIdRef.current = null;
+      return;
+    }
+
+    const files = attachmentParts
+      .map((part) => part.file)
+      .filter((file): file is File => file instanceof File);
+    const activeFiles = new Set(files);
+    if (files.length > 0) {
+      attachmentTraceIdRef.current ??= crypto.randomUUID();
+    } else {
+      attachmentTraceIdRef.current = null;
+    }
+    for (const file of preuploadedFilesRef.current.keys()) {
+      if (!activeFiles.has(file)) preuploadedFilesRef.current.delete(file);
+    }
+
+    void Promise.all(files.map(ensurePreuploaded)).catch((error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload attachment.",
+      );
+    });
+  }, [attachmentParts, ensurePreuploaded, threadId]);
   const voiceLatestTextRef = useRef("");
   const voiceLastErrorKindRef = useRef<SpeechRecognitionErrorKind | null>(null);
   const voiceStopRequestedRef = useRef(false);
@@ -1136,7 +1209,7 @@ export function InputBox({
   ]);
 
   const submitThreadMessage = useCallback(
-    (message: PromptInputMessage) => {
+    async (message: PromptInputMessage) => {
       const files = message.files.flatMap((file) =>
         file.file instanceof File ? [file.file] : [],
       );
@@ -1193,6 +1266,33 @@ export function InputBox({
           sidecar?.clearConversationQuotes(quoteIds);
         },
       };
+
+      if (threadId !== "new" && message.files.length > 0) {
+        try {
+          const convertedFiles = await Promise.all(
+            message.files.map((filePart) =>
+              promptInputFilePartToFile(filePart),
+            ),
+          );
+          const preuploadedFiles = new Map<File, UploadedFileInfo>();
+          for (const file of convertedFiles) {
+            if (!file) {
+              throw new Error("Failed to prepare an attachment for upload.");
+            }
+            preuploadedFiles.set(file, await ensurePreuploaded(file));
+          }
+          submitOptions.preuploadedFiles = preuploadedFiles;
+          submitOptions.traceId = attachmentTraceIdRef.current ?? undefined;
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to upload attachment.",
+          );
+          throw error;
+        }
+      }
+
       const submit = () => onSubmit?.(message, submitOptions);
 
       // Guard against submitting before the initial model auto-selection
@@ -1225,6 +1325,8 @@ export function InputBox({
       resolvedModelName,
       selectedModel?.supports_thinking,
       sidecar,
+      ensurePreuploaded,
+      threadId,
       t.inputBox.suggestionPlaceholderRequired,
       uploadLimits,
     ],

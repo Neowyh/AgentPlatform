@@ -891,7 +891,9 @@ describe("useRenameThread", () => {
         ],
       ],
       pageParams: [0],
-    }) as { pages: Array<Array<{ thread_id: string; values: { title: string } }>> };
+    }) as {
+      pages: Array<Array<{ thread_id: string; values: { title: string } }>>;
+    };
     expect(infiniteResult.pages[0]?.[0]?.values.title).toBe("New Title");
     expect(infiniteResult.pages[0]?.[1]?.values.title).toBe("Other");
 
@@ -1251,7 +1253,10 @@ describe("useThreadHistory", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          data: [runMessage(41, "m1", "refreshed"), runMessage(40, "m2", "second")],
+          data: [
+            runMessage(41, "m1", "refreshed"),
+            runMessage(40, "m2", "second"),
+          ],
           has_more: false,
           next_before_seq: null,
         }),
@@ -1840,7 +1845,11 @@ describe("useThreadStream", () => {
     });
 
     expect(mockPromptInputFilePartToFile).toHaveBeenCalled();
-    expect(mockUploadFiles).toHaveBeenCalledWith("t1", [mockFile]);
+    expect(mockUploadFiles).toHaveBeenCalledWith(
+      "t1",
+      [mockFile],
+      expect.any(String),
+    );
     expect(mockSubmit).toHaveBeenCalled();
 
     // Verify the submit payload includes file metadata
@@ -1904,7 +1913,11 @@ describe("useThreadStream", () => {
 
     // Conversion must not wait for the thread-creation round trip.
     expect(order).toEqual(["converted", "prepared"]);
-    expect(mockUploadFiles).toHaveBeenCalledWith("created-1", [mockFile]);
+    expect(mockUploadFiles).toHaveBeenCalledWith(
+      "created-1",
+      [mockFile],
+      expect.any(String),
+    );
     expect(mockSubmit).toHaveBeenCalledTimes(1);
     const [, options] = mockSubmit.mock.calls[0] ?? [];
     expect(options.threadId).toBe("created-1");
@@ -2652,12 +2665,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -2688,9 +2705,12 @@ describe("useThreadStream", () => {
     );
 
     act(() => {
-      streamOnUpdateEvent?.({
-        update: { title: "Updated Title" },
-      }, { mutate: vi.fn() });
+      streamOnUpdateEvent?.(
+        {
+          update: { title: "Updated Title" },
+        },
+        { mutate: vi.fn() },
+      );
     });
 
     const cached = queryClient.getQueryData<any[]>(["threads", "search"]);
@@ -2711,12 +2731,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3132,12 +3156,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3163,15 +3191,18 @@ describe("useThreadStream", () => {
 
     // Simulate SummarizationMiddleware update with enough messages
     act(() => {
-      streamOnUpdateEvent?.({
-        "SummarizationMiddleware.before_model": {
-          messages: [
-            { id: "old1", type: "human", content: "old q" },
-            { id: "old2", type: "ai", content: "old a" },
-            { id: "m1", type: "human", content: "keep boundary" },
-          ],
+      streamOnUpdateEvent?.(
+        {
+          "SummarizationMiddleware.before_model": {
+            messages: [
+              { id: "old1", type: "human", content: "old q" },
+              { id: "old2", type: "ai", content: "old a" },
+              { id: "m1", type: "human", content: "keep boundary" },
+            ],
+          },
         },
-      }, { mutate: vi.fn() });
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw — exercises the summarization path
@@ -3188,12 +3219,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3215,11 +3250,14 @@ describe("useThreadStream", () => {
 
     // Only 1 message (< 2), should return early
     act(() => {
-      streamOnUpdateEvent?.({
-        "SummarizationMiddleware.before_model": {
-          messages: [{ id: "m1", type: "human", content: "only one" }],
+      streamOnUpdateEvent?.(
+        {
+          "SummarizationMiddleware.before_model": {
+            messages: [{ id: "m1", type: "human", content: "only one" }],
+          },
         },
-      }, { mutate: vi.fn() });
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw
@@ -3236,12 +3274,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3266,20 +3308,23 @@ describe("useThreadStream", () => {
 
     // Simulate with summary messages that should be added to summarizedRef
     act(() => {
-      streamOnUpdateEvent?.({
-        "SummarizationMiddleware.before_model": {
-          messages: [
-            {
-              id: "s1",
-              name: "summary",
-              type: "human",
-              content: "summary text",
-            },
-            { id: "m1", type: "human", content: "q1" },
-            { id: "m2", type: "ai", content: "a1" },
-          ],
+      streamOnUpdateEvent?.(
+        {
+          "SummarizationMiddleware.before_model": {
+            messages: [
+              {
+                id: "s1",
+                name: "summary",
+                type: "human",
+                content: "summary text",
+              },
+              { id: "m1", type: "human", content: "q1" },
+              { id: "m2", type: "ai", content: "a1" },
+            ],
+          },
         },
-      }, { mutate: vi.fn() });
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw — exercises summary message tracking
@@ -3296,12 +3341,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3326,15 +3375,18 @@ describe("useThreadStream", () => {
 
     // Message without id should be handled (m.id !== undefined check)
     act(() => {
-      streamOnUpdateEvent?.({
-        "SummarizationMiddleware.before_model": {
-          messages: [
-            { id: "old1", type: "human", content: "old" },
-            { id: "old2", type: "ai", content: "old a" },
-            { id: "boundary", type: "ai", content: "boundary" },
-          ],
+      streamOnUpdateEvent?.(
+        {
+          "SummarizationMiddleware.before_model": {
+            messages: [
+              { id: "old1", type: "human", content: "old" },
+              { id: "old2", type: "ai", content: "old a" },
+              { id: "boundary", type: "ai", content: "boundary" },
+            ],
+          },
         },
-      }, { mutate: vi.fn() });
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw
@@ -3885,12 +3937,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3912,11 +3968,14 @@ describe("useThreadStream", () => {
 
     // messages is null → should use ?? [] fallback (line 263)
     act(() => {
-      streamOnUpdateEvent?.({
-        "SummarizationMiddleware.before_model": {
-          messages: null,
+      streamOnUpdateEvent?.(
+        {
+          "SummarizationMiddleware.before_model": {
+            messages: null,
+          },
         },
-      }, { mutate: vi.fn() });
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw
@@ -4003,12 +4062,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -4030,10 +4093,13 @@ describe("useThreadStream", () => {
 
     // Object.values returns entries but none have "title"
     act(() => {
-      streamOnUpdateEvent?.({
-        someUpdate: { messages: ["msg1"] },
-        anotherUpdate: { artifacts: ["a1"] },
-      }, { mutate: vi.fn() });
+      streamOnUpdateEvent?.(
+        {
+          someUpdate: { messages: ["msg1"] },
+          anotherUpdate: { artifacts: ["a1"] },
+        },
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw
@@ -4050,12 +4116,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -4128,12 +4198,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -4155,9 +4229,12 @@ describe("useThreadStream", () => {
 
     // Update with title: undefined → should not update cache
     act(() => {
-      streamOnUpdateEvent?.({
-        update: { title: undefined },
-      }, { mutate: vi.fn() });
+      streamOnUpdateEvent?.(
+        {
+          update: { title: undefined },
+        },
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw
@@ -4174,12 +4251,16 @@ describe("useThreadStream", () => {
       | undefined;
 
     mockUseStream.mockImplementation(
-      (options: {
+      (
+        options: {
           onUpdateEvent?: (
             data: unknown,
-            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+            context: {
+              mutate: (updater: (previous: unknown) => unknown) => void;
+            },
           ) => void;
-        } = {}) => {
+        } = {},
+      ) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -4201,9 +4282,12 @@ describe("useThreadStream", () => {
 
     // Update with title: "" (falsy) → should not update cache
     act(() => {
-      streamOnUpdateEvent?.({
-        update: { title: "" },
-      }, { mutate: vi.fn() });
+      streamOnUpdateEvent?.(
+        {
+          update: { title: "" },
+        },
+        { mutate: vi.fn() },
+      );
     });
 
     // Should not throw

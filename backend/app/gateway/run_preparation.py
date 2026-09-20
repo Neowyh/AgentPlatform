@@ -28,7 +28,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding
-from agentplatform_extension.local_runtime import LocalAuthorization, RunAuthorizationSnapshot
+from agentplatform_extension.local_runtime import (
+    LocalAuthorization,
+    RunAuthorizationSnapshot,
+)
 from fastapi import HTTPException, Request
 
 from app.agentplatform.code_evidence import read_manifest
@@ -43,6 +46,7 @@ from app.gateway.services import (
     validate_evidence_selection,
 )
 from deerflow.config.app_config import get_app_config
+from deerflow.trace_context import ensure_trace_id, resolve_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +70,23 @@ class PreparedRun:
     memory_preload_task: asyncio.Task | None = None
 
 
-async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> dict[str, Any] | None:
+async def _read_manifest_if_needed(
+    thread_id: str, code_package_id: str | None
+) -> dict[str, Any] | None:
     if not code_package_id:
         return
     try:
         return await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=400, detail="Code Evidence Package was not found for this Thread") from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Code Evidence Package was not found for this Thread",
+        ) from exc
 
 
-async def _resolve_candidate_alias(candidate: str | None, request: Request) -> str | None:
+async def _resolve_candidate_alias(
+    candidate: str | None, request: Request
+) -> str | None:
     if not candidate:
         return None
     # Import lazily to avoid circular import at module load.
@@ -90,14 +101,55 @@ def _memory_injection_enabled() -> bool:
         memory_config = get_app_config().memory
     except Exception:
         return False
-    return bool(getattr(memory_config, "enabled", False)) and bool(getattr(memory_config, "injection_enabled", False))
+    return bool(getattr(memory_config, "enabled", False)) and bool(
+        getattr(memory_config, "injection_enabled", False)
+    )
 
 
 def _runtime_assembly_fingerprint(agent_id: str, snapshots: Any) -> str:
     """Derive a stable evidence fingerprint from the frozen runtime assembly."""
     payload = {"agent_id": agent_id, "resource_snapshots": snapshots}
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _bind_local_runtime_context(
+    context: dict[str, Any], *, caller_id: str | None = None
+) -> None:
+    """Replace client-claimed device facts with the authenticated broker view.
+
+    The run request may select a logical device and declare the other policy
+    factors, but it cannot make an offline device appear online or invent MCP
+    capabilities/schema.  Those facts come from the signed websocket that is
+    currently registered in the process broker and are copied into the frozen
+    run context before Agent assembly.
+    """
+
+    device_id = context.get("local_device_id")
+    requested = context.get("local_authorization")
+    if not device_id or not isinstance(requested, dict):
+        return
+    from app.device_control.broker import get_device_broker
+
+    connection = get_device_broker().connections.get(str(device_id))
+    if connection is None or not connection.tasks_allowed:
+        raise HTTPException(409, "The selected local device is offline or unavailable")
+    if (
+        caller_id is not None
+        and connection.owner_id is not None
+        and connection.owner_id != str(caller_id)
+    ):
+        raise HTTPException(403, "The selected local device is owned by another user")
+    normalized = dict(requested)
+    normalized["device_online"] = True
+    normalized["device_capabilities"] = sorted(connection.capabilities)
+    context["local_authorization"] = normalized
+    context["local_tool_descriptors"] = {
+        name: dict(descriptor)
+        for name, descriptor in connection.tool_descriptors.items()
+    }
 
 
 async def _preload_memory(agent_name: str | None, user_id: str) -> None:
@@ -108,13 +160,22 @@ async def _preload_memory(agent_name: str | None, user_id: str) -> None:
         logger.debug("Memory preload failed (non-fatal)", exc_info=True)
 
 
-async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRun:
+async def prepare_run(
+    body: Any,
+    thread_id: str,
+    request: Request,
+    *,
+    trace_id: str | None = None,
+) -> PreparedRun:
     """Prepare a Run, parallelising independent IO.
 
     The **interface** is one function; the **implementation** parallelises the
     two independent pre-steps (manifest file check vs alias DB lookup) via
     ``asyncio.gather``, then does the dependent snapshot freeze sequentially.
     """
+
+    preparation_started = time.perf_counter()
+    trace_id = resolve_trace_id(trace_id, ensure_trace_id())
 
     # 1. Validate evidence and enrich body_context (sync, no IO).
     body_context: dict[str, Any] = dict(getattr(body, "context", None) or {})
@@ -125,7 +186,15 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     body_context = {**body_context, "evidence_mode": evidence_mode}
     if code_package_id:
         body_context["code_package_id"] = str(code_package_id)
-    body_context["code_evidence_source"] = f"/mnt/user-data/code-evidence/{code_package_id}/source" if code_package_id else None
+    body_context["code_evidence_source"] = (
+        f"/mnt/user-data/code-evidence/{code_package_id}/source"
+        if code_package_id
+        else None
+    )
+    _bind_local_runtime_context(
+        body_context,
+        caller_id=str(getattr(getattr(request.state, "user", None), "id", "")) or None,
+    )
 
     model_name = body_context.get("model_name")
     if model_name is not None and not isinstance(model_name, str):
@@ -145,14 +214,25 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     if canonical_resource_id is None:
         canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
 
-    needs_alias = canonical_resource_id is None and not body_context.get("is_bootstrap") and (body_context.get("agent_name") or getattr(body, "assistant_id", None))
-    candidate = (body_context.get("agent_name") or getattr(body, "assistant_id", None)) if needs_alias else None
+    needs_alias = (
+        canonical_resource_id is None
+        and not body_context.get("is_bootstrap")
+        and (body_context.get("agent_name") or getattr(body, "assistant_id", None))
+    )
+    candidate = (
+        (body_context.get("agent_name") or getattr(body, "assistant_id", None))
+        if needs_alias
+        else None
+    )
 
     # 3. Parallelise independent IO: manifest file check vs alias DB lookup.
+    dependency_started = time.perf_counter()
     manifest_task = None
     alias_task = None
     if code_package_id:
-        manifest_task = asyncio.create_task(_read_manifest_if_needed(thread_id, code_package_id))
+        manifest_task = asyncio.create_task(
+            _read_manifest_if_needed(thread_id, code_package_id)
+        )
     if candidate:
         alias_task = asyncio.create_task(_resolve_candidate_alias(candidate, request))
 
@@ -172,6 +252,7 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         resolved = await alias_task
         if resolved:
             canonical_resource_id = resolved
+    dependency_resolution_ms = (time.perf_counter() - dependency_started) * 1000
 
     # T5: warm the Memory cache concurrently with the snapshot freeze below.
     # The graph-time load uses (canonical id | None, user id) as its key, so
@@ -180,13 +261,17 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     memory_preload_task: asyncio.Task | None = None
     preload_user_id = getattr(getattr(request.state, "user", None), "id", None)
     if preload_user_id is not None and _memory_injection_enabled():
-        memory_preload_task = asyncio.create_task(_preload_memory(canonical_resource_id, str(preload_user_id)))
+        memory_preload_task = asyncio.create_task(
+            _preload_memory(canonical_resource_id, str(preload_user_id))
+        )
 
     # 4. Freeze canonical snapshot + factory (dependent on canonical_resource_id).
     # T1 first-token timing: snapshot freeze is the heaviest pre-token segment.
     snapshot_started = time.perf_counter()
     canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
-    preferred_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
+    preferred_skill = body_context.get("skill_resource_id") or body_context.get(
+        "skill_name"
+    )
     canonical_factory = None
     if canonical_resource_id and canonical_run_id:
         prepare_kwargs = {"preferred_skill": preferred_skill} if preferred_skill else {}
@@ -201,20 +286,42 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
             **prepare_kwargs,
         )
 
+    snapshot_freeze_ms = (time.perf_counter() - snapshot_started) * 1000
+    logger.info(
+        "first_token_timing trace_id=%s stage=snapshot thread_id=%s elapsed_ms=%.1f",
+        trace_id,
+        thread_id,
+        snapshot_freeze_ms,
+    )
+
     # 5. Build run metadata (depends on snapshot).
+    knowledge_started = time.perf_counter()
     run_metadata: dict[str, Any] = dict(getattr(body, "metadata", None) or {})
     run_metadata["evidence_mode"] = evidence_mode
     if code_package_id:
         run_metadata["code_package_id"] = str(code_package_id)
     if canonical_run_id and canonical_resource_id:
-        run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
+        run_metadata.update(
+            await _canonical_selection_metadata(
+                canonical_run_id, canonical_resource_id, body_context
+            )
+        )
+    knowledge_prepare_ms = (time.perf_counter() - knowledge_started) * 1000
 
     user_id = getattr(getattr(request.state, "user", None), "id", None)
     selection = run_metadata.get("selection_snapshot")
     evidence_binding = None
     if user_id is not None:
-        snapshots = selection.get("resource_snapshots", ()) if isinstance(selection, dict) else ()
-        policy_revision = selection.get("policy_revision", "runtime-default") if isinstance(selection, dict) else "runtime-default"
+        snapshots = (
+            selection.get("resource_snapshots", ())
+            if isinstance(selection, dict)
+            else ()
+        )
+        policy_revision = (
+            selection.get("policy_revision", "runtime-default")
+            if isinstance(selection, dict)
+            else "runtime-default"
+        )
         factory_knowledge_scope = getattr(canonical_factory, "knowledge_scope", None)
         if not isinstance(factory_knowledge_scope, dict):
             factory_knowledge_scope = None
@@ -222,16 +329,22 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
             snapshots=snapshots,
             authorization=AuthorizationContext(
                 caller_user_id=str(user_id),
-                effective_agent_id=canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                effective_agent_id=canonical_resource_id
+                or str(getattr(body, "assistant_id", None) or "lead_agent"),
                 policy_revision=str(policy_revision),
                 memory_scope=str(user_id),
             ),
             runtime_assembly_fingerprint=_runtime_assembly_fingerprint(
-                canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                canonical_resource_id
+                or str(getattr(body, "assistant_id", None) or "lead_agent"),
                 snapshots,
             ),
             run_id=canonical_run_id,
-            knowledge_scope=(run_metadata.get("knowledge_scope") if isinstance(run_metadata.get("knowledge_scope"), dict) else factory_knowledge_scope),
+            knowledge_scope=(
+                run_metadata.get("knowledge_scope")
+                if isinstance(run_metadata.get("knowledge_scope"), dict)
+                else factory_knowledge_scope
+            ),
         )
         # Persist the same caller-safe projection that the Extension binds to
         # the task lifecycle. This keeps Run metadata and runtime evidence on
@@ -261,12 +374,18 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
                     device_online=bool(local_auth.get("device_online", True)),
                 ),
             )
-            run_metadata["local_authorization_snapshot"] = authorization_snapshot.as_mapping()
+            run_metadata["local_authorization_snapshot"] = (
+                authorization_snapshot.as_mapping()
+            )
 
     logger.info(
-        "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",
-        (time.perf_counter() - snapshot_started) * 1000,
+        "first_token_timing trace_id=%s stage=run_preparation thread_id=%s dependency_resolution_ms=%.1f snapshot_freeze_ms=%.1f knowledge_prepare_ms=%.1f pre_llm_total_ms=%.1f has_canonical=%s",
+        trace_id,
         thread_id,
+        dependency_resolution_ms,
+        snapshot_freeze_ms,
+        knowledge_prepare_ms,
+        (time.perf_counter() - preparation_started) * 1000,
         canonical_resource_id is not None,
     )
     return PreparedRun(
