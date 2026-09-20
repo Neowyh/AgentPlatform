@@ -429,7 +429,7 @@ async def upload_files(
         if getattr(sandbox_lease, "denied", False):
             sandbox_lease = None
             sync_to_sandbox = False
-        if sandbox is None:
+        if sync_to_sandbox and sandbox is None:
             if sandbox_lease is not None:
                 await sandbox_lease.release()
             raise HTTPException(status_code=500, detail="Failed to acquire sandbox")

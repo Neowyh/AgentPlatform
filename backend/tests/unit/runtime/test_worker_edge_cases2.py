@@ -106,6 +106,7 @@ def _make_run_manager():
     rm.try_start = AsyncMock(return_value=RunStartOutcome.started)
     rm.has_later_started_run = AsyncMock(return_value=False)
     rm.persist_current_status = AsyncMock()
+    rm.persist_current_record = AsyncMock(return_value=True)
     rm.update_run_progress = AsyncMock()
     rm.update_run_completion = AsyncMock()
     rm.update_finalizing_progress = AsyncMock()
