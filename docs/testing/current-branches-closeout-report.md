@@ -45,7 +45,9 @@ Python 3.8 compatibility candidate.
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
 | M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
 | `frontend-a11y` | passed: 3 passed, 177s |
+| `frontend-a11y` rerun | passed on candidate `a86f6b3c`: 3 passed; `TEST_LANE_DURATION=96s`, status 0 | 2026-09-21 |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
+| `frontend-visual` rerun | `incomplete`: 161 passed, 12 login/setup screenshot cases timed out after the page closed during the 30s test timeout, 1 skipped; lane status 1. The failures are concentrated in visual screenshot cases requiring the mock web server/auth state and need a dedicated rerun before treating visual acceptance as current-candidate pass | 2026-09-21; 974s |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning, 7s; the sandboxed run hit the documented loopback bind restriction and was rerun unchanged with local sockets permitted |
 | M9 device/MCP focused tests | passed: 82 tests with `PYTHONPATH=tests` (device control, MCP router/OAuth, Local Runtime MCP integration) |
