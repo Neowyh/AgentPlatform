@@ -2,7 +2,7 @@
 
 Date: 2026-09-21
 Baseline: `develop@ca65c5770`  
-Candidate: `develop@04bede19`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification updates.
+Candidate: `develop@a86f6b3c`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification updates.
 
 Status: **本机集成候选仍待复核；正式收口未完成**. The candidate is fast-forwarded into `develop`; local lanes pass, while real acceptance remains blocked by sandbox/runtime and external environment requirements.
 
@@ -38,6 +38,7 @@ Python 3.8 compatibility candidate.
 | Backend ruff check/format (changed files) | passed |
 | Local-runtime focused ruff check | passed |
 | `pr-standard` | passed for code candidate `d8f8bc0e` (report HEAD `4120c7cf`): local-runtime 192 passed / 4 skipped, backend-standard 26,050 passed / 145 skipped, frontend-standard 369 files / 10,221 tests passed, frontend-smoke 29 passed; parent duration 1,765s, status 0 |
+| `backend-standard` | passed for candidate `a86f6b3c`: 26,053 passed / 145 skipped / 820 warnings; parent duration 1,128s, status 0 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
 | M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
@@ -133,7 +134,7 @@ not stored in this ledger.
 | `7fe0d3e7` | Local read-only canonical assembly probe with the isolated DeepSeek config and the published knowledge scope | passed: the graph handed `knowledge_search` plus its schema to `create_agent`; `tool_search` was disabled and no deferred-tool filter hid it. The model object reports `stream_chunk_timeout=240s`, `max_retries=2`, and no client timeout override | 2026-09-21 |
 | `7fe0d3e7` | External DeepSeek boundary replay and live tool seam | passed: DNS/TLS, `/models`, sync/async streaming, 20 consecutive factory tool requests, and `TestLiveToolUse::test_agent_uses_ls_tool` completed without timeout; current canonical Gateway runs returned HTTP 200 in about 4–8s | 2026-09-21 |
 | `7fe0d3e7` | Isolated direct canonical graph invocation with the same model/tool scope | `incomplete`: the graph did not hit a DeepSeek HTTP timeout, but entered a repeated tool-call loop until the LangGraph recursion limit; this is a runtime prompt/tool-loop symptom, distinct from endpoint transport timeout | 2026-09-21 |
-| `04bede19` | `DEER_FLOW_CONFIG_PATH=/tmp/fault-zeroing-real-300-skill.yaml DEER_FLOW_HOME=/tmp/fz-stream-timeout-run4 UV_CACHE_DIR=/tmp/deer-flow-uv-cache timeout 420s uv run --project backend python scripts/run_fault_zeroing_acceptance.py --user-id super_admin_test --case case_01_wind_tunnel_heat_flux_drift` | `incomplete`: canonical AIO sandbox mounted the real upload files and fault-zeroing skill; multiple DeepSeek HTTP 200 calls and file tools completed, then a later model call returned HTTP 402 `Insufficient Balance`. No timeout was observed in this replay; the case remains unaccepted until a funded credential is available. | 2026-09-21; 5m14s |
+| `a86f6b3c` | `DEER_FLOW_CONFIG_PATH=/tmp/fault-zeroing-real-300-skill.yaml DEER_FLOW_HOME=/tmp/fz-stream-timeout-run4 UV_CACHE_DIR=/tmp/deer-flow-uv-cache timeout 420s uv run --project backend python scripts/run_fault_zeroing_acceptance.py --user-id super_admin_test --case case_01_wind_tunnel_heat_flux_drift` | `incomplete`: canonical AIO sandbox mounted the real upload files and fault-zeroing skill; multiple DeepSeek HTTP 200 calls and file tools completed, then a later model call returned HTTP 402 `Insufficient Balance`. No timeout was observed in this replay; the case remains unaccepted until a funded credential is available. | 2026-09-21; 5m14s |
 
 - Gate 7: set `DEER_FLOW_RUN_LIVE_TESTS=1`, `RAGFLOW_GATE7_DATASET_ID`, and the run/source-chain/matrix variables, then run `cd backend && uv run pytest tests/test_knowledge_gate7_live.py -q -s`; run the real citation browser case with the variables documented in [`m5-gate7-acceptance-report.md`](m5-gate7-acceptance-report.md).
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
