@@ -65,6 +65,20 @@ Python 3.8 compatibility candidate.
 
 ## External replay checklist
 
+## Latest replay ledger
+
+All rows below were run against the current candidate before this report was
+updated. Secrets, provider keys, cookies, prompts, and attachment bodies are
+not stored in this ledger.
+
+| Candidate | Command / environment | Result | Duration |
+| --- | --- | --- | --- |
+| `7da37fe0` | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e pytest tests/test_knowledge_gate7_live.py -q -s` | 1 passed, 1 skipped; marker upload, parse, retrieval, receipt binding, and cleanup completed | 31.05s |
+| `7da37fe0` | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE8_DATASET_ID=737991f4ab7a11f1b2776b607031e48e pytest tests/test_knowledge_gate8_live.py -q -s` | 1 passed, 1 skipped after the independent zero-hit probe fix | 10.50s |
+| `7da37fe0` | `pytest tests/unit/knowledge/test_gate8_acceptance_artifacts.py -q` | 8 passed | 7.78s |
+| `b876712b` | Isolated `postgres:16-alpine` plus `pytest tests/test_pg_schema_integration.py tests/test_user_oauth_partial_index.py tests/test_migration_0018_oauth_identity_pg_partial.py -q -s` with `DEERFLOW_TEST_POSTGRES_URL` | `incomplete`: container ready, five tests could not import missing `asyncpg`/`psycopg`; package downloads timed out | 6.45s test attempt |
+| `c633ff4e` | `docker pull enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.9.3` | `incomplete`: registry request timed out; cached image remains `1.0.0.156` | 120s timeout |
+
 - Gate 7: set `DEER_FLOW_RUN_LIVE_TESTS=1`, `RAGFLOW_GATE7_DATASET_ID`, and the run/source-chain/matrix variables, then run `cd backend && uv run pytest tests/test_knowledge_gate7_live.py -q -s`; run the real citation browser case with the variables documented in [`m5-gate7-acceptance-report.md`](m5-gate7-acceptance-report.md).
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
 - Windows 7: run the commands in [`M9_DELIVERY_REPORT.md`](../local-runtime/M9_DELIVERY_REPORT.md) on a native Windows 7 machine, including Credential Manager, MCP/WSS, tray, revocation, and descendant cleanup.
