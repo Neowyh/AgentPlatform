@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from agentplatform_extension.evidence import (
     AuthorizationContext,
@@ -40,6 +42,23 @@ def _scope() -> KnowledgeScope:
 
 
 @pytest.mark.anyio
+async def test_retrieval_receipt_from_child_task_is_visible_to_parent() -> None:
+    """LangGraph tool tasks must contribute to the parent Run evidence envelope."""
+
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
+
+    async def child() -> None:
+        record_retrieval_receipt({"receipt_kind": "retrieval", "receipt_id": "child-receipt"})
+
+    with bind_run_evidence(binding):
+        await asyncio.create_task(child())
+        evidence = current_run_evidence()
+
+    assert evidence is not None
+    assert evidence.retrieval_receipts == ({"receipt_kind": "retrieval", "receipt_id": "child-receipt"},)
+
+
+@pytest.mark.anyio
 async def test_authorized_search_records_bounded_receipt_from_real_result() -> None:
     async def provider(query: str, *, dataset_ids: list[str]) -> dict:
         return {
@@ -58,9 +77,7 @@ async def test_authorized_search_records_bounded_receipt_from_real_result() -> N
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
 
         assert result["chunks"]
         receipt = current_run_evidence().retrieval_receipts[0]
@@ -70,9 +87,7 @@ async def test_authorized_search_records_bounded_receipt_from_real_result() -> N
     assert receipt["manifest_hash"] == "a" * 64
     assert receipt["configuration_source"] == "frozen_run_revision"
     assert receipt["query_sha256"]
-    assert (
-        receipt["items"][0]["content"] == "Untrusted <script>alert(1)</script> fragment"
-    )
+    assert receipt["items"][0]["content"] == "Untrusted <script>alert(1)</script> fragment"
     assert receipt["items"][0]["document_id"] == "document-1"
     assert "provider-doc-1" not in str(receipt)
     assert "provider-dataset" not in receipt["items"][0]
@@ -85,9 +100,7 @@ async def test_retrieval_receipt_keeps_the_exact_active_tool_call_id() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding), bind_tool_call_evidence("call-42"):
-        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     assert receipt["tool_call_id"] == "call-42"
@@ -98,9 +111,7 @@ def test_root_retrieval_receipt_does_not_invent_parent_call_linkage() -> None:
     receipt = {"receipt_id": "rr-root", "receipt_kind": "retrieval", "items": []}
     with bind_run_evidence(binding), bind_tool_call_evidence("call-root"):
         record_retrieval_receipt(receipt)
-        record_tool_receipt(
-            {"tool_name": "knowledge_search", "tool_call_id": "call-root"}
-        )
+        record_tool_receipt({"tool_name": "knowledge_search", "tool_call_id": "call-root"})
         recorded = current_run_evidence().retrieval_receipts[0]
 
     assert "tool_call_id" not in recorded
@@ -108,9 +119,7 @@ def test_root_retrieval_receipt_does_not_invent_parent_call_linkage() -> None:
 
 
 @pytest.mark.anyio
-async def test_retrieval_citation_is_delivered_only_after_archive_callback_succeeds() -> (
-    None
-):
+async def test_retrieval_citation_is_delivered_only_after_archive_callback_succeeds() -> None:
     async def provider(query: str, *, dataset_ids: list[str]) -> dict:
         return {"chunks": [{"document_id": "provider-doc-1", "content": "fragment"}]}
 
@@ -122,9 +131,7 @@ async def test_retrieval_citation_is_delivered_only_after_archive_callback_succe
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding), bind_receipt_archiver(archive):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     assert archived == [receipt["receipt_id"]]
@@ -142,14 +149,9 @@ async def test_archive_failure_does_not_deliver_a_verifiable_citation() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding), bind_receipt_archiver(archive):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
 
-    assert (
-        result
-        == "Knowledge evidence could not be archived; no verifiable citation is available."
-    )
+    assert result == "Knowledge evidence could not be archived; no verifiable citation is available."
 
 
 @pytest.mark.anyio
@@ -162,16 +164,11 @@ async def test_archive_exception_fails_closed_without_leaking_provider_result() 
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding), bind_receipt_archiver(archive):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     assert receipt["archive_status"] == "failed"
-    assert (
-        result
-        == "Knowledge evidence could not be archived; no verifiable citation is available."
-    )
+    assert result == "Knowledge evidence could not be archived; no verifiable citation is available."
 
 
 @pytest.mark.anyio
@@ -192,18 +189,13 @@ async def test_structured_search_delivers_evidence_id_and_citation_to_model() ->
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     evidence_id = receipt["items"][0]["evidence_id"]
     delivered = result["chunks"][0]
     assert delivered["evidence_id"] == evidence_id
-    assert (
-        delivered["citation"]
-        == f"[citation:Policies.pdf — Page 4](evidence://{evidence_id})"
-    )
+    assert delivered["citation"] == f"[citation:Policies.pdf — Page 4](evidence://{evidence_id})"
     assert receipt["items"][0]["document_id"] == "document-1"
     assert receipt["items"][0]["chunk_ref"]
     assert "document_id" not in delivered
@@ -229,9 +221,7 @@ async def test_structured_delivery_uses_the_same_bounded_content_as_archive() ->
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     archived = receipt["items"][0]["content"]
@@ -248,9 +238,7 @@ async def test_authorized_search_delivers_archived_item_citation_to_model() -> N
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
 
     evidence_id = receipt["items"][0]["evidence_id"]
@@ -265,9 +253,7 @@ async def test_provider_label_is_safe_inside_model_facing_markdown() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
 
     citations = result.split("Knowledge citations", 1)[1]
     assert "\\]" in citations
@@ -281,9 +267,7 @@ async def test_only_archived_citations_are_recorded() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
         evidence_id = receipt["items"][0]["evidence_id"]
         record_retrieval_citations(f"[citation:Policies](evidence://{evidence_id})")
@@ -300,14 +284,10 @@ async def test_code_block_evidence_link_is_not_recorded_as_citation() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "vacation", logical_kb="docs"
-        )
+        await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("vacation", logical_kb="docs")
         receipt = current_run_evidence().retrieval_receipts[0]
         evidence_id = receipt["items"][0]["evidence_id"]
-        record_retrieval_citations(
-            f"```md\n[citation:Example](evidence://{evidence_id})\n```"
-        )
+        record_retrieval_citations(f"```md\n[citation:Example](evidence://{evidence_id})\n```")
         recorded = current_run_evidence().retrieval_receipts[0]
 
     assert "cited_item_ids" not in recorded
@@ -320,9 +300,7 @@ async def test_empty_and_error_results_do_not_create_fake_items() -> None:
 
     binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"))
     with bind_run_evidence(binding):
-        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge(
-            "missing", logical_kb="docs"
-        )
+        result = await KnowledgeRuntimeAdapter(_scope(), provider).search_knowledge("missing", logical_kb="docs")
         recorded = current_run_evidence()
 
     assert result == "No relevant content found."
@@ -331,12 +309,8 @@ async def test_empty_and_error_results_do_not_create_fake_items() -> None:
     assert recorded.retrieval_receipts[0]["items"] == []
 
 
-def test_same_query_calls_are_kept_separate_but_duplicate_delivery_is_idempotent() -> (
-    None
-):
-    binding = RunEvidenceBinding(
-        [], AuthorizationContext("caller", "agent", "policy"), run_id="run-1"
-    )
+def test_same_query_calls_are_kept_separate_but_duplicate_delivery_is_idempotent() -> None:
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"), run_id="run-1")
     first = {"receipt_id": "rr-1", "query_sha256": "same", "run_id": "run-1"}
     retry = {**first, "created_at": "later"}
     second_call = {"receipt_id": "rr-2", "query_sha256": "same", "run_id": "run-1"}
@@ -391,9 +365,7 @@ def test_delegated_receipts_require_parent_run_and_frozen_scope() -> None:
 
 
 def test_delegated_receipts_without_frozen_scope_are_rejected() -> None:
-    binding = RunEvidenceBinding(
-        [], AuthorizationContext("caller", "agent", "policy"), run_id="run-1"
-    )
+    binding = RunEvidenceBinding([], AuthorizationContext("caller", "agent", "policy"), run_id="run-1")
     receipt = {
         "receipt_id": "rr-child",
         "run_id": "run-1",

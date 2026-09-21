@@ -18,12 +18,8 @@ from deerflow_extension_api import (
 )
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_KNOWLEDGE_CITATION_RE = re.compile(
-    r"\[citation:[^\]]+\]\(evidence://([A-Za-z0-9_-]+)\)"
-)
-_FENCED_CODE_RE = re.compile(
-    r"(^|\n)(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n\2[^\n]*(?=\n|$)|[\s\S]*$)", re.MULTILINE
-)
+_KNOWLEDGE_CITATION_RE = re.compile(r"\[citation:[^\]]+\]\(evidence://([A-Za-z0-9_-]+)\)")
+_FENCED_CODE_RE = re.compile(r"(^|\n)(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n\2[^\n]*(?=\n|$)|[\s\S]*$)", re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"(`+)[\s\S]*?\1")
 
 
@@ -71,11 +67,7 @@ class AuthorizationContext:
     memory_scope: str | None = None
 
     def __post_init__(self) -> None:
-        if (
-            not self.caller_user_id
-            or not self.effective_agent_id
-            or not self.policy_revision
-        ):
+        if not self.caller_user_id or not self.effective_agent_id or not self.policy_revision:
             raise ValueError("caller, effective agent and policy revision are required")
         if self.memory_scope is not None and self.memory_scope != self.caller_user_id:
             raise ValueError("memory_scope must remain caller-scoped")
@@ -107,11 +99,9 @@ _tool_call_evidence_id: ContextVar[str | None] = ContextVar(
     "agentplatform_tool_call_evidence_id",
     default=None,
 )
-_receipt_archiver: ContextVar[Callable[[Mapping[str, Any]], Awaitable[bool]] | None] = (
-    ContextVar(
-        "agentplatform_receipt_archiver",
-        default=None,
-    )
+_receipt_archiver: ContextVar[Callable[[Mapping[str, Any]], Awaitable[bool]] | None] = ContextVar(
+    "agentplatform_receipt_archiver",
+    default=None,
 )
 
 
@@ -174,9 +164,7 @@ class RunEvidenceBinding:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshots", tuple(self.snapshots))
-        object.__setattr__(
-            self, "tool_receipts", tuple(dict(item) for item in self.tool_receipts)
-        )
+        object.__setattr__(self, "tool_receipts", tuple(dict(item) for item in self.tool_receipts))
         object.__setattr__(
             self,
             "retrieval_receipts",
@@ -211,13 +199,25 @@ class RunEvidenceBinding:
             "subagent_verification": list(self.subagent_verification),
             "artifact_receipts": list(self.artifact_receipts),
             "run_id": self.run_id,
-            "knowledge_scope": dict(self.knowledge_scope)
-            if self.knowledge_scope is not None
-            else None,
+            "knowledge_scope": dict(self.knowledge_scope) if self.knowledge_scope is not None else None,
         }
 
 
-_run_evidence_binding: ContextVar[RunEvidenceBinding | None] = ContextVar(
+@dataclass(slots=True)
+class _RunEvidenceState:
+    """Mutable carrier shared by child asyncio tasks of one Run.
+
+    LangGraph executes tool nodes in child tasks. A ContextVar value is copied
+    into those tasks, but replacing an immutable value there does not update
+    the parent task. Keeping the immutable public binding inside a shared
+    carrier preserves isolation between Runs while allowing receipts recorded
+    by tool tasks to reach the parent finalizer.
+    """
+
+    binding: RunEvidenceBinding
+
+
+_run_evidence_binding: ContextVar[_RunEvidenceState | None] = ContextVar(
     "agentplatform_run_evidence_binding",
     default=None,
 )
@@ -226,7 +226,7 @@ _run_evidence_binding: ContextVar[RunEvidenceBinding | None] = ContextVar(
 @contextmanager
 def bind_run_evidence(binding: RunEvidenceBinding) -> Iterator[None]:
     """Bind one immutable evidence projection to the current run task."""
-    token = _run_evidence_binding.set(binding)
+    token = _run_evidence_binding.set(_RunEvidenceState(binding))
     try:
         yield
     finally:
@@ -235,7 +235,8 @@ def bind_run_evidence(binding: RunEvidenceBinding) -> Iterator[None]:
 
 def current_run_evidence() -> RunEvidenceBinding | None:
     """Return the binding inherited by the current async task, if any."""
-    return _run_evidence_binding.get()
+    state = _run_evidence_binding.get()
+    return state.binding if state is not None else None
 
 
 class RuntimeEvidenceHooks:
@@ -253,12 +254,8 @@ class RuntimeEvidenceHooks:
     def record_retrieval_citations(self, content: str) -> None:
         record_retrieval_citations(content)
 
-    def bind_delegation_evidence(
-        self, parent_tool_receipt_id: str, child_agent_id: str | None = None
-    ):
-        return bind_delegation_evidence(
-            DelegationEvidenceContext(parent_tool_receipt_id, child_agent_id)
-        )
+    def bind_delegation_evidence(self, parent_tool_receipt_id: str, child_agent_id: str | None = None):
+        return bind_delegation_evidence(DelegationEvidenceContext(parent_tool_receipt_id, child_agent_id))
 
     def record_delegated_retrieval_receipts(
         self,
@@ -291,7 +288,9 @@ def _append_evidence_item(field: str, item: Mapping[str, Any]) -> None:
     if any(_evidence_item_identity(value) == identity for value in values):
         return
     values.append(normalized)
-    _run_evidence_binding.set(replace(binding, **{field: tuple(values)}))
+    state = _run_evidence_binding.get()
+    if state is not None:
+        state.binding = replace(binding, **{field: tuple(values)})
 
 
 def _evidence_item_identity(item: Mapping[str, Any]) -> tuple[Any, ...]:
@@ -326,13 +325,10 @@ def mark_retrieval_receipt_archive_status(receipt_id: str, status: str) -> None:
     binding = current_run_evidence()
     if binding is None:
         return
-    receipts = [
-        {**receipt, "archive_status": status}
-        if receipt.get("receipt_id") == receipt_id
-        else receipt
-        for receipt in binding.retrieval_receipts
-    ]
-    _run_evidence_binding.set(replace(binding, retrieval_receipts=tuple(receipts)))
+    receipts = [{**receipt, "archive_status": status} if receipt.get("receipt_id") == receipt_id else receipt for receipt in binding.retrieval_receipts]
+    state = _run_evidence_binding.get()
+    if state is not None:
+        state.binding = replace(binding, retrieval_receipts=tuple(receipts))
 
 
 def record_delegated_retrieval_receipts(
@@ -418,33 +414,25 @@ def record_retrieval_citations(text: str) -> None:
         items = receipt.get("items")
         if not isinstance(items, list):
             continue
-        cited = [
-            str(item["evidence_id"])
-            for item in items
-            if isinstance(item, dict) and item.get("evidence_id") in cited_ids
-        ]
+        cited = [str(item["evidence_id"]) for item in items if isinstance(item, dict) and item.get("evidence_id") in cited_ids]
         if cited:
             receipts[receipt_index] = {**receipt, "cited_item_ids": cited}
             changed = True
     if changed:
-        _run_evidence_binding.set(replace(binding, retrieval_receipts=tuple(receipts)))
+        state = _run_evidence_binding.get()
+        if state is not None:
+            state.binding = replace(binding, retrieval_receipts=tuple(receipts))
 
 
 def _mask_code(text: str) -> str:
     def mask(match: re.Match[str]) -> str:
-        return match.group(1) + re.sub(
-            r"[^\n]", " ", match.group(0)[len(match.group(1)) :]
-        )
+        return match.group(1) + re.sub(r"[^\n]", " ", match.group(0)[len(match.group(1)) :])
 
     fenced = _FENCED_CODE_RE.sub(mask, text)
-    return _INLINE_CODE_RE.sub(
-        lambda match: re.sub(r"[^\n]", " ", match.group(0)), fenced
-    )
+    return _INLINE_CODE_RE.sub(lambda match: re.sub(r"[^\n]", " ", match.group(0)), fenced)
 
 
-def record_local_execution_receipt(
-    receipt: Mapping[str, Any], *, tool_call_id: str | None = None
-) -> None:
+def record_local_execution_receipt(receipt: Mapping[str, Any], *, tool_call_id: str | None = None) -> None:
     """Attach a device receipt as a child of the canonical tool receipt ledger."""
     from agentplatform_extension.local_runtime.receipts import tool_receipt_from_local
 
@@ -473,9 +461,7 @@ class EvidenceLifecycleContributor:
         self._runtime_assembly_fingerprint = runtime_assembly_fingerprint
         self._trace_id = trace_id
 
-    async def on_task_start(
-        self, app_store: ExtensionData, task_store: ExtensionData, info: TaskInfo
-    ) -> None:
+    async def on_task_start(self, app_store: ExtensionData, task_store: ExtensionData, info: TaskInfo) -> None:
         del app_store
         binding = current_run_evidence()
         if binding is None:
@@ -513,18 +499,10 @@ class EvidenceLifecycleContributor:
                 replace(
                     envelope,
                     outcome=outcome,
-                    tool_receipts=binding.tool_receipts
-                    if binding is not None
-                    else envelope.tool_receipts,
-                    retrieval_receipts=binding.retrieval_receipts
-                    if binding is not None
-                    else envelope.retrieval_receipts,
-                    subagent_verification=binding.subagent_verification
-                    if binding is not None
-                    else envelope.subagent_verification,
-                    artifact_receipts=binding.artifact_receipts
-                    if binding is not None
-                    else envelope.artifact_receipts,
+                    tool_receipts=binding.tool_receipts if binding is not None else envelope.tool_receipts,
+                    retrieval_receipts=binding.retrieval_receipts if binding is not None else envelope.retrieval_receipts,
+                    subagent_verification=binding.subagent_verification if binding is not None else envelope.subagent_verification,
+                    artifact_receipts=binding.artifact_receipts if binding is not None else envelope.artifact_receipts,
                 )
             )
 
@@ -535,11 +513,7 @@ def _normalize_snapshots(
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
     for snapshot in snapshots:
-        value = (
-            snapshot.as_mapping()
-            if isinstance(snapshot, ResourceSnapshotRef)
-            else dict(snapshot)
-        )
+        value = snapshot.as_mapping() if isinstance(snapshot, ResourceSnapshotRef) else dict(snapshot)
         ref = ResourceSnapshotRef(
             resource_id=str(value.get("resource_id", "")),
             version=int(value.get("version", 0)),
