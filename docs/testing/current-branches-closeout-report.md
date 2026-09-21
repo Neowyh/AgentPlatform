@@ -22,6 +22,7 @@ Python 3.8 compatibility candidate.
 - M9 was applied from its fork point `ceae68859` through `feature/m9-local-mcp-secrets-tray@2892a4fbc`. The patch applied cleanly on top of the M4/M5/M6 candidate.
 - The pre-existing TTFT upload change in `frontend/src/core/uploads/api.ts` was preserved. It adds optional `trace_id` response data and an `X-Trace-Id` upload header. No upload-concurrency optimization was added without a paired experiment.
 - The candidate is committed on `develop`; the original feature branches and worktrees remain untouched. The protected dirty-worktree snapshot is retained in the stash until the integration is reviewed.
+- The remaining uncommitted diffs in the three source worktrees were rechecked against the candidate: their content is already represented by the integrated M5 (`bd9ecfb2`), M9 (`7d6c44e8`), and TTFT (`e4bcfa71`) commits. A three-way apply in a disposable review worktree produced only duplicate-content/formatting conflicts, so no source-worktree changes were copied or merged a second time.
 
 ## Local verification
 
