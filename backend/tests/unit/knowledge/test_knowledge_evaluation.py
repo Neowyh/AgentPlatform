@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.agentplatform.knowledge.evaluation as evaluation_module
 from app.agentplatform.knowledge.eval_cases import eval_case_content_hash
 from app.agentplatform.knowledge.evaluation import (
     KnowledgeEvaluationService,
@@ -216,3 +218,63 @@ async def test_retry_creates_a_traceable_attempt(evaluation_session: AsyncSessio
 
     assert retried["retry_of_run_id"] == row.id
     assert retried["id"] != row.id
+
+
+@pytest.mark.asyncio
+async def test_process_run_claims_sqlite_row_with_utc_lease_comparison(
+    evaluation_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kb, case = await _evaluation_fixture(evaluation_session)
+    evaluation_session.add(
+        KnowledgeEvaluationPolicy(
+            knowledge_base_id=kb.id,
+            version=1,
+            profile_id="frozen",
+            top_k=8,
+            case_ids_json=[case.id],
+            min_expected_hit_rate=0.0,
+            min_recall_at_k=0.0,
+            min_mrr_at_k=0.0,
+            updated_by="owner",
+        )
+    )
+    await evaluation_session.commit()
+    revision = (await evaluation_session.execute(select(KnowledgeRevision))).scalar_one()
+    service = KnowledgeEvaluationService(
+        evaluation_session,
+        _owner(),
+        search=lambda *_args, **_kwargs: {"chunks": []},
+        settings_factory=lambda: type("Settings", (), {"timeout": 1.0})(),
+    )
+    payload = await service.start(kb.id, revision.id, case_ids=[case.id])
+    run = await evaluation_session.get(KnowledgeEvalRun, payload["id"])
+    assert run is not None
+    run.lease_until = datetime.now(UTC) - timedelta(seconds=1)
+    await evaluation_session.commit()
+    await evaluation_session.refresh(run)
+
+    async def _kb(*_args, **_kwargs):
+        return kb
+
+    monkeypatch.setattr(service, "_kb", _kb)
+    monkeypatch.setattr(evaluation_module, "project_retrieval_items", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        evaluation_module,
+        "KnowledgeRetrievalTestService",
+        type(
+            "Retrieval",
+            (),
+            {
+                "__init__": lambda self, *_args, **_kwargs: None,
+                "revision_metadata": lambda self, _revision: {},
+                "applied_parameters": lambda self, *_args, **_kwargs: {},
+            },
+        ),
+    )
+
+    result = await service.process_run(payload["id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["qualification_status"] == "passed"

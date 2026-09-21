@@ -229,6 +229,11 @@ class KnowledgeEvaluationService:
         now = datetime.now(UTC)
         claimed = await self.session.execute(
             update(KnowledgeEvalRun)
+            # SQLite returns timezone-aware DateTime columns as naive values.
+            # Let the database evaluate this lease predicate instead of
+            # SQLAlchemy's in-memory synchronizer comparing naive and aware
+            # datetimes while claiming a queued run.
+            .execution_options(synchronize_session=False)
             .where(KnowledgeEvalRun.id == run_id, KnowledgeEvalRun.status.in_(["queued", "running"]), (KnowledgeEvalRun.lease_until.is_(None)) | (KnowledgeEvalRun.lease_until < now))
             .values(status="running", lease_owner=owner, lease_until=now + timedelta(seconds=EVAL_LEASE_SECONDS), started_at=run.started_at or now)
         )
@@ -351,12 +356,17 @@ class KnowledgeEvaluationService:
             }
             policy = run.policy_json or {}
             metrics = run.aggregate_json
+            threshold_metrics = {
+                "min_expected_hit_rate": "expected_hit_rate",
+                "min_recall_at_k": "recall_at_k",
+                "min_mrr_at_k": "mrr_at_k",
+            }
             qualified = (
                 (
                     run.failed_cases == 0
                     and metrics["denominator"] == run.total_cases
                     and all(metrics.get(key) is not None for key in ("expected_hit_rate", "recall_at_k", "mrr_at_k"))
-                    and all(float(metrics[key]) >= float(policy[key]) for key in ("min_expected_hit_rate", "min_recall_at_k", "min_mrr_at_k"))
+                    and all(float(metrics[metric]) >= float(policy[threshold]) for threshold, metric in threshold_metrics.items())
                 )
                 if policy
                 else False
