@@ -7,6 +7,7 @@ part is absent.
 
 from __future__ import annotations
 
+import asyncio
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
@@ -610,6 +611,34 @@ async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.M
     with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         async for _ in adapter.astream(context, {"prompt": "提取证据"}):
             pass
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_stream_propagates_executor_exception_without_hanging(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An executor exception must reach the workflow instead of leaving the
+    adapter waiting forever for a queue sentinel."""
+
+    class FailingStreamExecutor(StreamingExecutor):
+        async def _aexecute(self, prompt: str, progress_callback=None) -> SimpleNamespace:
+            raise RuntimeError("provider stream failed")
+
+    env.setattr(executor_module, "WorkflowSubagentExecutor", FailingStreamExecutor)
+    _canonical_env(monkeypatch, tmp_path)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-progress-exception",
+        node_id="deductive_tree",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    with pytest.raises(RuntimeError, match="provider stream failed"):
+        async with asyncio.timeout(1):
+            async for _ in adapter.astream(context, {"prompt": "构建故障树"}):
+                pass
 
 
 class _FakeResult:

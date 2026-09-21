@@ -310,12 +310,16 @@ class _AgentAdapter:
 
         async def produce() -> Any:
             try:
-                from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
-            except ImportError:
-                result = await executor._aexecute(prompt, progress_callback=queue.put)
-            else:
-                with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                try:
+                    from agentplatform_extension.evidence import DelegationEvidenceContext, bind_delegation_evidence
+                except ImportError:
                     result = await executor._aexecute(prompt, progress_callback=queue.put)
+                else:
+                    with bind_delegation_evidence(DelegationEvidenceContext(context.idempotency_key, self.name)):
+                        result = await executor._aexecute(prompt, progress_callback=queue.put)
+            except Exception as exc:
+                await queue.put(_STREAM_FAILURE(exc))
+                return None
             await queue.put(_STREAM_END)
             return result
 
@@ -323,10 +327,14 @@ class _AgentAdapter:
             executor, prompt = await self._build_executor(context, params, model_name=candidate)
             user_token = set_current_user(SimpleNamespace(id=self.user_id))
             producer = asyncio.create_task(produce())
+            stream_failure: BaseException | None = None
             try:
                 while True:
                     update = await queue.get()
                     if update is _STREAM_END:
+                        break
+                    if isinstance(update, _STREAM_FAILURE):
+                        stream_failure = update.error
                         break
                     if update.get("type") == "tool_call":
                         tool = update.get("tool", "?")
@@ -334,6 +342,8 @@ class _AgentAdapter:
                         yield {"type": "progress", "message": f"[回合 {update.get('turn', '-')}] 调用工具 {tool} → {args}"}
                 try:
                     result = await producer
+                    if stream_failure is not None:
+                        raise stream_failure
                     _adopt_subagent_retrieval_evidence(result, context=context, agent_id=self.name)
                     value = self._finalize_result(result)
                 except WorkflowTransientError:
@@ -404,6 +414,13 @@ class _CanonicalAgentAdapter(_AgentAdapter):
 
 class _STREAM_END:
     """Sentinel that closes an agent progress stream."""
+
+
+@dataclass
+class _STREAM_FAILURE:
+    """Carries an executor exception to the consumer without hanging the stream."""
+
+    error: Exception
 
 
 def _compose_system_prompt(soul: str, override: str, context: ActionContext) -> str:
