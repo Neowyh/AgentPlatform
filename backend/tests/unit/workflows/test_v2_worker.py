@@ -34,6 +34,37 @@ async def test_worker_renews_lease_while_executing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_stops_heartbeat_before_finishing_task() -> None:
+    store = MagicMock()
+    task = MagicMock(task_id="task-1")
+    store.claim_next_task = AsyncMock(return_value=task)
+    renew_started = asyncio.Event()
+    renew_cancelled = asyncio.Event()
+
+    async def renew_lease(*_args, **_kwargs) -> bool:
+        renew_started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            renew_cancelled.set()
+            raise
+
+    async def finish_task(*_args) -> bool:
+        assert renew_cancelled.is_set()
+        return True
+
+    store.renew_lease = renew_lease
+    store.finish_task = finish_task
+
+    async def execute(_task) -> None:
+        await renew_started.wait()
+
+    worker = WorkflowWorker(store, execute, worker_id="worker-1", heartbeat_seconds=0.001)
+    assert await worker.run_once() is True
+    assert renew_cancelled.is_set()
+
+
+@pytest.mark.asyncio
 async def test_worker_aborts_execution_when_lease_is_lost() -> None:
     store = MagicMock()
     task = MagicMock(task_id="task-1")

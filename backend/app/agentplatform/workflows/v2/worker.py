@@ -69,6 +69,16 @@ class WorkflowWorker:
 
         heartbeat_task = asyncio.create_task(heartbeat())
         execute_task = asyncio.create_task(self.execute(task))
+
+        async def stop_heartbeat() -> None:
+            if heartbeat_task.done():
+                return
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
         try:
             done, _ = await asyncio.wait(
                 {heartbeat_task, execute_task},
@@ -91,6 +101,7 @@ class WorkflowWorker:
                 except Exception as exc:
                     logger.warning("workflow task %s aborted after lease loss: %s", task.task_id, exc)
                 return True
+            await stop_heartbeat()
             await execute_task
         except WorkflowPaused:
             if not lease_lost.is_set():
@@ -103,11 +114,7 @@ class WorkflowWorker:
             if not lease_lost.is_set():
                 await self.store.finish_task(task.task_id, "completed", None, self.worker_id)
         finally:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            await stop_heartbeat()
         return True
 
     async def run_forever(self, poll_seconds: float = 1.0) -> None:
