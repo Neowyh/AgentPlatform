@@ -51,7 +51,11 @@ async def test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hi
         await _wait_for(lambda: _document_ready(client, dataset_id, document_id))
         await _wait_for(lambda: _marker_searchable(client, dataset_id, marker))
         hit = await client.retrieve(marker, dataset_ids=[dataset_id], page_size=8)
-        miss = await client.retrieve(f"unmatched-{marker}", dataset_ids=[dataset_id], page_size=8)
+        # Keep the zero-hit probe independent from the searchable marker.  A
+        # query containing ``marker`` is expected to retrieve this document,
+        # even when prefixed with an "unmatched" label.
+        miss_query = f"unrelated-zero-hit-{uuid.uuid4().hex}"
+        miss = await client.retrieve(miss_query, dataset_ids=[dataset_id], page_size=8)
         assert any(marker in str(chunk) for chunk in hit.get("chunks", []))
         assert not any(marker in str(chunk) for chunk in miss.get("chunks", []))
     finally:
