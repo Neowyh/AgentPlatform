@@ -37,7 +37,7 @@ Python 3.8 compatibility candidate.
 | Backend `make test` with local sockets permitted (pre-final test-fix commit) | passed: 26,028 passed, 145 skipped, 818 warnings; 1,162s |
 | Backend ruff check/format (changed files) | passed |
 | Local-runtime focused ruff check | passed |
-| `pr-standard` | passed on current candidate: local-runtime 192 passed / 4 skipped, backend-standard 26,046 passed / 147 skipped, frontend-standard Rstest 758 and Vitest 10,221 passed, frontend-smoke 29 passed; parent duration 2,778s, status 0 |
+| `pr-standard` | passed on current candidate (`d8f8bc0e`): local-runtime 192 passed / 4 skipped, backend-standard 26,050 passed / 145 skipped, frontend-standard 369 files / 10,221 tests passed, frontend-smoke 29 passed; parent duration 1,765s, status 0 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
 | M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
@@ -113,6 +113,7 @@ not stored in this ledger.
 | `179bece1` | isolated fresh Gateway, official resource API, real RAGFlow dataset id, KB create/bind/upload/initialize | `incomplete`: API setup succeeded, but document ingestion returned `unavailable`; `localhost:9380` was unreachable and `RAGFLOW_API_KEY` was unset in the execution environment. No source-chain or retrieval claim made | 2026-09-21; 3 API phases |
 | `179bece1` | `bash scripts/run-test-lane.sh local-runtime` with local socket permission | passed: 192 passed, 4 skipped, 1 warning, 7s | 2026-09-21; 7s |
 | `75092b5c` | `bash scripts/run-test-lane.sh pr-standard` with local socket permission | passed: local-runtime 192 passed/4 skipped, backend-standard lane status 0, frontend-standard 369 files/10,221 tests passed, frontend-smoke 29 passed; parent `TEST_LANE_DURATION=1805s`, status 0 | 2026-09-21 |
+| `d8f8bc0e` | `UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh pr-standard` | passed: local-runtime 192 passed/4 skipped, backend-standard 26,050 passed/145 skipped, frontend-standard 369 files/10,221 tests passed, frontend-smoke 29 passed; parent `TEST_LANE_DURATION=1765s`, status 0 | 2026-09-21 |
 | `d58bbfcc` | RAGFlow/TEI bootstrap plus fresh official resource API chain on isolated Gateway | passed: existing RAGFlow services healthy; dataset reused, documents parsed to `DONE`; fresh KB document reached `ready`, Revision prepare reached `ready`, and Revision publish reached `published`. No keys or document bodies are recorded here | 2026-09-21 |
 | `d58bbfcc` | Gate 7/8 live provider probes with bootstrapped RAGFlow token | passed: Gate 7 `1 passed, 1 skipped` (9.15s); Gate 8 `1 passed, 1 skipped` (9.08s) | 2026-09-21 |
 | `d58bbfcc` | Published canonical Agent with pinned published knowledge Revision; real DeepSeek Run with explicit `knowledge_search` request | `incomplete`: Run succeeded and DeepSeek returned a refusal stating the tool was unavailable; Gateway logged one configured tool loaded, but no tool call, retrieval receipt, or source-chain evidence was produced | 2026-09-21 |
