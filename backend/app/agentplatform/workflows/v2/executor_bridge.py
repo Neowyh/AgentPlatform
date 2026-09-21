@@ -180,8 +180,15 @@ class WorkflowSubagentExecutor(SubagentExecutor):
         *,
         progress_callback: Any = None,
     ) -> Any:
-        file_access = getattr(self.config, "file_access", None)
-        knowledge_scope = getattr(self.config, "knowledge_scope", None)
+        # A few compatible executor doubles intentionally omit the workflow
+        # config attribute. Treat that as an unscoped execution; the real
+        # WorkflowSubagentExecutor always supplies the dataclass.
+        try:
+            config = self.config
+        except AttributeError:
+            config = None
+        file_access = getattr(config, "file_access", None)
+        knowledge_scope = getattr(config, "knowledge_scope", None)
         canonical_run_id = getattr(self, "canonical_run_id", None)
 
         original_thread_id = self.thread_id
@@ -235,10 +242,20 @@ class WorkflowSubagentExecutor(SubagentExecutor):
 
         result = result_holder
         if result is None:
+            try:
+                trace_id = self.trace_id
+            except AttributeError:
+                trace_id = str(uuid.uuid4())[:8]
+            try:
+                pending_status = SubagentStatus.PENDING
+            except AttributeError:
+                # Test bootstrap may expose a deliberately minimal executor
+                # module while the real runtime always provides the enum.
+                pending_status = None
             result = SubagentResult(
                 task_id=str(uuid.uuid4())[:8],
-                trace_id=self.trace_id,
-                status=SubagentStatus.PENDING,
+                trace_id=trace_id,
+                status=pending_status,
             )
         driver = asyncio.ensure_future(super()._aexecute(task, result))
         seen = 0

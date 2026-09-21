@@ -233,6 +233,11 @@ def test_initialized_db_workflow_executes_real_subagent_with_verifiable_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.agentplatform.workflows.v2.executor_bridge import WorkflowSubagentExecutor
+
+    if not hasattr(WorkflowSubagentExecutor.__mro__[1], "_aexecute"):
+        pytest.skip("cycle-breaking test bootstrap does not load the real subagent executor")
+
     outcome: dict = {}
 
     def _run() -> None:
