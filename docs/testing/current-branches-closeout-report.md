@@ -43,12 +43,14 @@ Python 3.8 compatibility candidate.
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning, 7s; the sandboxed run hit the documented loopback bind restriction and was rerun unchanged with local sockets permitted |
 | Gate 8 artifact validator unit tests | passed: 12 passed |
+| Gate 7 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated dataset marker created, retrieved, archived, and deleted |
+| Gate 8 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated marker search and unrelated zero-hit query both verified |
 | TTFT diagnostic unit tests | Existing diagnostic tests remain available; the configured DeepSeek probe passed. Real fault-zeroing runs were attempted with 0 files: LocalSandboxProvider rejected the Agent's required Skill isolation; an AIO retry emitted an SSE error and terminated the isolated Gateway. Both runs are `incomplete`; no performance conclusion is claimed |
 
 ## Gate status
 
-- Gate 7: local acceptance assets and focused tests are present; real RAGFlow, model, permission matrix, and browser evidence are `unexecuted`.
-- Gate 8: evaluation APIs, persistence, publish gate, and acceptance assets are present; real model evaluation and browser acceptance are `unexecuted`.
+- Gate 7: the real RAGFlow provider probe now passes on the current candidate; the persisted full source-chain artifact, 16-row permission/state matrix, real model run, and browser citation evidence remain `unexecuted`.
+- Gate 8: the real RAGFlow marker/zero-hit provider probe now passes on the current candidate; evaluation APIs, persistence, publish gate, full artifact, real model evaluation, and browser acceptance remain `unexecuted`.
 - M9: local MCP, secrets, tray, consent, redaction, and device-control tests pass in the socket-enabled environment. Windows 7 remains `unexecuted`.
 - Upload sandbox authorization now honors a denied `sandbox:execute` decision by completing the upload without sandbox synchronization; the regression scenario passes.
 - TTFT: trace/upload correlation is integrated. No performance improvement is claimed; 0/1/5/10/20-file paired experiments with a real business Agent and proxy path remain `unexecuted`.
