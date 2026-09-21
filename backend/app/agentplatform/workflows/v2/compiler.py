@@ -42,6 +42,15 @@ def _knowledge_scope_from_state(state: dict[str, Any]) -> KnowledgeScope | None:
     )
 
 
+def _render_runtime_file_access(file_access: dict[str, list[str]], state: dict[str, Any]) -> dict[str, list[str]]:
+    """Render runtime roots and omit optional roots whose inputs are absent."""
+    rendered = render_template(file_access, state)
+    return {
+        key: [root for root in rendered.get(key, []) if isinstance(root, str) and root and "{{" not in root and "}}" not in root]
+        for key in ("read", "write")
+    }
+
+
 class WorkflowCancelled(RuntimeError):
     """Raised when a queued cancellation is observed at a node boundary."""
 
@@ -261,7 +270,11 @@ class WorkflowGraphCompiler:
             context_state = dict(state.get("state", {}))
             state_files = {key: workflow_state_path(key, structured=isinstance(value, (dict, list))) for key, value in context_state.items()}
             render_state = {**state, "state_files": state_files}
-            file_access = render_template(node.action.file_access.model_dump(), render_state) if node.action is not None and node.action.file_access is not None else None
+            file_access = (
+                _render_runtime_file_access(node.action.file_access.model_dump(), render_state)
+                if node.action is not None and node.action.file_access is not None
+                else None
+            )
             if file_access is not None:
                 read_roots = file_access.setdefault("read", [])
                 state_root = workflow_state_root()

@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +43,7 @@ from app.agentplatform.fault_zeroing.kernel import (
     COMPLETION_STATUS_COMPLETED,
     FaultZeroingKernel,
 )
+from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 
 CASES_ROOT = REPO_ROOT / "docs" / "zero_agent_eval_cases"
 EXPECTED_OUTPUTS = (
@@ -110,8 +111,20 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
     acceptance_dir = get_paths().base_dir / "acceptance" / "fault-zeroing" / session_id
     acceptance_dir.mkdir(parents=True, exist_ok=False)
     engine = create_async_engine(
-        f"sqlite+aiosqlite:///{acceptance_dir / 'workflow.db'}"
+        f"sqlite+aiosqlite:///{acceptance_dir / 'workflow.db'}",
+        connect_args={"timeout": 30},
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _configure_sqlite(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cursor.close()
+
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -155,13 +168,18 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
         }
     )
     results: list[dict] = []
+    definition_version = 1
     try:
         for case_dir in _case_dirs(case_name):
             run_id = f"fz-{case_dir.name.split('_')[1]}-{session_id}-{uuid4().hex[:6]}"
             paths = get_paths()
-            paths.ensure_thread_dirs(run_id, user_id=user_id)
-            uploads_dir = paths.sandbox_uploads_dir(run_id, user_id=user_id)
-            outputs_dir = paths.sandbox_outputs_dir(run_id, user_id=user_id)
+            # Canonical runs use the scoped sandbox identity as the provider's
+            # thread mount. Stage inputs and collect outputs in that same
+            # directory so the AIO container sees the files we prepared.
+            sandbox_scope = canonical_sandbox_scope(run_id, run_id)
+            paths.ensure_thread_dirs(sandbox_scope, user_id=user_id)
+            uploads_dir = paths.sandbox_uploads_dir(sandbox_scope, user_id=user_id)
+            outputs_dir = paths.sandbox_outputs_dir(sandbox_scope, user_id=user_id)
             staged_files = _stage_case(case_dir, uploads_dir)
             if any(name.endswith("_expected_analysis.md") for name in staged_files):
                 raise AssertionError(
@@ -176,7 +194,7 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             # so the operator confirms the missing code-evidence side.
             started_result = await kernel.start_run(
                 workflow_name="fault-zeroing",
-                definition_version=1,
+                definition_version=definition_version,
                 inputs={
                     "upload_dir": "/mnt/user-data/uploads",
                     "problem_description": problem_description,
@@ -195,14 +213,34 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             async def execute(task) -> None:
                 await execute_workflow_task(task, store=store, config=config)
 
-            await WorkflowWorker(
+            worker = WorkflowWorker(
                 store,
                 execute,
                 worker_id=f"acceptance-{case_dir.name}",
                 lease_seconds=config.workflow_runtime.lease_seconds,
                 heartbeat_seconds=config.workflow_runtime.heartbeat_seconds,
                 max_attempts=config.workflow_runtime.max_attempts,
-            ).run_once()
+            )
+            await worker.run_once()
+            # The production contract pauses when a branch reports missing
+            # artifacts.  Real agents may finish writing those files just
+            # after that check, so emulate the operator's explicit resume
+            # rather than treating the pause as a terminal failure.
+            for _ in range(3):
+                pending = await store.get_run(run_id)
+                if pending is None or pending.status != "paused":
+                    break
+                interrupt = (pending.snapshot or {}).get("interrupt", [{}])[0]
+                if interrupt.get("type") != "artifacts_missing":
+                    break
+                await store.submit_command(
+                    str(uuid4()),
+                    run_id,
+                    "resume",
+                    {"artifacts_confirmed": True},
+                    user_id,
+                )
+                await worker.run_once()
             duration_seconds = round(time.monotonic() - started, 3)
             run = await store.get_run(run_id)
             events = await store.list_events(run_id)
@@ -250,7 +288,7 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                 {
                     "case": case_dir.name,
                     "run_id": run_id,
-                    "definition_version": version.version,
+                    "definition_version": definition_version,
                     "duration_seconds": duration_seconds,
                     "event_count": len(events),
                     "completed_nodes": completed_nodes,
@@ -272,7 +310,7 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
         "started_at": started_at.isoformat(),
         "completed_at": datetime.now(UTC).isoformat(),
         "workflow": "fault-zeroing",
-        "definition_version": version.version,
+        "definition_version": definition_version,
         "contract_version": CONTRACT_VERSION,
         "validator_run": True,
         "results": results,

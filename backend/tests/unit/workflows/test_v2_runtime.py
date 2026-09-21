@@ -41,7 +41,8 @@ async def test_compiler_runs_action_and_writes_structured_output() -> None:
         """
 schema_version: 2
 name: hello
-inputs: {}
+inputs:
+  optional_source: {type: string, default: ""}
 state: {}
 entrypoint: hello
 nodes:
@@ -146,6 +147,48 @@ edges: []
         "read": ["/inputs/case", workflow_state_root()],
         "write": ["/outputs/run/artifacts/evidence"],
     }
+
+
+@pytest.mark.asyncio
+async def test_compiler_omits_unresolved_optional_file_access_roots() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: optional-scope
+inputs:
+  optional_source: {type: string, default: ""}
+state: {}
+entrypoint: collect
+nodes:
+  - id: collect
+    type: action
+    action:
+      kind: agent
+      name: scoped-agent
+      file_access:
+        read: ["{{inputs.optional_source}}", "/mnt/skills/fault-zeroing"]
+        write: []
+edges: []
+"""
+    )
+    captured = None
+
+    class Adapter:
+        async def run(self, context, params):
+            nonlocal captured
+            captured = context.file_access
+            return "ok"
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("agent", "scoped-agent"): Adapter()}),
+    ).compile()
+    await graph.ainvoke(
+        {"inputs": {}, "state": {}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:optional-scope"}},
+    )
+
+    assert captured == {"read": ["/mnt/skills/fault-zeroing", workflow_state_root()], "write": []}
 
 
 @pytest.mark.asyncio

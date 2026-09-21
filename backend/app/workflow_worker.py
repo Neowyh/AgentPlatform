@@ -259,7 +259,19 @@ async def execute_workflow_task(
         # payload-less resume would never deliver a value and the interrupt gate
         # would re-raise on every attempt. Normalize to an explicit value.
         resume_value = command.payload if command.payload else {"resumed": True}
-        invocation = Command(resume=resume_value)
+        # Intake confirmations can pause a run before the graph has created a
+        # checkpoint.  Carry the immutable run inputs into the resume command
+        # so the first graph node can still render file-access and prompt
+        # templates.  For an ordinary in-graph interrupt these fields merge
+        # harmlessly with the existing checkpoint state.
+        invocation = Command(
+            update={
+                "run_id": run_id,
+                "inputs": run.inputs,
+                "model_name": run.model_name,
+            },
+            resume=resume_value,
+        )
         # The attempt-budget exemption applies to the immediate resume only;
         # a later crash/take-over must count as a fresh attempt again.
         await store.clear_resume_command(task.task_id)
