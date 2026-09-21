@@ -39,6 +39,7 @@ Python 3.8 compatibility candidate.
 | Local-runtime focused ruff check | passed |
 | `pr-standard` | passed for code candidate `d8f8bc0e` (report HEAD `4120c7cf`): local-runtime 192 passed / 4 skipped, backend-standard 26,050 passed / 145 skipped, frontend-standard 369 files / 10,221 tests passed, frontend-smoke 29 passed; parent duration 1,765s, status 0 |
 | `pr-standard` rerun | passed for code candidate `a86f6b3c`: local-runtime 192 passed / 4 skipped, backend-standard 26,053 passed / 145 skipped, frontend-standard 369 files / 10,221 tests passed, frontend-smoke 29 passed; parent duration 1,624s, status 0 |
+| `pr-standard` preflight recheck | passed with browser and loopback socket permissions: Python/uv, Node/pnpm, lockfiles, Playwright Chromium launch, writable paths, and local socket bind all ready; restricted-sandbox preflight remains environment-blocked | 2026-09-21; 9.8s |
 | `backend-standard` | passed for candidate `a86f6b3c`: 26,053 passed / 145 skipped / 820 warnings; parent duration 1,128s, status 0 |
 | `backend-serial` rerun | passed on candidate `a86f6b3c`: 54 passed / 10 skipped / 2 warnings; 26,360 deselected; `TEST_LANE_DURATION=30s`, status 0 | 2026-09-21 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
