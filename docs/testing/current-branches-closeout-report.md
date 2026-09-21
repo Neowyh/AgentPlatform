@@ -40,6 +40,7 @@ Python 3.8 compatibility candidate.
 | `pr-standard` | passed for code candidate `d8f8bc0e` (report HEAD `4120c7cf`): local-runtime 192 passed / 4 skipped, backend-standard 26,050 passed / 145 skipped, frontend-standard 369 files / 10,221 tests passed, frontend-smoke 29 passed; parent duration 1,765s, status 0 |
 | `backend-standard` | passed for candidate `a86f6b3c`: 26,053 passed / 145 skipped / 820 warnings; parent duration 1,128s, status 0 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
+| `backend-blocking-io` rerun | passed on candidate `a86f6b3c`: 97 passed, 5 warnings; `TEST_LANE_DURATION=9s`, status 0 |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
 | M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
 | `frontend-a11y` | passed: 3 passed, 177s |
@@ -135,6 +136,7 @@ not stored in this ledger.
 | `7fe0d3e7` | External DeepSeek boundary replay and live tool seam | passed: DNS/TLS, `/models`, sync/async streaming, 20 consecutive factory tool requests, and `TestLiveToolUse::test_agent_uses_ls_tool` completed without timeout; current canonical Gateway runs returned HTTP 200 in about 4–8s | 2026-09-21 |
 | `7fe0d3e7` | Isolated direct canonical graph invocation with the same model/tool scope | `incomplete`: the graph did not hit a DeepSeek HTTP timeout, but entered a repeated tool-call loop until the LangGraph recursion limit; this is a runtime prompt/tool-loop symptom, distinct from endpoint transport timeout | 2026-09-21 |
 | `a86f6b3c` | `DEER_FLOW_CONFIG_PATH=/tmp/fault-zeroing-real-300-skill.yaml DEER_FLOW_HOME=/tmp/fz-stream-timeout-run4 UV_CACHE_DIR=/tmp/deer-flow-uv-cache timeout 420s uv run --project backend python scripts/run_fault_zeroing_acceptance.py --user-id super_admin_test --case case_01_wind_tunnel_heat_flux_drift` | `incomplete`: canonical AIO sandbox mounted the real upload files and fault-zeroing skill; multiple DeepSeek HTTP 200 calls and file tools completed, then a later model call returned HTTP 402 `Insufficient Balance`. No timeout was observed in this replay; the case remains unaccepted until a funded credential is available. | 2026-09-21; 5m14s |
+| `a86f6b3c` | `bash scripts/run-test-lane.sh local-runtime` with local sockets permitted | passed: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=7s`, status 0 | 2026-09-21; 7s |
 
 - Gate 7: set `DEER_FLOW_RUN_LIVE_TESTS=1`, `RAGFLOW_GATE7_DATASET_ID`, and the run/source-chain/matrix variables, then run `cd backend && uv run pytest tests/test_knowledge_gate7_live.py -q -s`; run the real citation browser case with the variables documented in [`m5-gate7-acceptance-report.md`](m5-gate7-acceptance-report.md).
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
