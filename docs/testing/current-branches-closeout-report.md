@@ -49,9 +49,11 @@ Python 3.8 compatibility candidate.
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
 | `frontend-visual` rerun | `incomplete`: 161 passed, 12 login/setup screenshot cases timed out after the page closed during the 30s test timeout, 1 skipped; lane status 1. The failures are concentrated in visual screenshot cases requiring the mock web server/auth state and need a dedicated rerun before treating visual acceptance as current-candidate pass | 2026-09-21; 974s |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
+| `test-contracts` rerun | passed on candidate `a86f6b3c`; `TEST_LANE_DURATION=23s`, status 0 | 2026-09-21 |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning, 7s; the sandboxed run hit the documented loopback bind restriction and was rerun unchanged with local sockets permitted |
 | M9 device/MCP focused tests | passed: 82 tests with `PYTHONPATH=tests` (device control, MCP router/OAuth, Local Runtime MCP integration) |
 | Gate 8 artifact validator unit tests | passed: 12 passed |
+| Gate 7/8 artifact validator rerun | passed on candidate `a86f6b3c`: 11 passed; no real artifact was supplied, so this verifies validator behavior only | 2026-09-21; 3.74s |
 | Gate 7 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated dataset marker created, retrieved, archived, and deleted |
 | Gate 8 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated marker search and unrelated zero-hit query both verified |
 | Gate 7 provider replay after Evidence fix | passed on current candidate `4120c7cf` with isolated allowlisted dataset: archived-delivery assertion 1 passed; no credentials or provider payload persisted in the report |
