@@ -50,6 +50,7 @@ Python 3.8 compatibility candidate.
 | `frontend-a11y` rerun | passed on candidate `a86f6b3c`: 3 passed; `TEST_LANE_DURATION=96s`, status 0 | 2026-09-21 |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
 | `frontend-visual` rerun | `incomplete`: 161 passed, 12 login/setup screenshot cases timed out after the page closed during the 30s test timeout, 1 skipped; lane status 1. The failures are concentrated in visual screenshot cases requiring the mock web server/auth state and need a dedicated rerun before treating visual acceptance as current-candidate pass | 2026-09-21; 974s |
+| `frontend-visual` dedicated rerun | `bash scripts/run-test-lane.sh frontend-visual` after `python3 scripts/test_preflight.py frontend-visual` (status=ready) on the current candidate | passed: 173 passed, 1 skipped, no snapshot rewritten; the 12 earlier login/setup timeouts were environment flake, not snapshot drift; `TEST_LANE_DURATION=607s`, status 0 | 2026-09-21; 9.4m |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
 | `test-contracts` rerun | passed on candidate `a86f6b3c`; `TEST_LANE_DURATION=23s`, status 0 | 2026-09-21 |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning, 7s; the sandboxed run hit the documented loopback bind restriction and was rerun unchanged with local sockets permitted |
