@@ -39,6 +39,8 @@ Python 3.8 compatibility candidate.
 | Local-runtime focused ruff check | passed |
 | `pr-standard` | passed on current candidate: local-runtime 192 passed / 4 skipped, backend-standard 26,046 passed / 147 skipped, frontend-standard Rstest 758 and Vitest 10,221 passed, frontend-smoke 29 passed; parent duration 2,778s, status 0 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
+| `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
+| M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
 | `frontend-a11y` | passed: 3 passed, 177s |
 | `frontend-visual` | passed: 173 passed, 1 skipped, 774s; Chromium launch and local socket preflight required the socket-enabled environment |
 | `test-contracts` | passed: ownership and lane entry contracts, 20s |
@@ -51,8 +53,8 @@ Python 3.8 compatibility candidate.
 
 ## Gate status
 
-- Gate 7: the real RAGFlow provider probe now passes on the current candidate; the persisted full source-chain artifact, 16-row permission/state matrix, real model run, and browser citation evidence remain `unexecuted`.
-- Gate 8: the real RAGFlow marker/zero-hit provider probe now passes on the current candidate; evaluation APIs, persistence, publish gate, full artifact, real model evaluation, and browser acceptance remain `unexecuted`.
+- Gate 7: the real RAGFlow provider probe was rerun on `094e7cc9` and passed (1 passed / 1 artifact-dependent case skipped); the persisted full source-chain artifact, 16-row permission/state matrix, real model run, and browser citation evidence remain `unexecuted`.
+- Gate 8: the real RAGFlow marker/zero-hit provider probe was rerun on `094e7cc9` and passed (1 passed / 1 artifact-dependent case skipped); evaluation APIs, persistence, publish gate, full artifact, real model evaluation, and browser acceptance remain `unexecuted`.
 - M9: local MCP, secrets, tray, consent, redaction, and device-control tests pass in the socket-enabled environment. Windows 7 remains `unexecuted`.
 - Upload sandbox authorization now honors a denied `sandbox:execute` decision by completing the upload without sandbox synchronization; the regression scenario passes.
 - TTFT: trace/upload correlation is integrated. No performance improvement is claimed; 0/1/5/10/20-file paired experiments with a real business Agent and proxy path remain `unexecuted`.
@@ -79,7 +81,9 @@ not stored in this ledger.
 | `4db7fb33` | Isolated `postgres:16-alpine`; async DSN for `test_pg_schema_integration.py`, `test_user_oauth_partial_index.py`, and `test_migration_0018_oauth_identity_pg_partial.py`, then `postgresql://` DSN for the synchronous schema test | passed: 5 live tests, 8 warnings; temporary container removed | 20.28s async group + 7.84s sync test |
 | `beb0a061` | `UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv sync --all-packages --extra postgres` | passed: installed `asyncpg==0.31.0`, `psycopg==3.3.3`, `psycopg-binary==3.3.3`, and `langgraph-checkpoint-postgres==3.1.1` | 5.4s |
 | `beb0a061` | isolated `postgres:16-alpine`; async DSN for schema/OAuth/migration tests, then `postgresql://` DSN for the synchronous schema test | passed: 5 live tests, 8 warnings; temporary container removed | 20.28s async group + 7.84s sync test |
-| `beb0a061` | AIO image `enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.9.3` (image id prefix `7eb67c59e1aa`), temporary config, real DeepSeek Agent, `multi_attachment_ttft.py --count 0` | passed operational run: sandbox created, DeepSeek reached, `stream_error=false`, run completed; no assistant token because the Agent requested clarification | 24.3s run; 8.5s first SSE |
+| `094e7cc9` | `DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e UV_CACHE_DIR=/tmp/deer-flow-uv-cache .venv/bin/pytest tests/test_knowledge_gate7_live.py -q -s` with current `config.yaml` | 1 passed, 1 skipped; isolated marker uploaded, parsed, retrieved, evidence delivery checked, and deleted | 10.14s |
+| `094e7cc9` | `DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE8_DATASET_ID=737991f4ab7a11f1b2776b607031e48e UV_CACHE_DIR=/tmp/deer-flow-uv-cache .venv/bin/pytest tests/test_knowledge_gate8_live.py -q -s` with current `config.yaml` | 1 passed, 1 skipped; marker hit and independent zero-hit query checked, marker deleted | 10.80s |
+| `094e7cc9` | AIO image `enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.9.3` (image id prefix `7eb67c59e1aa`), temporary config, real DeepSeek Agent, `multi_attachment_ttft.py --count 0` | passed operational run: sandbox created, DeepSeek reached, `stream_error=false`, run completed; no assistant token because the Agent requested clarification | 23.50s run; 852.4ms first SSE |
 
 - Gate 7: set `DEER_FLOW_RUN_LIVE_TESTS=1`, `RAGFLOW_GATE7_DATASET_ID`, and the run/source-chain/matrix variables, then run `cd backend && uv run pytest tests/test_knowledge_gate7_live.py -q -s`; run the real citation browser case with the variables documented in [`m5-gate7-acceptance-report.md`](m5-gate7-acceptance-report.md).
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
