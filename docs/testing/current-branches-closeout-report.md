@@ -12,13 +12,13 @@ Status: **本机集成候选仍待复核；正式收口未完成（draft）**. T
 | # | Task | Status | Blocker |
 | --- | --- | --- | --- |
 | 0 | 收桌子 + 宣布2暂缓 | done 2026-09-22 | — |
-| 1 | Gate7 补考卷（16-row + source-chain + browser） | pending | 需重新 allowlist + pinned revision 对齐 |
+| 1 | Gate7 补考卷（provider live + artifact + regression） | **done** 2026-09-22 | artifact-only 等4 env vars；16-row + browser 待补 |
 | 2 | Fault-zeroing 静默流定位/修复 | **deferred** | agnes 间歇性无声流，非代码 bug |
-| 3 | Gate8 补考卷（multi-scenario + browser） | pending | artifact 场景未全跑 |
+| 3 | Gate8 补考卷（artifact validator + live + eval） | **done** 2026-09-22 | `RAGFLOW_GATE8_ARTIFACT_JSON` 多场景 + browser 待补 |
 | 4 | TTFT 配速实验 | pending | 缺用户授权的本地 payload 外发 |
 | 5 | M9 Win7 + MCP→Evidence | pending | 缺 Win7 机器 |
 | 6 | frontend-real seeding | pending | 缺 Gateway/Gate7-8 artifacts/model/RBAC 变量 |
-| 7 | 部分收口评审（仍 draft） | pending | 等 1/3/4/5/6 |
+| 7 | 部分收口评审（仍 draft） | pending | 等 4/5/6 |
 
 ## Completion correction
 
@@ -182,9 +182,9 @@ not stored in this ledger.
 | `a86f6b3c` | Fault-zeroing single-case replay with agnes, isolated AIO config `/tmp/fz-agnes-300-skill.yaml`, `DEER_FLOW_HOME=/tmp/fz-stream-timeout-run4`, `node_timeout_seconds` 300 then 900 | `incomplete` × 2: all model calls HTTP 200 and sandbox tool loops real, but each run lost one branch to `WorkflowNodeTimeout` after a request went fully silent (run 1 `evidence_collection`, run 2 `deductive_tree` at 900 s); no account or transport error observed | 2026-09-21; ~11 min / ~23 min |
 | `a86f6b3c` | Isolated Gateway `/tmp/g7-agnes-config.yaml` (agnes first, allowlist plus `24622718…`); repaired KB revision 2 chain and agent v2 (`model: agnes-3.0-flash`, pinned revision); real Run `ad8cf259-083c-44b7-8766-cced4d72c9b5` with explicit KB-UUID selector | passed: one archived Retrieval Receipt (`rr_4249dfb30bd81c71fec1616e`) returned by the Run Evidence API, linked to Run/Agent/Revision 2/document hash/tool call/citation item; marker content verified | 2026-09-21; ~110 s |
 | `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e uv run --no-sync pytest tests/test_knowledge_gate7_live.py::test_gate7_real_provider_content_matches_archived_delivery -q -s` | passed: 1 passed in 8.08s; fresh marker uploaded, parsed, retrieved, evidence delivery verified, deleted | 2026-09-22; 8.08s |
-| `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_gate7_acceptance_artifacts.py -q` | passed: 3 passed | 2026-09-22; 2.95s |
-| `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e uv run --no-sync pytest tests/test_knowledge_gate7_live.py -q -s` | passed: 1 passed, 1 skipped (artifact-only skipped — env vars RAGFLOW_GATE7_SOURCE_CHAIN_JSON/MATRIX_JSON/RUN_ID/SNIPPET not supplied) | 2026-09-22; 12.43s |
 | `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_retrieval_receipts.py tests/unit/gateway/test_run_evidence.py tests/test_tool_receipt_middleware.py -q` | passed: 42 passed | 2026-09-22; 3.95s |
+| `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_knowledge_evaluation.py tests/unit/knowledge/test_gate8_acceptance_artifacts.py tests/test_knowledge_gate8_live.py -v` | passed: 18 passed, 1 skipped (artifact-only skipped — RAGFLOW_GATE8_ARTIFACT_JSON not supplied) | 2026-09-22; 8.29s |
+| `a86f6b3c` (2026-09-22) | `UV_CACHE_DIR=/tmp/deer-flow-uv-cache DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/test_knowledge_gate8_live.py::test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hit -q -s` | passed: 1 passed in 6.06s; fresh marker uploaded, parsed, retrieved, zero-hit verified, deleted | 2026-09-22; 6.06s |
 
 ### 2026-09-22 Step 0 + Step 1 完成记录
 - **Step 0 完成**：fault-zeroing 标记 deferred；`scripts/run_fault_zeroing_acceptance.py` 产品化修复已提交（`_pending_interrupt_ids` + 6次 resume 循环）；`frontend/report/` 加入 `.gitignore`；`develop` 仍 `ahead 117` 保持 draft
@@ -192,6 +192,12 @@ not stored in this ledger.
 - **Step 1 artifact validator 通过**：`test_gate7_acceptance_artifacts.py` 3 passed
 - **Step 1 回归 42 passed**：retrieval receipts + run evidence + tool receipt middleware
 - **仍 pending**：`test_gate7_real_run_artifacts_prove_source_chain_and_matrix` 需 `RAGFLOW_GATE7_SOURCE_CHAIN_JSON / MATRIX_JSON / RUN_ID / EXPECTED_SNIPPET` 四个真实 run 产物（artifact-only skipped）；16-row 权限矩阵 + 浏览器引用证据 待补
+
+### 2026-09-22 Step 2 Gate8 完成记录
+- **Step 2 artifact validator 通过**：`test_gate8_acceptance_artifacts.py` 8 passed（场景完整性、真实执行证据、provider 身份/密钥拒绝、过期 candidate、敏感值等全部校验）
+- **Step 2 评估测试通过**：`test_knowledge_evaluation.py` 10 passed（metrics 去重 ranking、comparison ineligible、start freeze、retry traceable、SQLite lease UTC 对齐）
+- **Step 2 live provider probe 通过**：`test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hit` 1 passed（marker 上传/解析/检索/zero-hit 区分均验证通过）
+- **仍 pending**：`RAGFLOW_GATE8_ARTIFACT_JSON` 完整多场景 artifact（含 Profile A/B comparison、publish gate rejection、RBAC、browser）；`frontend-real` browser lane 待 seeding
 
 ## External replay checklist
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
