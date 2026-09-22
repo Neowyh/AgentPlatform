@@ -1295,7 +1295,21 @@ class ResourceService:
 
     async def _assert_required_dependencies_ready(self, source: Resource) -> None:
         dependencies = list((await self.session.execute(select(ResourceDependency, Resource).join(Resource, Resource.id == ResourceDependency.target_resource_id).where(ResourceDependency.source_resource_id == source.id))).all())
-        missing = [target.slug for dependency, target in dependencies if dependency.required is not False and (target.lifecycle_status != "active" or target.latest_version < 1)]
+        missing: list[str] = []
+        for dependency, target in dependencies:
+            if dependency.required is False or target.lifecycle_status != "active":
+                if dependency.required is not False and target.lifecycle_status != "active":
+                    missing.append(target.slug)
+                continue
+            if target.latest_version >= 1:
+                continue
+            if target.type == ResourceType.KNOWLEDGE_BASE.value:
+                try:
+                    await self._resolve_published_revision(target.id, None)
+                except ResourceConflict:
+                    missing.append(target.slug)
+                continue
+            missing.append(target.slug)
         if missing:
             raise ResourceConflict(f"Required resource dependencies are not published: {', '.join(missing)}")
 

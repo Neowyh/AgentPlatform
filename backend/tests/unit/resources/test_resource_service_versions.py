@@ -424,6 +424,39 @@ async def test_publish_rejects_unpublished_required_knowledge_dependency(session
 
 
 @pytest.mark.asyncio
+async def test_publish_accepts_required_knowledge_dependency_with_published_revision(session: AsyncSession) -> None:
+    agent = _resource("agent-kb-publish", resource_type="agent")
+    knowledge_base = _resource("kb-publish", resource_type="knowledge_base")
+    revision = KnowledgeRevision(
+        id="kb-publish-revision",
+        knowledge_base_id=knowledge_base.id,
+        revision_no=1,
+        status="published",
+        manifest_hash="d" * 64,
+        manifest_json=[],
+        provider_doc_map_json={},
+        document_count=1,
+        provider_dataset_id="opaque-dataset-publish",
+        created_by="owner",
+    )
+    knowledge_row = KnowledgeBase(resource_id=knowledge_base.id, active_revision_id=revision.id)
+    session.add_all([agent, knowledge_base, revision, knowledge_row])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await service.replace_dependencies(agent.id, [{"resource_id": knowledge_base.id, "required": True}])
+    draft = await service.save_draft(
+        agent.id,
+        expected_revision=0,
+        content_hash="e" * 64,
+        storage_key="agents/agent-kb-publish/staging/e",
+    )
+
+    published = await service.publish(agent.id, expected_draft_revision=draft.revision, scan_result={})
+
+    assert published.version == 1
+
+
+@pytest.mark.asyncio
 async def test_replace_dependencies_rejects_transitive_cycle(session: AsyncSession) -> None:
     first = _resource("cycle-agent", resource_type="agent", latest_version=1)
     workflow = _resource("cycle-workflow", resource_type="workflow", latest_version=1)
