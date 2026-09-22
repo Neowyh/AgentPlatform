@@ -82,7 +82,10 @@ browser, or credentials is recorded as `unexecuted`, never as pass.
 | Test lane contracts | `bash scripts/run-test-lane.sh test-contracts` | passed | 2026-09-16 / 11s / 0 | Ownership and lane entry contracts passed. |
 | `frontend-standard` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 299s / 0 | 10,064 passed; warnings only. |
 | `frontend-smoke` child | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 28s / 0 | Preflight passed; canonical lane completed 29 smoke tests. |
-| `pr-standard` parent | `bash scripts/run-test-lane.sh pr-standard` | passed | 2026-09-17 / 1,304s / 0 | backend-standard, frontend-standard, and frontend-smoke all passed. |
+| **2026-09-22 Step 1** `test_gate7_real_provider_content_matches_archived_delivery` | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e uv run --no-sync pytest tests/test_knowledge_gate7_live.py::test_gate7_real_provider_content_matches_archived_delivery -q -s` | passed | 2026-09-22 / 8.08s / 0 | Agnes `agnes-3.0-flash` first model; fresh marker uploaded, parsed, retrieved, evidence delivery verified, deleted |
+| **2026-09-22 Step 1** `test_gate7_acceptance_artifacts.py` | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_gate7_acceptance_artifacts.py -q` | passed | 2026-09-22 / 2.95s / 0 | 3 passed |
+| **2026-09-22 Step 1** `test_knowledge_gate7_live.py` full | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e uv run --no-sync pytest tests/test_knowledge_gate7_live.py -q -s` | passed: 1 passed, 1 skipped | 2026-09-22 / 12.43s / 0 | artifact-only test skipped (needs RAGFLOW_GATE7_SOURCE_CHAIN_JSON/MATRIX_JSON/RUN_ID/SNIPPET env vars) |
+| **2026-09-22 Step 1** regression slice | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_retrieval_receipts.py tests/unit/gateway/test_run_evidence.py tests/test_tool_receipt_middleware.py -q` | passed | 2026-09-22 / 3.95s / 0 | 42 passed |
 
 ## Required manual matrix
 
