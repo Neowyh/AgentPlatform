@@ -1,0 +1,23 @@
+{
+  "candidate_commit": "be6ed398",
+  "scenario": "failure_recovery",
+  "real_execution": true,
+  "executed_at": "2026-09-22T15:41:28+08:00",
+  "observed_steps": [
+    "A new Revision was created through the public resource API against a persistent SQLite database.",
+    "The Gateway was restarted with a provider endpoint that was intentionally unavailable; prepare returned indexing and the worker persisted failed/unavailable.",
+    "The faulty Gateway was stopped and the Gateway was restarted with the real configured provider.",
+    "The same failed Revision was retried through prepare; the worker completed and persisted ready."
+  ],
+  "observations": {
+    "zero_hit": "not part of this controlled provider-outage run",
+    "provider_down": "failed with failure_code=unavailable",
+    "timeout_partial": "not injected; no timeout claim",
+    "retry_restart_history": true,
+    "failed_revision_status": "failed",
+    "recovered_revision_status": "ready"
+  },
+  "limitations": [
+    "Timeout-partial and zero-hit rows remain separate unexecuted sub-scenarios for the strict Gate 8 artifact."
+  ]
+}

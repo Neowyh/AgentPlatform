@@ -1,0 +1,24 @@
+{
+  "candidate_commit": "be6ed398",
+  "scenario": "rbac_and_secrecy",
+  "real_execution": true,
+  "executed_at": "2026-09-22T15:37:39+08:00",
+  "observed_steps": [
+    "A private KnowledgeBase with a published Knowledge Revision was exposed through the visibility application and admin review APIs.",
+    "A separate ordinary user read the resource while visibility was public.",
+    "The owner reduced visibility to private; the same user then received HTTP 404.",
+    "Owner resource and revision responses were inspected for provider identity redaction."
+  ],
+  "observations": {
+    "users": ["super-admin", "ordinary-user"],
+    "knowledge_bases": ["one private KB with one published revision"],
+    "revoked_access": true,
+    "redaction_check": true,
+    "public_read_status": 200,
+    "revoked_read_status": 404,
+    "provider_dataset_id_exposed": false
+  },
+  "limitations": [
+    "This scenario covers resource visibility and API redaction; the full Gate 8 artifact also requires separate snapshot and failure evidence."
+  ]
+}

@@ -1448,7 +1448,11 @@ class ResourceService:
             visiting.add(resource_id)
             resource = await self._get_visible(resource_id)
             if resource.latest_version < 1:
-                raise ResourceConflict(f"Resource {resource_id} has no published version")
+                if resource.type != ResourceType.KNOWLEDGE_BASE.value:
+                    raise ResourceConflict(f"Resource {resource_id} has no published version")
+            knowledge_revision = None
+            if resource.type == "knowledge_base":
+                knowledge_revision = await self._resolve_published_revision(resource.id, forced_revision_id)
             if forced_revision_id is not None and resource.type != "knowledge_base":
                 version = (
                     await self.session.execute(
@@ -1467,11 +1471,22 @@ class ResourceService:
                         )
                     )
                 ).scalar_one_or_none()
+            if version is None and knowledge_revision is not None:
+                # Knowledge revisions are the canonical version source. Older
+                # databases do not have a legacy ResourceVersion row for them;
+                # snapshots still need the immutable revision number/hash pair.
+                version = ResourceVersion(
+                    id=knowledge_revision.id,
+                    resource_id=resource.id,
+                    version=knowledge_revision.revision_no,
+                    content_hash=knowledge_revision.manifest_hash,
+                    storage_key=f"knowledge-revisions/{knowledge_revision.id}",
+                    scan_result={},
+                    content=None,
+                    created_by=knowledge_revision.created_by,
+                )
             if version is None:
                 raise ResourceConflict(f"Resource {resource_id} latest version is missing")
-            knowledge_revision = None
-            if resource.type == "knowledge_base":
-                knowledge_revision = await self._resolve_published_revision(resource.id, forced_revision_id)
             resolved.append(ResolvedResource(resource=resource, version=version, knowledge_revision=knowledge_revision))
             edges = list((await self.session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
             for edge in edges:

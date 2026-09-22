@@ -13,7 +13,7 @@ import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
 import app.agentplatform.rbac_models  # noqa: F401 - register users_ext for audit FK  # noqa: F401 - register users_ext
 import app.agentplatform.resource_models  # noqa: F401 - register resource tables
 import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
-from app.agentplatform.knowledge.models import KnowledgeRevision
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRevision
 from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
@@ -358,6 +358,50 @@ async def test_pinned_knowledge_dependency_resolves_published_revision(session: 
     assert kb_item.knowledge_revision is not None
     assert kb_item.knowledge_revision.id == pinned_revision.id
     assert kb_item.knowledge_revision.manifest_hash == "1" * 64
+
+
+@pytest.mark.asyncio
+async def test_published_knowledge_revision_can_snapshot_without_legacy_resource_version(session: AsyncSession) -> None:
+    agent = _resource("agent-kb-snapshot", resource_type="agent", latest_version=1)
+    knowledge_base = _resource("kb-snapshot", resource_type="knowledge_base")
+    agent_version = ResourceVersion(
+        id="agent-kb-snapshot-version",
+        resource_id=agent.id,
+        version=1,
+        content_hash="a" * 64,
+        storage_key="agents/agent-kb-snapshot/versions/1",
+        scan_result={},
+        content={},
+        created_by="owner",
+    )
+    revision = KnowledgeRevision(
+        id="kb-snapshot-published-revision",
+        knowledge_base_id=knowledge_base.id,
+        revision_no=1,
+        status="published",
+        manifest_hash="c" * 64,
+        manifest_json=[],
+        provider_doc_map_json={},
+        document_count=1,
+        provider_dataset_id="opaque-dataset",
+        created_by="owner",
+    )
+    knowledge_row = KnowledgeBase(resource_id=knowledge_base.id, active_revision_id=revision.id)
+    session.add_all([agent, knowledge_base, agent_version, revision, knowledge_row])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await service.replace_dependencies(agent.id, [{"resource_id": knowledge_base.id, "dependency_mode": "live"}])
+
+    closure = await service.resolve_dependency_closure(agent.id)
+    snapshot = await service.create_run_snapshot("run-kb-snapshot", agent.id, closure=closure)
+    kb_item = next(item for item in closure if item.resource.id == knowledge_base.id)
+    persisted = next(item for item in snapshot if item.resource_id == knowledge_base.id)
+
+    assert kb_item.version.version == revision.revision_no
+    assert kb_item.version.content_hash == revision.manifest_hash
+    assert kb_item.knowledge_revision is revision
+    assert persisted.version == revision.revision_no
+    assert persisted.content_hash == revision.manifest_hash
 
 
 @pytest.mark.asyncio
