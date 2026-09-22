@@ -38,6 +38,7 @@ from deerflow.persistence.base import Base
 from deerflow.config import get_app_config
 from deerflow.config.checkpointer_config import CheckpointerConfig
 from deerflow.config.paths import get_paths
+from deerflow.runtime.checkpointer.async_provider import make_checkpointer
 from app.agentplatform.fault_zeroing.contract import CONTRACT_VERSION
 from app.agentplatform.fault_zeroing.kernel import (
     COMPLETION_STATUS_COMPLETED,
@@ -103,6 +104,29 @@ async def _confirm_single_side_intake(
         payload={"input_snapshot_hash": interrupt.get("input_snapshot_hash")},
         confirmed_by=user_id,
     )
+
+
+async def _pending_interrupt_ids(config, run_id: str) -> list[str]:
+    """Collect pending langgraph interrupt ids for a paused run.
+
+    The workflow store snapshot renders interrupt payloads without their
+    langgraph ids, but a fork where several branches pause on
+    ``artifacts_missing`` simultaneously leaves multiple pending interrupts
+    that can only be resumed through an id-keyed resume map.
+    """
+
+    ids: list[str] = []
+    async with make_checkpointer(config) as checkpointer:
+        tup = await checkpointer.aget_tuple({"configurable": {"thread_id": f"wf-{run_id}"}})
+    for write in (tup.pending_writes if tup else None) or []:
+        if write[1] != "__interrupt__":
+            continue
+        entries = write[2] if isinstance(write[2], list) else [write[2]]
+        for entry in entries:
+            interrupt_id = getattr(entry, "id", None)
+            if isinstance(interrupt_id, str) and interrupt_id:
+                ids.append(interrupt_id)
+    return ids
 
 
 async def _run(user_id: str, case_name: str | None = None) -> dict:
@@ -226,18 +250,27 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             # artifacts.  Real agents may finish writing those files just
             # after that check, so emulate the operator's explicit resume
             # rather than treating the pause as a terminal failure.
-            for _ in range(3):
+            for _ in range(6):
                 pending = await store.get_run(run_id)
                 if pending is None or pending.status != "paused":
                     break
                 interrupt = (pending.snapshot or {}).get("interrupt", [{}])[0]
                 if interrupt.get("type") != "artifacts_missing":
                     break
+                # A fork can pause on artifacts_missing in several branches at
+                # once; langgraph then only accepts an id-keyed resume map, and
+                # resuming every branch in one step can collide with their
+                # pending writes — so confirm one interrupt per invocation.
+                interrupt_ids = await _pending_interrupt_ids(config, run_id)
+                if not interrupt_ids:
+                    resume_payload = {"artifacts_confirmed": True}
+                else:
+                    resume_payload = {interrupt_ids[0]: {"artifacts_confirmed": True}}
                 await store.submit_command(
                     str(uuid4()),
                     run_id,
                     "resume",
-                    {"artifacts_confirmed": True},
+                    resume_payload,
                     user_id,
                 )
                 await worker.run_once()
