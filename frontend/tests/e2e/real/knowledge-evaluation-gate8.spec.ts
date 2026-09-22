@@ -35,9 +35,14 @@ test.describe("real Knowledge Center Gate 8", () => {
   }) => {
     await loginAsRealUser(page, "user@test.com");
     await page.goto("/workspace/library");
+    await page.getByRole("tab", { name: /Knowledge Bases|知识库/i }).click();
     await page.getByRole("button", { name: knowledgeBaseSlug! }).click();
 
     await page.getByRole("tab", { name: /Retrieval|检索/i }).click();
+    await page
+      .getByRole("button", { name: /View record|查看记录/i })
+      .first()
+      .click();
     await expect(page.locator("body")).toContainText(expectedSnippet!);
     await expect(page.locator("body")).toContainText(expectedEvidence!);
 
@@ -50,6 +55,9 @@ test.describe("real Knowledge Center Gate 8", () => {
     await expect(
       page.getByRole("heading", { name: /A\/B comparison/i }),
     ).toBeVisible();
+    await page.getByLabel("Side A revision").selectOption({ index: 1 });
+    await page.getByLabel("Side B revision").selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Compare" }).click();
     await expect(page.locator("body")).toContainText(expectedComparison!);
     await expect(page.locator("body")).toContainText(expectedGateFeedback!);
 
