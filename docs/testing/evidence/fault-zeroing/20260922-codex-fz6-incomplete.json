@@ -1,0 +1,26 @@
+{
+  "candidate_commits": ["b1913310", "2e45d98f", "3eb4e8bd"],
+  "model_key": "codex-gpt-5-5",
+  "display_model": "Codex GPT-5.5",
+  "sandbox_image": "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.9.3",
+  "case": "case_01_wind_tunnel_heat_flux_drift",
+  "run_id": "fz-01-20260922T133134Z-872e63",
+  "status": "incomplete",
+  "started_at": "2026-09-22T13:31:34Z",
+  "stopped_at": "2026-09-22T13:44:00Z",
+  "reason": "The real workflow reached the production AIO worker and produced valid evidence and deductive-tree artifacts, but a later Codex streaming request repeatedly returned peer-closed/SSL EOF errors and the durable run remained running without terminal completion.",
+  "validated_before_incomplete": [
+    "canonical user-data output resolver",
+    "deductive-tree workspace read policy",
+    "frozen Skill-view schema resolution",
+    "real Codex Responses API calls",
+    "real AIO sandbox file reads and writes"
+  ],
+  "artifacts_present": [
+    "artifacts/tree/fault_tree_structure.json",
+    "artifacts/evidence/evidence_table.json",
+    "artifacts/evidence/coverage_matrix.md"
+  ],
+  "formal_pass": false,
+  "credentials_or_prompt_persisted": false
+}
