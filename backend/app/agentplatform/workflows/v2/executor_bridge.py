@@ -86,8 +86,9 @@ class RunWorkspacePathsMiddleware(AgentMiddleware[AgentState]):
     verifies them.
     """
 
-    def __init__(self, *, run_id: str) -> None:
+    def __init__(self, *, run_id: str, sandbox_scope: str | None = None) -> None:
         self.run_id = run_id
+        self.sandbox_scope = sandbox_scope
 
     @override
     def before_agent(self, state: AgentState, runtime: Any) -> dict[str, Any] | None:
@@ -95,7 +96,7 @@ class RunWorkspacePathsMiddleware(AgentMiddleware[AgentState]):
         from deerflow.runtime.user_context import resolve_runtime_user_id
 
         user_id = resolve_runtime_user_id(runtime)
-        resolver = make_host_resolver(self.run_id, user_id)
+        resolver = make_host_resolver(self.run_id, user_id, sandbox_scope=self.sandbox_scope)
         thread_data = dict(state.get("thread_data") or {})
         updated = False
         for key, virtual in (
@@ -203,7 +204,12 @@ class WorkflowSubagentExecutor(SubagentExecutor):
         if file_access is not None or scoped:
             pending_middlewares = []
             if scoped:
-                pending_middlewares.append(RunWorkspacePathsMiddleware(run_id=str(canonical_run_id) if not isinstance(canonical_run_id, str) else canonical_run_id))
+                pending_middlewares.append(
+                    RunWorkspacePathsMiddleware(
+                        run_id=str(canonical_run_id) if not isinstance(canonical_run_id, str) else canonical_run_id,
+                        sandbox_scope=self.thread_id,
+                    )
+                )
             if file_access is not None:
                 pending_middlewares.append(
                     FilesystemScopeMiddleware(

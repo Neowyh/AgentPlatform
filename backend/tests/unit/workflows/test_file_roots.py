@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 from app.agentplatform.workflows.v2 import file_roots
 from app.agentplatform.workflows.v2.file_roots import (
     collect_artifacts,
@@ -135,6 +136,13 @@ class TestHostResolver:
         resolver = make_host_resolver("run-1", "user-1")
         expected = host_resolver.thread_dir("run-1", user_id="user-1") / "user-data/code-evidence/pkg/source/main.c"
         assert resolver("/mnt/user-data/code-evidence/pkg/source/main.c") == str(expected)
+
+    def test_canonical_sandbox_scope_maps_all_user_data_roots(self, host_resolver) -> None:
+        scope = canonical_sandbox_scope("run-1", "run-1")
+        resolver = make_host_resolver("run-1", "user-1", sandbox_scope=scope)
+        expected = host_resolver.sandbox_outputs_dir(scope, user_id="user-1")
+        assert resolver("/mnt/user-data/outputs/artifacts/a.json") == f"{expected}/artifacts/a.json"
+        assert resolver("/mnt/user-data/uploads/input.md") == str(host_resolver.sandbox_uploads_dir(scope, user_id="user-1") / "input.md")
 
     def test_custom_mount_mapping(self, custom_mounts) -> None:
         resolver = make_host_resolver("run-1", "user-1")

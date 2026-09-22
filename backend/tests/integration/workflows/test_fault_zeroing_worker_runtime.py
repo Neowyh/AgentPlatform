@@ -9,6 +9,7 @@ import pytest_asyncio
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 from app.agentplatform.resources.runtime import _json_hash
 from app.agentplatform.resources.service import ResourceAction, ResourceActor
 from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
@@ -112,7 +113,11 @@ class RecordingAgent:
         if context.node_id in self.fail_nodes:
             raise RuntimeError(f"agent failed for node {context.node_id}")
         if self.write_artifacts and context.file_access:
-            resolver = make_host_resolver(context.run_id, "user-1")
+            resolver = make_host_resolver(
+                context.run_id,
+                "user-1",
+                sandbox_scope=canonical_sandbox_scope(context.run_id, context.run_id),
+            )
             for root in context.file_access.get("write", []):
                 host = resolver(root)
                 assert host is not None, f"unresolvable write root {root}"

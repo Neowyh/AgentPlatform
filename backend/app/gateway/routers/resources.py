@@ -50,6 +50,7 @@ from app.agentplatform.resource_service import (
     ResourceService,
     VisibilityClosureError,
 )
+from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 from app.agentplatform.resources.skill_validation import _validate_skill_frontmatter
 from app.agentplatform.workflow_runtime import (
     WorkflowRunError,
@@ -2326,7 +2327,11 @@ async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
         "outputs": snapshot.get("outputs", {}),
     }
     rendered = render_roots({"write": write_roots}, state)
-    resolver = make_host_resolver(run.run_id, str(run.created_by))
+    resolver = make_host_resolver(
+        run.run_id,
+        str(run.created_by),
+        sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
+    )
     return collect_artifacts(rendered.get("write", []), resolver)
 
 
@@ -2356,7 +2361,11 @@ async def get_canonical_run_artifact_content(
     artifacts = await _run_artifacts(WorkflowV2Store(_factory()), run)
     if not any(item["path"] == path for item in artifacts):
         raise ResourceNotFound(f"Artifact {path} not found for Run {run_id}")
-    host = make_host_resolver(run.run_id, str(run.created_by))(path)
+    host = make_host_resolver(
+        run.run_id,
+        str(run.created_by),
+        sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
+    )(path)
     if host is None or not Path(host).is_file():
         raise ResourceNotFound(f"Artifact {path} not found for Run {run_id}")
     return FileResponse(host, media_type="application/octet-stream", filename=Path(host).name)
@@ -2374,7 +2383,11 @@ async def download_canonical_run_record(
     if format not in {"jsonl", "md"}:
         raise ValueError("format must be 'jsonl' or 'md'")
     run = await _get_canonical_run(resource_id, run_id, current_user)
-    host = make_host_resolver(run.run_id, str(run.created_by))(workflow_record_path(format))
+    host = make_host_resolver(
+        run.run_id,
+        str(run.created_by),
+        sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
+    )(workflow_record_path(format))
     if host is None or not Path(host).is_file():
         raise ResourceNotFound(f"Run record for run '{run_id}' is not available")
     media_types = {"jsonl": "application/x-ndjson", "md": "text/markdown"}

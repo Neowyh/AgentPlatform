@@ -15,6 +15,9 @@ from langgraph.types import Command
 # Canonical runs key their sandboxes on a run-scoped identity; teach the
 # runtime's local provider to mount the run's frozen read-only skill view.
 from app.agentplatform.resources.canonical_sandbox import (
+    canonical_sandbox_scope,
+)
+from app.agentplatform.resources.canonical_sandbox import (
     install_run_skill_view_resolver as _install_run_skill_view_resolver,
 )
 from app.agentplatform.workflow_runtime import (
@@ -205,6 +208,7 @@ async def execute_workflow_task(
     run = await store.get_run(run_id)
     if run is None:
         raise RuntimeError(f"workflow run '{run_id}' not found")
+    sandbox_scope = canonical_sandbox_scope(run_id, run_id)
     # Resource storage is needed by every canonical-registry build (the frozen
     # run skill view is written for any snapshot carrying skills, PATCH-012),
     # so construct it unconditionally — legacy name/version runs included.
@@ -317,7 +321,7 @@ async def execute_workflow_task(
                 emit_event=emit_event,
                 is_cancelled=lambda: store.is_cancel_requested(run_id),
                 node_timeout_seconds=config.workflow_runtime.node_timeout_seconds,
-                artifact_resolver=make_host_resolver(run_id, run.created_by),
+                artifact_resolver=make_host_resolver(run_id, run.created_by, sandbox_scope=sandbox_scope),
             ).compile(checkpointer=checkpointer)
             try:
                 invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
@@ -326,7 +330,7 @@ async def execute_workflow_task(
                 missing_read_roots = validate_read_roots(
                     definition.nodes,
                     run.inputs,
-                    make_host_resolver(run_id, run.created_by),
+                    make_host_resolver(run_id, run.created_by, sandbox_scope=sandbox_scope),
                 )
                 if missing_read_roots:
                     raise WorkflowMissingInputRootsError(missing_read_roots)
@@ -377,7 +381,14 @@ async def run_worker() -> None:
     async def record_sink(run, event) -> None:
         writer = writers.get(run.run_id)
         if writer is None:
-            writer = RunRecordWriter(make_host_resolver(run.run_id, str(run.created_by)), workflow_log_root())
+            writer = RunRecordWriter(
+                make_host_resolver(
+                    run.run_id,
+                    str(run.created_by),
+                    sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
+                ),
+                workflow_log_root(),
+            )
             writers[run.run_id] = writer
         if event is not None:
             await writer.on_event(event)

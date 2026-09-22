@@ -193,7 +193,12 @@ def validate_workflow_roots(nodes: list[Any], inputs: dict[str, Any]) -> list[di
     return invalid
 
 
-def make_host_resolver(run_id: str, user_id: str | None) -> Callable[[str], str | None]:
+def make_host_resolver(
+    run_id: str,
+    user_id: str | None,
+    *,
+    sandbox_scope: str | None = None,
+) -> Callable[[str], str | None]:
     """Build a virtual-path -> host-path resolver for one workflow run.
 
     Mirrors the mappings the local sandbox derives from thread data
@@ -201,11 +206,12 @@ def make_host_resolver(run_id: str, user_id: str | None) -> Callable[[str], str 
     an agent runtime: workflow agents run with ``thread_id == run_id``.
     """
     paths = get_paths()
+    path_scope = sandbox_scope or run_id
     mappings: dict[str, str] = {
-        f"{VIRTUAL_PATH_PREFIX}/code-evidence": str(paths.thread_dir(run_id, user_id=user_id) / "user-data" / "code-evidence"),
-        f"{VIRTUAL_PATH_PREFIX}/workspace": str(paths.sandbox_work_dir(run_id, user_id=user_id)),
-        f"{VIRTUAL_PATH_PREFIX}/uploads": str(paths.sandbox_uploads_dir(run_id, user_id=user_id)),
-        f"{VIRTUAL_PATH_PREFIX}/outputs": str(paths.sandbox_outputs_dir(run_id, user_id=user_id)),
+        f"{VIRTUAL_PATH_PREFIX}/code-evidence": str(paths.thread_dir(path_scope, user_id=user_id) / "user-data" / "code-evidence"),
+        f"{VIRTUAL_PATH_PREFIX}/workspace": str(paths.sandbox_work_dir(path_scope, user_id=user_id)),
+        f"{VIRTUAL_PATH_PREFIX}/uploads": str(paths.sandbox_uploads_dir(path_scope, user_id=user_id)),
+        f"{VIRTUAL_PATH_PREFIX}/outputs": str(paths.sandbox_outputs_dir(path_scope, user_id=user_id)),
     }
 
     def resolve(path: str) -> str | None:
