@@ -1,0 +1,55 @@
+{
+  "artifact": "gate8-formal-publish-gate",
+  "status": "passed",
+  "executed_at": "2026-09-22T14:53:30+08:00",
+  "environment": {
+    "gateway": "isolated local Gateway",
+    "database": "persistent SQLite",
+    "provider": "configured real RAGFlow dataset",
+    "publish_eval_required": true
+  },
+  "logical_ids": {
+    "knowledge_base": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+    "document": "0d439439-f11f-4cb4-984b-fb3eae867595",
+    "revision": "0ef42a95-2773-4669-944c-904e531f7263",
+    "evaluation_case": "d04b60bb-cd06-4dcc-9260-f41af5eee778",
+    "evaluation_run": "936db48c-6113-4957-99cb-43509fdba2e7"
+  },
+  "checks": [
+    {
+      "name": "candidate preparation",
+      "result": "passed",
+      "observed": "one ready revision with one ready document"
+    },
+    {
+      "name": "publish rejected before evidence",
+      "result": "passed",
+      "http_status": 409,
+      "observed": "revision remained ready and the API returned the evaluation-evidence requirement"
+    },
+    {
+      "name": "evaluation",
+      "result": "passed",
+      "status": "completed",
+      "qualification_status": "passed",
+      "aggregate": {
+        "denominator": 1,
+        "expected_hit_rate": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "top_k": 8,
+        "metrics_version": "retrieval-metrics-v1"
+      }
+    },
+    {
+      "name": "publish after passing evidence",
+      "result": "passed",
+      "http_status": 200,
+      "observed": "revision transitioned indexing to published"
+    }
+  ],
+  "limitations": [
+    "This artifact covers the real publish/evaluation gate only; formal Gate 8 snapshot, RBAC/secrecy, failure/recovery, and PostgreSQL rows remain unexecuted.",
+    "Provider dataset identifiers, endpoints, credentials, and document contents are intentionally omitted."
+  ]
+}
