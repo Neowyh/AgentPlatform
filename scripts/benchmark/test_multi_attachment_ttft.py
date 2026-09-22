@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 _MODULE_PATH = Path(__file__).with_name("multi_attachment_ttft.py")
 _SPEC = importlib.util.spec_from_file_location("multi_attachment_ttft", _MODULE_PATH)
@@ -70,3 +72,10 @@ def test_observe_stream_uses_monotonic_marks_for_calibration() -> None:
     assert observed["run_to_first_sse_event_ms"] == 500.0
     assert observed["run_to_first_tool_ms"] == 750.0
     assert observed["run_to_first_token_ms"] == 1000.0
+
+
+def test_ttft_acceptance_counts_exclude_out_of_scope_twenty_file_case() -> None:
+    assert _MODULE.DEFAULT_COUNTS == (0, 1, 5, 10)
+    parser = _MODULE._build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--thread-id", "thread", "--count", "20"])

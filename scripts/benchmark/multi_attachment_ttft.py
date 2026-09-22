@@ -30,7 +30,7 @@ from typing import Any
 
 import httpx
 
-DEFAULT_COUNTS = (0, 1, 5, 10, 20)
+DEFAULT_COUNTS = (0, 1, 5, 10)
 SUPPORTED_FILE_SUFFIXES = {".pdf", ".docx", ".xlsx", ".txt", ".md"}
 
 # Chunk-stream event names whose per-chunk metadata carries LangGraph routing
