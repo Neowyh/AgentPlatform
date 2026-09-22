@@ -3,7 +3,7 @@
 Date: 2026-09-21
 Updated: 2026-09-22
 Baseline: `develop@ca65c5770`  
-Candidate: `develop@5aef815c`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7 source-chain and browser evidence updates.
+Candidate: `develop@c0f56660`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7/Gate 8 real evidence updates.
 
 Status: **本机集成候选仍待复核；正式收口未完成（draft）**. The candidate is fast-forwarded into `develop`; local lanes pass, while real acceptance remains blocked by sandbox/runtime and external environment requirements. 2026-09-22: fault-zeroing deferred to a later session; root cause is an intermittent silent Agnes streaming stall (no response, no chunk-watchdog fire, no retry) that hits `WorkflowNodeTimeout` after 300s/900s depending on branch. All other tasks proceed without waiting for fault-zeroing.
 
