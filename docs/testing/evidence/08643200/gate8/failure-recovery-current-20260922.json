@@ -1,0 +1,21 @@
+{
+  "candidate_commit": "ae351238",
+  "scenario": "failure_recovery",
+  "real_execution": true,
+  "result": "passed",
+  "status": "executed",
+  "exit_status": 0,
+  "command": "DEER_FLOW_CONFIG_PATH=<provider-down config> ... uv run python /tmp/g8_provider_down_new.py; restart Gateway with Agnes config; uv run python /tmp/g8_provider_retry_current.py",
+  "observed_steps": [
+    "Gateway started with a real isolated SQLite database and an intentionally unavailable knowledge-provider endpoint.",
+    "Revision 5 prepare returned 200 then reached failed with failure_code unavailable and a provider-unavailable message.",
+    "Gateway restarted with the real Agnes/RAGFlow configuration.",
+    "The same Revision 5 was retried through the API and reached ready with no failure code; integrity status remained unverified pending publication."
+  ],
+  "revision_binding": {
+    "revision_no": 5,
+    "failure_status": "failed",
+    "recovery_status": "ready"
+  },
+  "evidence_scope": "sanitized status transitions only; no provider URL, dataset id, credentials, or internal secret retained"
+}

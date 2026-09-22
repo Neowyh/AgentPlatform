@@ -1,0 +1,33 @@
+{
+  "candidate_commit": "ae351238",
+  "scenario": "failure_recovery",
+  "real_execution": true,
+  "executed_at": "2026-09-22 09:04:37.497127",
+  "observed_steps": [
+    "started the real Gateway with the published revision allowlisted and a 1ms RAGFlow client timeout",
+    "ran the real Agent with one knowledge_search request",
+    "RAGFlow request timed out and the tool receipt recorded provider_error",
+    "Run Evidence archived the corresponding retrieval receipt with zero delivered items and the frozen revision binding",
+    "Agent completed a controlled failure response without leaking provider details"
+  ],
+  "observations": {
+    "zero_hit": "not a zero-hit; provider timeout produced no returned items",
+    "provider_down": "not injected in this run",
+    "timeout_partial": {
+      "run_id": "93d908ab-fd0b-414e-9429-83b0b8ae64a8",
+      "run_status": "success",
+      "tool_receipt_status": "error",
+      "retrieval_result_status": "provider_error",
+      "returned_count": 0,
+      "delivered_count": 0,
+      "archive_status": "archived",
+      "revision_no": 4,
+      "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+    },
+    "retry_restart_history": "not part of this controlled timeout run"
+  },
+  "limitations": [
+    "This is the timeout-partial sub-scenario only; provider-down restart recovery is recorded separately.",
+    "Provider identity, endpoint, credentials, and exact timeout value are omitted from the persisted artifact."
+  ]
+}
