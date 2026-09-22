@@ -1,0 +1,28 @@
+{
+  "candidate_commit": "c8534ea0",
+  "model_key": "codex-gpt-5-5",
+  "display_model": "Codex GPT-5.5",
+  "sandbox_image": "all-in-one-sandbox:1.9.3",
+  "case": "case_01_wind_tunnel_heat_flux_drift",
+  "run_id": "fz-01-20260922T142059Z-912e19",
+  "status": "incomplete",
+  "started_at": "2026-09-22T14:20:59Z",
+  "stopped_at": "2026-09-22T14:25:48Z",
+  "reason": "The real Codex/AIO replay completed the parallel evidence and deductive-tree work far enough to create valid intermediate artifacts, then the Codex endpoint returned HTTP 429 during evidence_collection. The provider error was surfaced without leaking the streaming response body; the run ended failed before the completion contract.",
+  "validated_before_incomplete": [
+    "parallel fork/join no longer re-emits immutable run_id on resume",
+    "canonical output roots",
+    "deductive-tree workspace reads",
+    "frozen Skill-view schema resolution",
+    "real Codex Responses API calls",
+    "real AIO sandbox file reads and writes"
+  ],
+  "artifacts_present": [
+    "artifacts/tree/fault_tree_structure.json",
+    "artifacts/evidence/evidence_table.json",
+    "artifacts/evidence/coverage_matrix.md"
+  ],
+  "provider_status": "http_429_rate_limited",
+  "formal_pass": false,
+  "credentials_or_prompt_persisted": false
+}
