@@ -1,0 +1,120 @@
+{
+  "candidate_commit": "46619533",
+  "scenario": "run_snapshot_freeze",
+  "real_execution": true,
+  "executed_at": "2026-09-22T17:03:08+08:00",
+  "observed_steps": [
+    "captured a successful old Run pinned to published revision 1",
+    "prepared and evaluated revision 4 through the real API; publish was rejected before evidence and succeeded after metrics qualified",
+    "ran the same Agent after revision 4 became the latest published pointer",
+    "confirmed the old Run remains pinned to revision 1 and the new Run freezes revision 4",
+    "confirmed the new Run retrieval receipt is archived against revision 4"
+  ],
+  "observations": {
+    "old_run": {
+      "run_id": "ece23ef5-d12f-4ea3-8185-9f206ee75903",
+      "status": "success",
+      "selection_snapshot": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 1,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved",
+          "knowledge_revision_id": "0ef42a95-2773-4669-944c-904e531f7263",
+          "knowledge_revision_no": 1,
+          "knowledge_manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+        }
+      ],
+      "run_evidence_snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 1,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved"
+        }
+      ],
+      "knowledge_scope": {
+        "logical_selectors": [
+          "985614f5-67d9-4b3d-96d7-8fb436a1c3c4"
+        ]
+      },
+      "retrieval_receipt": {
+        "receipt_id": "rr_41eaefae208ebcb104fb4445",
+        "revision_no": 1,
+        "revision_id": "0ef42a95-2773-4669-944c-904e531f7263",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+        "archive_status": "archived"
+      }
+    },
+    "new_run": {
+      "run_id": "e8afa1cb-13ae-4493-90d4-7749930be1dd",
+      "status": "success",
+      "selection_snapshot": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 4,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved",
+          "knowledge_revision_id": "cc04f30d-65f4-455d-8790-688a9ef9eb71",
+          "knowledge_revision_no": 4,
+          "knowledge_manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+        }
+      ],
+      "run_evidence_snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 4,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved"
+        }
+      ],
+      "knowledge_scope": {
+        "logical_selectors": [
+          "985614f5-67d9-4b3d-96d7-8fb436a1c3c4"
+        ]
+      },
+      "retrieval_receipt": {
+        "receipt_id": "rr_dc6633551e0104b310ef2e7f",
+        "revision_no": 4,
+        "revision_id": "cc04f30d-65f4-455d-8790-688a9ef9eb71",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+        "archive_status": "archived"
+      }
+    },
+    "latest_revision_pointer": {
+      "knowledge_base_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+      "published_revision_no": 4,
+      "published_revision_id": "cc04f30d-65f4-455d-8790-688a9ef9eb71"
+    },
+    "old_run_unchanged": true,
+    "new_run_uses_new_revision": true,
+    "provider_identity_excluded": true
+  },
+  "limitations": [
+    "Provider dataset identity and credentials omitted."
+  ]
+}

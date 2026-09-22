@@ -1,0 +1,122 @@
+{
+  "candidate_commit": "46619533",
+  "scenario": "run_snapshot_freeze",
+  "real_execution": true,
+  "executed_at": "2026-09-22T17:01:43+08:00",
+  "observed_steps": [
+    "ran the Agent before publishing the next Knowledge Revision and persisted the old Run snapshot",
+    "prepared, evaluated, and published revision 4 through the real resource API",
+    "ran the same Agent after the latest revision switched",
+    "read both Run metadata projections and durable snapshots from the isolated SQLite database",
+    "verified old Run remains pinned to revision 1 while new Run resolves revision 4"
+  ],
+  "observations": {
+    "old_run": {
+      "run_id": "ece23ef5-d12f-4ea3-8185-9f206ee75903",
+      "status": "success",
+      "snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 1,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved",
+          "knowledge_revision_id": "0ef42a95-2773-4669-944c-904e531f7263",
+          "knowledge_revision_no": 1,
+          "knowledge_manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+        }
+      ],
+      "evidence_snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 1,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved"
+        }
+      ]
+    },
+    "new_run": {
+      "run_id": "12003088-f672-46e0-ba8f-ed7c33631c78",
+      "status": "success",
+      "snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 4,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved",
+          "knowledge_revision_id": "cc04f30d-65f4-455d-8790-688a9ef9eb71",
+          "knowledge_revision_no": 4,
+          "knowledge_manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+        }
+      ],
+      "evidence_snapshots": [
+        {
+          "resource_id": "743f9a6b-bf45-45fe-877b-890f5603d560",
+          "version": 1,
+          "content_hash": "a470e0923a57ca850dff42f034140669427358f1fcf1ce9734542ff936df726b",
+          "selection_role": "root"
+        },
+        {
+          "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+          "version": 4,
+          "content_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+          "selection_role": "resolved"
+        }
+      ]
+    },
+    "latest_revision_pointer": {
+      "knowledge_base_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+      "published_revision_no": 4,
+      "published_revision_id": "cc04f30d-65f4-455d-8790-688a9ef9eb71"
+    },
+    "revision_history": [
+      {
+        "revision_no": 1,
+        "status": "superseded",
+        "id": "0ef42a95-2773-4669-944c-904e531f7263",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+      },
+      {
+        "revision_no": 2,
+        "status": "ready",
+        "id": "052dbbb3-555c-40c6-936b-9a58862fd1e6",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+      },
+      {
+        "revision_no": 3,
+        "status": "ready",
+        "id": "3002c715-7001-41ad-a168-dd2da9878301",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+      },
+      {
+        "revision_no": 4,
+        "status": "published",
+        "id": "cc04f30d-65f4-455d-8790-688a9ef9eb71",
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+      }
+    ],
+    "old_run_unchanged": true,
+    "new_run_uses_new_revision": true,
+    "provider_identity_excluded": true
+  },
+  "limitations": [
+    "The new Run was intentionally executed with a configuration allowlist containing the old provider dataset, so it validates snapshot freeze and fails closed before retrieval; provider dataset identity omitted."
+  ]
+}
