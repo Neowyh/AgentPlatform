@@ -1,10 +1,24 @@
 # Current branches closeout report
 
 Date: 2026-09-21
+Updated: 2026-09-22
 Baseline: `develop@ca65c5770`  
 Candidate: `develop@a86f6b3c`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification updates.
 
-Status: **本机集成候选仍待复核；正式收口未完成**. The candidate is fast-forwarded into `develop`; local lanes pass, while real acceptance remains blocked by sandbox/runtime and external environment requirements. 2026-09-21 agnes continuation: the newly configured `agnes-3.0-flash` endpoint is funded and operational, a real Gate 7 Agent Run on agnes produced an archived Retrieval Receipt, and the model-account blocker now applies only to the DeepSeek/GLM entries; fault-zeroing remains blocked by intermittent silent agnes streams rather than by balance.
+Status: **本机集成候选仍待复核；正式收口未完成（draft）**. The candidate is fast-forwarded into `develop`; local lanes pass, while real acceptance remains blocked by sandbox/runtime and external environment requirements. 2026-09-22: fault-zeroing deferred to a later session; root cause is an intermittent silent Agnes streaming stall (no response, no chunk-watchdog fire, no retry) that hits `WorkflowNodeTimeout` after 300s/900s depending on branch. All other tasks proceed without waiting for fault-zeroing.
+
+## Task board（2026-09-22 重排）
+
+| # | Task | Status | Blocker |
+| --- | --- | --- | --- |
+| 0 | 收桌子 + 宣布2暂缓 | done 2026-09-22 | — |
+| 1 | Gate7 补考卷（16-row + source-chain + browser） | pending | 需重新 allowlist + pinned revision 对齐 |
+| 2 | Fault-zeroing 静默流定位/修复 | **deferred** | agnes 间歇性无声流，非代码 bug |
+| 3 | Gate8 补考卷（multi-scenario + browser） | pending | artifact 场景未全跑 |
+| 4 | TTFT 配速实验 | pending | 缺用户授权的本地 payload 外发 |
+| 5 | M9 Win7 + MCP→Evidence | pending | 缺 Win7 机器 |
+| 6 | frontend-real seeding | pending | 缺 Gateway/Gate7-8 artifacts/model/RBAC 变量 |
+| 7 | 部分收口评审（仍 draft） | pending | 等 1/3/4/5/6 |
 
 ## Completion correction
 
@@ -114,6 +128,13 @@ Python 3.8 compatibility candidate.
 - `make doctor` passes with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`; the direct DeepSeek probe using `config.yaml` constructed and invoked successfully.
 - GitNexus required pre-merge change scan reported 76 files, 679 symbols, 78 affected processes, aggregate risk `critical`; after integration the repository was reindexed successfully in 448.6s (`94,557` nodes, `207,561` edges, `3,012` clusters, `1,080` ranked flows). The index reports budget truncation for some candidate entry points, so an empty result is not evidence of no impact.
 - The landing visual fixture now waits for the deterministic `document processing` hero state before capture; the rerun passed all 173 executable visual cases without rewriting snapshots. The visual suite still reports expected health-check warnings where the backend proxy is intentionally unavailable.
+
+### 2026-09-22 Step 0：收桌子 + 宣布2暂缓
+- `scripts/run_fault_zeroing_acceptance.py` 35+2 行改动判定为**产品化修复**：新增 `_pending_interrupt_ids` 并发 fork 断点收集 + resume 循环从 3 次扩到 6 次 + 按 interrupt id 键控 resume（避免多分支同时 resume 冲突）。保留。
+- `frontend/report/`（Playwright 产物 `.webm/.png/.zip`）加入 `.gitignore`。
+- `stash@{0} pre-closeout-develop-snapshot-2026-09-20` 保留，源 worktree 未动。
+- `develop` 仍 `ahead origin/develop 117`，保持 draft 不 push。
+- **Task board 已重排**：见 `## Task board`；fault-zeroing 标记 `deferred`，根因为 agnes 间歇性无声流，非代码 bug。
 
 ## External replay checklist
 

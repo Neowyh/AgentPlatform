@@ -96,6 +96,7 @@ config.yaml.bak
 .playwright-mcp
 /frontend/test-results/
 /frontend/playwright-artifacts/
+/frontend/report/
 /frontend/tests/test-results/
 /frontend/playwright-report/
 .gstack/
