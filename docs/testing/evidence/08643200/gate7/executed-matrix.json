@@ -12,12 +12,28 @@
       "evidence": "source-chain.json"
     },
     "workflow_subagent": {
-      "result": "incomplete",
+      "result": "passed",
       "provider": "ragflow",
       "model": "agnes-3.0-flash",
-      "browser": "unexecuted",
-      "reason": "Existing workflow slug conflicted before a fresh run could be started"
+      "browser": "worker-path; browser citation exercised separately",
+      "run_id": "cc9337ce-f3e9-4c8b-bf51-de085d131f26",
+      "evidence": "workflow-subagent.json"
     }
+  },
+  "browser_evidence": {
+    "result": "passed",
+    "provider": "gateway 127.0.0.1:8003",
+    "model": "agnes-3.0-flash",
+    "browser": "knowledge-evidence-gate7.spec.ts",
+    "thread_id": "fddbc087-0b6d-452f-b4c8-bc33cbd4861d",
+    "run_id": "3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83",
+    "observed_steps": [
+      "opened real thread",
+      "verified exact marker",
+      "opened evidence panel with keyboard Enter",
+      "verified archived snippet",
+      "closed panel with Escape and verified focus restoration"
+    ]
   },
   "unexecuted_rows": [
     "two_users_two_kbs",

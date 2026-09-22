@@ -1,0 +1,17 @@
+{
+  "workflow_id": "576e1690-4a56-4749-bf1a-a4d82e315df1",
+  "run_id": "cc9337ce-f3e9-4c8b-bf51-de085d131f26",
+  "status": "completed",
+  "model": "agnes-3.0-flash",
+  "knowledge_base_id": "8f8eec52-0a87-4ae6-ba8f-994c605a7322",
+  "revision_id": "769573b3-353c-402d-ac84-4d53f8b58395",
+  "marker": "Gate 7 browser source-chain marker g7-browser-c58b071c.",
+  "citation_observed": true,
+  "observed_steps": [
+    "created workflow through the resource API",
+    "published workflow with an agent action",
+    "started a real workflow run with a frozen knowledge binding",
+    "run completed and output contained the exact archived marker and citation"
+  ],
+  "sensitive_values": "omitted"
+}
