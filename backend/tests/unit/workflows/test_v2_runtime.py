@@ -581,7 +581,7 @@ edges:
             return context.node_id
 
     graph = WorkflowGraphCompiler(definition, ActionAdapterRegistry({("tool", "branch"): Adapter()})).compile()
-    result = await graph.ainvoke({"inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel"}})
+    result = await graph.ainvoke({"run_id": "run-parallel", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel"}})
 
     assert set(seen) == {"left", "right"}
     assert set(result["outputs"]) == {"left", "right"}
@@ -982,7 +982,7 @@ edges:
         ActionAdapterRegistry({("tool", "branch"): Adapter()}),
         emit_event=emit,
     ).compile()
-    await graph.ainvoke({"inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel-events"}})
+    await graph.ainvoke({"run_id": "run-parallel-events", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel-events"}})
 
     control = [event for event in events if event[1].get("node_id") in {"fork", "join"}]
     assert [(event_type, event.get("node_id")) for event_type, event in control] == [
@@ -991,6 +991,67 @@ edges:
         ("node_started", "join"),
         ("node_completed", "join"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_resuming_before_a_fork_does_not_reemit_run_id_from_control_nodes() -> None:
+    """A resumed intake followed by a fork must merge immutable state safely."""
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: resumed-parallel
+inputs: {}
+state: {}
+entrypoint: gate
+nodes:
+  - id: gate
+    type: interrupt
+    roles: [operator]
+  - id: fork
+    type: fork
+    branches: [left, right]
+    join: join
+  - id: left
+    type: action
+    action: {kind: tool, name: branch}
+  - id: right
+    type: action
+    action: {kind: tool, name: branch}
+  - id: join
+    type: join
+    fork: fork
+edges:
+  - {from: gate, to: fork}
+  - {from: fork, to: left}
+  - {from: fork, to: right}
+  - {from: left, to: join}
+  - {from: right, to: join}
+"""
+    )
+
+    class Adapter:
+        async def run(self, context, params):
+            return context.node_id
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "branch"): Adapter()}),
+    ).compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "wf:resumed-parallel"}}
+    paused = await graph.ainvoke(
+        {"run_id": "run-resumed-parallel", "inputs": {}, "state": {}, "outputs": {}},
+        config=config,
+    )
+    assert paused["__interrupt__"]
+
+    completed = await graph.ainvoke(
+        Command(
+            update={"run_id": "run-resumed-parallel", "inputs": {}, "model_name": None},
+            resume={"approved": True},
+        ),
+        config=config,
+    )
+    assert set(completed["outputs"]) == {"left", "right"}
 
 
 @pytest.mark.asyncio

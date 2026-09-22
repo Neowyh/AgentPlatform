@@ -40,16 +40,24 @@ CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 def _safe_error_detail(response: httpx.Response) -> str:
     """Return a bounded, credential-free diagnostic detail for HTTP errors."""
+    # ``_call_codex_api`` uses ``Client.stream``.  Error responses therefore
+    # have not been read when ``raise_for_status`` raises, and accessing
+    # ``response.json()`` directly triggers ``ResponseNotRead``.  Drain the
+    # body before parsing so rate-limit/provider errors remain actionable.
+    if not response.is_closed:
+        try:
+            response.read()
+        except (httpx.HTTPError, RuntimeError):
+            pass
     try:
         value = response.json()
-    except ValueError:
-        value = response.text
+    except (ValueError, RuntimeError):
+        try:
+            value = response.text
+        except (httpx.HTTPError, RuntimeError):
+            value = ""
     if isinstance(value, dict):
-        value = {
-            key: item
-            for key, item in value.items()
-            if key.lower() in {"detail", "error", "message", "code", "type"}
-        }
+        value = {key: item for key, item in value.items() if key.lower() in {"detail", "error", "message", "code", "type"}}
     return str(value)[:500].replace("\n", " ")
 
 
@@ -120,13 +128,9 @@ class CodexChatModel(BaseChatModel):
         if cred:
             self._access_token = cred.access_token
             self._account_id = cred.account_id
-            logger.info(
-                f"Using Codex CLI credential (account: {self._account_id[:8]}...)"
-            )
+            logger.info(f"Using Codex CLI credential (account: {self._account_id[:8]}...)")
         else:
-            raise ValueError(
-                "Codex CLI credential not found. Expected ~/.codex/auth.json or CODEX_AUTH_PATH."
-            )
+            raise ValueError("Codex CLI credential not found. Expected ~/.codex/auth.json or CODEX_AUTH_PATH.")
 
         super().model_post_init(__context)
 
@@ -188,9 +192,7 @@ class CodexChatModel(BaseChatModel):
                             {
                                 "type": "function_call",
                                 "name": tc["name"],
-                                "arguments": json.dumps(tc["args"])
-                                if isinstance(tc["args"], dict)
-                                else tc["args"],
+                                "arguments": json.dumps(tc["args"]) if isinstance(tc["args"], dict) else tc["args"],
                                 "call_id": tc["id"],
                             }
                         )
@@ -232,9 +234,7 @@ class CodexChatModel(BaseChatModel):
                 )
         return responses_tools
 
-    def _call_codex_api(
-        self, messages: list[BaseMessage], tools: list[dict] | None = None
-    ) -> dict:
+    def _call_codex_api(self, messages: list[BaseMessage], tools: list[dict] | None = None) -> dict:
         """Call the Codex Responses API and return the completed response."""
         instructions, input_items = self._convert_messages(messages)
 
@@ -244,9 +244,7 @@ class CodexChatModel(BaseChatModel):
             "input": input_items,
             "store": False,
             "stream": True,
-            "reasoning": {"effort": self.reasoning_effort, "summary": "detailed"}
-            if self.reasoning_effort != "none"
-            else {"effort": "none"},
+            "reasoning": {"effort": self.reasoning_effort, "summary": "detailed"} if self.reasoning_effort != "none" else {"effort": "none"},
         }
 
         if tools:
@@ -269,18 +267,14 @@ class CodexChatModel(BaseChatModel):
                 logger.warning(
                     "Codex API request rejected: status=%s request_id=%s detail=%s",
                     e.response.status_code,
-                    e.response.headers.get("x-request-id")
-                    or e.response.headers.get("request-id")
-                    or "none",
+                    e.response.headers.get("x-request-id") or e.response.headers.get("request-id") or "none",
                     _safe_error_detail(e.response),
                 )
                 if e.response.status_code in (429, 500, 529):
                     if attempt >= self.retry_max_attempts:
                         raise
                     wait_ms = 2000 * (1 << (attempt - 1))
-                    logger.warning(
-                        f"Codex API error {e.response.status_code}, retrying {attempt}/{self.retry_max_attempts} after {wait_ms}ms"
-                    )
+                    logger.warning(f"Codex API error {e.response.status_code}, retrying {attempt}/{self.retry_max_attempts} after {wait_ms}ms")
                     time.sleep(wait_ms / 1000)
                 else:
                     raise
@@ -295,9 +289,7 @@ class CodexChatModel(BaseChatModel):
         streamed_output_items: dict[int, dict[str, Any]] = {}
 
         with httpx.Client(timeout=300) as client:
-            with client.stream(
-                "POST", f"{CODEX_BASE_URL}/responses", headers=headers, json=payload
-            ) as resp:
+            with client.stream("POST", f"{CODEX_BASE_URL}/responses", headers=headers, json=payload) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     data = self._parse_sse_data_line(line)
@@ -308,17 +300,13 @@ class CodexChatModel(BaseChatModel):
                     if event_type == "response.output_item.done":
                         output_index = data.get("output_index")
                         output_item = data.get("item")
-                        if isinstance(output_index, int) and isinstance(
-                            output_item, dict
-                        ):
+                        if isinstance(output_index, int) and isinstance(output_item, dict):
                             streamed_output_items[output_index] = output_item
                     elif event_type == "response.completed":
                         completed_response = data["response"]
 
         if not completed_response:
-            raise RuntimeError(
-                "Codex API stream ended without response.completed event"
-            )
+            raise RuntimeError("Codex API stream ended without response.completed event")
 
         # ChatGPT Codex can emit the final assistant content only in stream events.
         # When response.completed arrives, response.output may still be empty.
@@ -338,9 +326,7 @@ class CodexChatModel(BaseChatModel):
                     merged_output[output_index] = output_item
 
             completed_response = dict(completed_response)
-            completed_response["output"] = [
-                item for item in merged_output if isinstance(item, dict)
-            ]
+            completed_response["output"] = [item for item in merged_output if isinstance(item, dict)]
 
         return completed_response
 
@@ -362,9 +348,7 @@ class CodexChatModel(BaseChatModel):
 
         return data if isinstance(data, dict) else None
 
-    def _parse_tool_call_arguments(
-        self, output_item: dict[str, Any]
-    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    def _parse_tool_call_arguments(self, output_item: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Parse function-call arguments, surfacing malformed payloads safely."""
         raw_arguments = output_item.get("arguments", "{}")
         if isinstance(raw_arguments, dict):
@@ -404,10 +388,7 @@ class CodexChatModel(BaseChatModel):
             if output_item.get("type") == "reasoning":
                 # Extract reasoning summary text
                 for summary_item in output_item.get("summary", []):
-                    if (
-                        isinstance(summary_item, dict)
-                        and summary_item.get("type") == "summary_text"
-                    ):
+                    if isinstance(summary_item, dict) and summary_item.get("type") == "summary_text":
                         reasoning_content += summary_item.get("text", "")
                     elif isinstance(summary_item, str):
                         reasoning_content += summary_item
@@ -416,9 +397,7 @@ class CodexChatModel(BaseChatModel):
                     if part.get("type") == "output_text":
                         content += part.get("text", "")
             elif output_item.get("type") == "function_call":
-                parsed_arguments, invalid_tool_call = self._parse_tool_call_arguments(
-                    output_item
-                )
+                parsed_arguments, invalid_tool_call = self._parse_tool_call_arguments(output_item)
                 if invalid_tool_call:
                     invalid_tool_calls.append(invalid_tool_call)
                     continue

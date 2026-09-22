@@ -45,10 +45,7 @@ def _knowledge_scope_from_state(state: dict[str, Any]) -> KnowledgeScope | None:
 def _render_runtime_file_access(file_access: dict[str, list[str]], state: dict[str, Any]) -> dict[str, list[str]]:
     """Render runtime roots and omit optional roots whose inputs are absent."""
     rendered = render_template(file_access, state)
-    return {
-        key: [root for root in rendered.get(key, []) if isinstance(root, str) and root and "{{" not in root and "}}" not in root]
-        for key in ("read", "write")
-    }
+    return {key: [root for root in rendered.get(key, []) if isinstance(root, str) and root and "{{" not in root and "}}" not in root] for key in ("read", "write")}
 
 
 class WorkflowCancelled(RuntimeError):
@@ -266,15 +263,17 @@ class WorkflowGraphCompiler:
             if node.type != "action":
                 await self._emit("node_started", {"node_id": node.id, "started_at": _now_iso()})
                 await self._emit("node_completed", {"node_id": node.id, "finished_at": _now_iso()})
-                return state
+                # Control nodes do not change workflow state. Returning the
+                # complete state here re-emits immutable keys (for example
+                # ``run_id``) from every parallel branch and LangGraph rejects
+                # the merge with ``InvalidUpdateError``. An empty update keeps
+                # the existing state while allowing fork/join branches to
+                # merge only their actual writes.
+                return {}
             context_state = dict(state.get("state", {}))
             state_files = {key: workflow_state_path(key, structured=isinstance(value, (dict, list))) for key, value in context_state.items()}
             render_state = {**state, "state_files": state_files}
-            file_access = (
-                _render_runtime_file_access(node.action.file_access.model_dump(), render_state)
-                if node.action is not None and node.action.file_access is not None
-                else None
-            )
+            file_access = _render_runtime_file_access(node.action.file_access.model_dump(), render_state) if node.action is not None and node.action.file_access is not None else None
             if file_access is not None:
                 read_roots = file_access.setdefault("read", [])
                 state_root = workflow_state_root()
