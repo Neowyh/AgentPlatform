@@ -24,6 +24,7 @@ python3 scripts/test_inventory.py
 python3 scripts/test_preflight.py backend-standard
 python3 scripts/test_preflight.py frontend-standard
 UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend pytest backend/tests/unit/knowledge/test_gate8_acceptance_artifacts.py -q
+python3 scripts/acceptance/validate_gate8_artifact.py <artifact.json> --current-commit <candidate-sha>
 DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE8_DATASET_ID=<isolated-dataset> \
   RAGFLOW_GATE8_ARTIFACT_JSON=<artifact.json> \
   UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend \
