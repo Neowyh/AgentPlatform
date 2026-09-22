@@ -53,10 +53,15 @@ def test_run_skill_view_contains_only_frozen_versions_and_is_read_only(tmp_path:
     view = storage.create_run_skill_view(
         run_id,
         [(first_id, 1, first.content_hash), (second_id, 3, second.content_hash)],
+        aliases={first_id: "first", second_id: "second"},
     )
 
     assert (view / "custom" / first_id / "SKILL.md").read_text() == "# First\n"
     assert (view / "custom" / second_id / "SKILL.md").read_text() == "# Second\n"
+    assert (view / "custom" / "first" / "SKILL.md").read_text() == "# First\n"
+    assert (view / "custom" / "second" / "SKILL.md").read_text() == "# Second\n"
+    assert (view / "first" / "SKILL.md").read_text() == "# First\n"
+    assert (view / "second" / "SKILL.md").read_text() == "# Second\n"
     assert not (view / "custom" / first_id / "versions").exists()
     assert not (view / "custom" / first_id / "draft").exists()
     with pytest.raises(StorageConflict, match="hash mismatch"):

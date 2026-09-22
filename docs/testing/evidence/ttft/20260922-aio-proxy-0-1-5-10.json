@@ -1,0 +1,27 @@
+{
+  "artifact": "ttft-aio-proxy-acceptance",
+  "recorded_at": "2026-09-22T19:18:00+08:00",
+  "candidate_commit": "aa89734f",
+  "environment": {
+    "proxy": "local nginx -> frontend/gateway",
+    "gateway": "isolated SQLite gateway",
+    "sandbox": "AIO 1.9.3",
+    "model": "configured Agnes model",
+    "fixture_formats": ["md", "docx", "pdf"],
+    "fixture_minimum_bytes": 24576,
+    "product_max_files": 10
+  },
+  "sample_policy": {
+    "valid_samples_per_condition": 5,
+    "fresh_thread_per_sample": true,
+    "stream_error_samples": 0,
+    "twenty_file_scenario": "excluded by decision"
+  },
+  "scenarios": {
+    "0": {"samples": 5, "median_run_to_first_token_ms": 36213.4, "min_ms": 14737.1, "max_ms": 52025.4},
+    "1": {"samples": 5, "median_run_to_first_token_ms": 30872.0, "min_ms": 14213.8, "max_ms": 39887.9},
+    "5": {"samples": 5, "median_run_to_first_token_ms": 68947.8, "min_ms": 55910.5, "max_ms": 168112.5},
+    "10": {"samples": 5, "median_run_to_first_token_ms": 57229.9, "min_ms": 15955.7, "max_ms": 114852.8}
+  },
+  "conclusion": "Measurement capability passed. The samples are high variance and do not support an optimization claim; retain the current product behavior and defer performance changes until a controlled paired experiment."
+}

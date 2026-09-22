@@ -55,9 +55,7 @@ _install_run_skill_view_resolver()
 
 
 @contextmanager
-def _workflow_run_evidence_context(
-    run: Any, receipt_archiver: Callable[[dict], Any] | None = None
-):
+def _workflow_run_evidence_context(run: Any, receipt_archiver: Callable[[dict], Any] | None = None):
     """Bind persisted canonical Run Evidence while the graph is executing."""
 
     from agentplatform_extension.evidence import (
@@ -80,63 +78,45 @@ def _workflow_run_evidence_context(
         snapshots=tuple(evidence.get("resource_snapshots", ())),
         authorization=AuthorizationContext(
             caller_user_id=str(authorization.get("caller_user_id", run.created_by)),
-            effective_agent_id=str(
-                authorization.get(
-                    "effective_agent_id", run.workflow_resource_id or run.workflow_name
-                )
-            ),
+            effective_agent_id=str(authorization.get("effective_agent_id", run.workflow_resource_id or run.workflow_name)),
             policy_revision=str(
                 authorization.get(
                     "policy_revision",
                     evidence.get("policy_revision", "runtime-default"),
                 )
             ),
-            allowed_tools=tuple(
-                str(value) for value in authorization.get("allowed_tools", ())
-            ),
+            allowed_tools=tuple(str(value) for value in authorization.get("allowed_tools", ())),
             memory_scope=str(authorization.get("memory_scope", run.created_by)),
         ),
         runtime_assembly_fingerprint=evidence.get("runtime_assembly_fingerprint"),
         trace_id=evidence.get("trace_id"),
         retrieval_receipts=tuple(evidence.get("retrieval_receipts", ())),
         run_id=str(getattr(run, "run_id", "")) or None,
-        knowledge_scope=evidence.get("knowledge_scope")
-        if isinstance(evidence.get("knowledge_scope"), dict)
-        else None,
+        knowledge_scope=evidence.get("knowledge_scope") if isinstance(evidence.get("knowledge_scope"), dict) else None,
     )
     with bind_run_evidence(binding), bind_receipt_archiver(receipt_archiver):
         yield
 
 
-async def load_workflow_definition_for_run(
-    run: Any, store: Any, session_factory: Any, storage: Any
-) -> dict:
+async def load_workflow_definition_for_run(run: Any, store: Any, session_factory: Any, storage: Any) -> dict:
     """Load canonical Runs by frozen UUID; retain name/version for legacy Runs."""
 
     workflow_resource_id = getattr(run, "workflow_resource_id", None)
     if workflow_resource_id:
         if session_factory is None or storage is None:
-            raise RuntimeError(
-                "canonical workflow run requires catalog persistence and storage"
-            )
+            raise RuntimeError("canonical workflow run requires catalog persistence and storage")
         from app.agentplatform.resource_runtime import CanonicalResourceLoader
 
         async with session_factory() as session:
-            frozen = await CanonicalResourceLoader(session, storage).load_workflow(
-                run.run_id, workflow_resource_id
-            )
+            frozen = await CanonicalResourceLoader(session, storage).load_workflow(run.run_id, workflow_resource_id)
             return frozen.content
     version = await store.get_definition(run.workflow_name, run.definition_version)
     if version is None:
-        raise RuntimeError(
-            f"workflow definition {run.workflow_name}@{run.definition_version} not found"
-        )
+        raise RuntimeError(f"workflow definition {run.workflow_name}@{run.definition_version} not found")
     return version.definition
 
 
-async def build_canonical_registry(
-    run: Any, config: Any, session_factory: Any, storage: Any
-) -> Any:
+async def build_canonical_registry(run: Any, config: Any, session_factory: Any, storage: Any) -> Any:
     """Build adapters only from the Run's frozen UUID closure and runner policy."""
 
     from sqlalchemy import select
@@ -164,6 +144,7 @@ async def build_canonical_registry(
     async with session_factory() as session:
         loader = CanonicalResourceLoader(session, storage)
         frozen_skill_versions: dict[str, tuple[int, str]] = {}
+        frozen_skill_aliases: dict[str, str] = {}
         agent_rows = list(
             (
                 await session.execute(
@@ -182,15 +163,14 @@ async def build_canonical_registry(
         )
         for resource_id, resource_slug in agent_rows:
             definition = await loader.load_agent(run.run_id, resource_id)
-            skill_definitions = await loader.load_agent_skill_definitions(
-                run.run_id, resource_id
-            )
+            skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id)
             skills = [value.skill for value in skill_definitions]
             for value in skill_definitions:
                 frozen_skill_versions[value.resource_id] = (
                     value.version,
                     value.content_hash,
                 )
+                frozen_skill_aliases[value.resource_id] = value.skill.name
             adapter = _CanonicalAgentAdapter(
                 definition,
                 skills,
@@ -207,12 +187,8 @@ async def build_canonical_registry(
         await asyncio.to_thread(
             storage.create_run_skill_view,
             run.run_id,
-            [
-                (resource_id, version, content_hash)
-                for resource_id, (version, content_hash) in sorted(
-                    frozen_skill_versions.items()
-                )
-            ],
+            [(resource_id, version, content_hash) for resource_id, (version, content_hash) in sorted(frozen_skill_versions.items())],
+            aliases=frozen_skill_aliases,
         )
     return registry
 
@@ -222,9 +198,7 @@ async def execute_workflow_task(
     *,
     store: WorkflowV2Store,
     config: Any,
-    checkpointer_factory: Callable[
-        [Any], AbstractAsyncContextManager[Any]
-    ] = make_checkpointer,
+    checkpointer_factory: Callable[[Any], AbstractAsyncContextManager[Any]] = make_checkpointer,
 ) -> None:
     """Execute one claimed task through the production graph and event chain."""
     run_id = task.run_id
@@ -276,11 +250,7 @@ async def execute_workflow_task(
         # a later crash/take-over must count as a fresh attempt again.
         await store.clear_resume_command(task.task_id)
     else:
-        evidence = (
-            run.snapshot.get("run_evidence", {})
-            if isinstance(run.snapshot, dict)
-            else {}
-        )
+        evidence = run.snapshot.get("run_evidence", {}) if isinstance(run.snapshot, dict) else {}
         invocation = {
             "run_id": run_id,
             "inputs": run.inputs,
@@ -319,17 +289,11 @@ async def execute_workflow_task(
     async def archive_retrieval_receipt(receipt: dict) -> bool:
         """Persist each receipt while the worker still owns the run lease."""
         current = run.snapshot if isinstance(run.snapshot, dict) else {}
-        evidence = (
-            current.get("run_evidence")
-            if isinstance(current.get("run_evidence"), dict)
-            else {}
-        )
+        evidence = current.get("run_evidence") if isinstance(current.get("run_evidence"), dict) else {}
         receipts = list(evidence.get("retrieval_receipts", ()))
         replaced = False
         for index, existing in enumerate(receipts):
-            if isinstance(existing, dict) and existing.get("receipt_id") == receipt.get(
-                "receipt_id"
-            ):
+            if isinstance(existing, dict) and existing.get("receipt_id") == receipt.get("receipt_id"):
                 receipts[index] = receipt
                 replaced = True
                 break
@@ -339,9 +303,7 @@ async def execute_workflow_task(
             **current,
             "run_evidence": {**evidence, "retrieval_receipts": receipts},
         }
-        if not await store.update_snapshot(
-            run_id, snapshot, worker_id=task.lease_owner
-        ):
+        if not await store.update_snapshot(run_id, snapshot, worker_id=task.lease_owner):
             return False
         run.snapshot = snapshot
         return True
@@ -415,9 +377,7 @@ async def run_worker() -> None:
     async def record_sink(run, event) -> None:
         writer = writers.get(run.run_id)
         if writer is None:
-            writer = RunRecordWriter(
-                make_host_resolver(run.run_id, str(run.created_by)), workflow_log_root()
-            )
+            writer = RunRecordWriter(make_host_resolver(run.run_id, str(run.created_by)), workflow_log_root())
             writers[run.run_id] = writer
         if event is not None:
             await writer.on_event(event)

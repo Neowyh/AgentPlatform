@@ -1,0 +1,23 @@
+{
+  "artifact": "fault-zeroing-real-acceptance",
+  "recorded_at": "2026-09-22T19:34:48+08:00",
+  "candidate_commit": "aa89734f",
+  "case": "case_01_wind_tunnel_heat_flux_drift",
+  "real_execution": true,
+  "environment": {
+    "sandbox": "AIO 1.9.3",
+    "model": "configured Agnes model",
+    "proxy": "direct production worker path",
+    "skill_projection": "checked-in fault-zeroing skill projected into the isolated skill view"
+  },
+  "observed_steps": [
+    "workflow intake staged the checked-in evidence case",
+    "forked evidence branches reached the real Agnes endpoint",
+    "AIO sandbox mounted uploads, outputs, and the fault-zeroing skill",
+    "fault-tree schema and evidence files were read successfully",
+    "the bounded 420-second replay ended during transient model connection retries"
+  ],
+  "result": "incomplete",
+  "completion_artifact": null,
+  "reason": "No completion artifact is accepted when the real replay times out or ends during provider retries."
+}

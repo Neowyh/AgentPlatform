@@ -9,6 +9,7 @@ import stat
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -312,23 +313,54 @@ class ResourceStorage:
         self,
         run_id: str,
         versions: list[tuple[str, int, str]],
+        *,
+        aliases: Mapping[str, str] | None = None,
     ) -> Path:
-        """Atomically build a read-only view containing only frozen Skill versions."""
+        """Atomically build a read-only view containing only frozen Skill versions.
+
+        ``aliases`` preserves the human-facing Skill slug used by bundled
+        workflow templates while the UUID directory remains the canonical
+        identity. Both directories contain the same frozen bytes; neither is
+        allowed to resolve mutable global Skill storage.
+        """
 
         from app.agentplatform.resources.canonical_sandbox import canonical_run_key
 
         canonical_run_id = canonical_run_key(run_id)
         view_root = self.resources_root / "run-skill-views"
         destination = view_root / canonical_run_id
+        aliases_supplied = aliases is not None
+        alias_map = {self._resource_id(resource_id): str(alias) for resource_id, alias in (aliases or {}).items()}
+        expected_version_ids = {self._resource_id(resource_id) for resource_id, _version, _hash in versions}
+        unknown_alias_ids = set(alias_map) - expected_version_ids
+        if unknown_alias_ids:
+            raise StorageValidationError(f"Skill aliases reference unknown resource ids: {sorted(unknown_alias_ids)}")
+        for resource_id, alias in alias_map.items():
+            alias_path = PurePosixPath(alias)
+            if not alias or len(alias_path.parts) != 1 or alias_path.name in {".", ".."} or "\\" in alias:
+                raise StorageValidationError(f"Invalid Skill alias: {alias!r}")
+            if alias in expected_version_ids:
+                raise StorageValidationError(f"Skill alias collides with resource id: {alias}")
+        if len(set(alias_map.values())) != len(alias_map):
+            raise StorageValidationError("Duplicate Skill aliases in Run view")
         if destination.exists():
             expected_ids = {self._resource_id(resource_id) for resource_id, _version, _hash in versions}
             actual_ids = {path.name for path in (destination / "custom").iterdir()} if (destination / "custom").is_dir() else set()
-            if actual_ids != expected_ids:
+            expected_names = expected_ids | set(alias_map.values())
+            if (aliases_supplied and actual_ids != expected_names) or (not aliases_supplied and not expected_ids.issubset(actual_ids)):
                 raise StorageConflict(f"Run Skill view {canonical_run_id} already exists with different resources")
             for resource_id, version, content_hash in versions:
                 inspected = self.inspect_directory("skill", destination / "custom" / self._resource_id(resource_id))
                 if inspected.content_hash != content_hash:
                     raise StorageConflict(f"Run Skill view {canonical_run_id} has a hash mismatch")
+                alias = alias_map.get(self._resource_id(resource_id))
+                if alias is not None:
+                    inspected_alias = self.inspect_directory("skill", destination / "custom" / alias)
+                    if inspected_alias.content_hash != content_hash:
+                        raise StorageConflict(f"Run Skill view {canonical_run_id} alias has a hash mismatch")
+                    inspected_root_alias = self.inspect_directory("skill", destination / alias)
+                    if inspected_root_alias.content_hash != content_hash:
+                        raise StorageConflict(f"Run Skill view {canonical_run_id} root alias has a hash mismatch")
             return destination
 
         view_root.mkdir(parents=True, exist_ok=True)
@@ -351,6 +383,16 @@ class ResourceStorage:
                 target.mkdir()
                 for relative, source_file in self._relative_files(source):
                     self._copy_regular_file(source_file, target / relative)
+                alias = alias_map.get(canonical_id)
+                if alias is not None:
+                    alias_target = custom_root / alias
+                    alias_target.mkdir()
+                    for relative, source_file in self._relative_files(source):
+                        self._copy_regular_file(source_file, alias_target / relative)
+                    root_alias_target = staging / alias
+                    root_alias_target.mkdir()
+                    for relative, source_file in self._relative_files(source):
+                        self._copy_regular_file(source_file, root_alias_target / relative)
                 seen.add(canonical_id)
             self._make_read_only(staging)
             os.replace(staging, destination)

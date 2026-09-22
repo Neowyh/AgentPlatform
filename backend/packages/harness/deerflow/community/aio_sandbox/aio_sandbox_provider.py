@@ -21,6 +21,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 
 try:
     import fcntl
@@ -70,6 +71,12 @@ DEFAULT_IMAGE = "enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in
 DEFAULT_PORT = 8080
 DEFAULT_CONTAINER_PREFIX = "deer-flow-sandbox"
 IDLE_CHECK_INTERVAL = _SHARED_IDLE_CHECK_INTERVAL
+
+# The embedding application may inject a resolver for canonical Run skill
+# closures.  Keeping this hook neutral avoids an import from the harness into
+# AgentPlatform while allowing AIO and local sandboxes to enforce the same
+# frozen read-only view.
+RUN_SKILL_VIEW_RESOLVER: Callable[[str], tuple[str, Path] | None] | None = None
 
 
 class SandboxBeingDestroyedError(RuntimeError):
@@ -897,12 +904,16 @@ class AioSandboxProvider(WarmPoolLifecycleMixin[SandboxInfo], SandboxProvider):
             logger.info(f"Adding skills mounts: {skills_mounts}")
 
         effective_user_id = self._effective_acquire_user_id(user_id)
-        thread_projection_active = bool(
-            thread_id
-            and self._thread_skill_projection_active(
-                thread_id,
-                effective_user_id,
+        canonical_run_view_active = bool(thread_id and RUN_SKILL_VIEW_RESOLVER is not None and RUN_SKILL_VIEW_RESOLVER(thread_id) is not None)
+        thread_projection_active = (
+            bool(
+                thread_id
+                and self._thread_skill_projection_active(
+                    thread_id,
+                    effective_user_id,
+                )
             )
+            or canonical_run_view_active
         )
         user_skill_mounts = (
             []
@@ -1015,6 +1026,15 @@ class AioSandboxProvider(WarmPoolLifecycleMixin[SandboxInfo], SandboxProvider):
         paths.
         """
         mounts: list[tuple[str, str, bool]] = []
+        if RUN_SKILL_VIEW_RESOLVER is not None and thread_id:
+            run_scope = RUN_SKILL_VIEW_RESOLVER(thread_id)
+            if run_scope is not None:
+                _run_id, frozen_view = run_scope
+                if not frozen_view.is_dir():
+                    raise RuntimeError(f"Canonical Run Skill view is missing: {frozen_view}")
+                config = get_app_config()
+                container_path = _normalize_skills_container_path(skills_container_path or config.skills.container_path)
+                return [(str(frozen_view), container_path, True)]
         try:
             config = get_app_config()
             container_path = _normalize_skills_container_path(skills_container_path or config.skills.container_path)

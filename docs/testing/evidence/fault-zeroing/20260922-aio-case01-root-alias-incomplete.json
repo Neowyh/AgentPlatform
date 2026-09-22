@@ -1,0 +1,23 @@
+{
+  "artifact": "fault-zeroing-real-acceptance",
+  "recorded_at": "2026-09-22T20:09:20+08:00",
+  "candidate_commit": "aa89734f (working tree changes uncommitted)",
+  "case": "case_01_wind_tunnel_heat_flux_drift",
+  "real_execution": true,
+  "environment": {
+    "sandbox": "AIO 1.9.3",
+    "model": "configured Agnes model",
+    "proxy": "local Nginx -> Gateway -> workflow worker",
+    "skill_projection": "canonical frozen Run Skill view mounted read-only at /mnt/skills"
+  },
+  "observed_steps": [
+    "workflow intake staged the checked-in evidence case",
+    "the AIO container started with only the frozen Run Skill root at /mnt/skills",
+    "the root-level fault-zeroing alias was readable at /mnt/skills/fault-zeroing/templates/fault_tree_structure.schema.json",
+    "real Agnes requests and sandbox file reads succeeded for the initial workflow steps",
+    "a later Agnes request entered repeated connection retries and the bounded 420-second replay ended without completion artifacts"
+  ],
+  "result": "incomplete",
+  "completion_artifact": null,
+  "reason": "The AIO mount and Skill path checks passed, but intermittent provider silence/retries prevented the workflow from reaching the Result Contract completion gate. No output files are treated as a pass."
+}

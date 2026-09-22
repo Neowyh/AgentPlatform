@@ -86,13 +86,16 @@ def _resolve_run_skill_view(sandbox_identity: str) -> tuple[str, Path] | None:
 
 
 def install_run_skill_view_resolver() -> None:
-    """Teach DeerFlow's local sandbox provider about run-frozen skill views.
+    """Teach DeerFlow sandbox providers about run-frozen skill views.
 
     Idempotent. DeerFlow keeps a neutral hook (``RUN_SKILL_VIEW_RESOLVER``);
     installing here preserves the dependency direction — the runtime never
     imports AgentPlatform, the embedding application injects the behavior.
     """
+    from deerflow.community.aio_sandbox import aio_sandbox_provider
     from deerflow.sandbox.local import local_sandbox_provider
 
     if local_sandbox_provider.RUN_SKILL_VIEW_RESOLVER is None:
         local_sandbox_provider.RUN_SKILL_VIEW_RESOLVER = _resolve_run_skill_view
+    if aio_sandbox_provider.RUN_SKILL_VIEW_RESOLVER is None:
+        aio_sandbox_provider.RUN_SKILL_VIEW_RESOLVER = _resolve_run_skill_view

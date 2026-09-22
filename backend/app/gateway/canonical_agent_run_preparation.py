@@ -125,9 +125,7 @@ async def prepare_canonical_agent_run(
                     permissions.add(ResourceAction.USE)
                 actor = ResourceActor(
                     user_id=str(user.id),
-                    department_id=str(user.department_id)
-                    if user.department_id is not None
-                    else None,
+                    department_id=str(user.department_id) if user.department_id is not None else None,
                     role=str(user.role),
                     permissions=frozenset(permissions),
                     tool_groups=None,
@@ -139,25 +137,12 @@ async def prepare_canonical_agent_run(
             selected_skill_id = None
             if preferred_skill:
                 selected = next(
-                    (
-                        item.resource
-                        for item in closure
-                        if item.resource.id == preferred_skill
-                        or item.resource.slug == preferred_skill
-                    ),
+                    (item.resource for item in closure if item.resource.id == preferred_skill or item.resource.slug == preferred_skill),
                     None,
                 )
                 if selected is None or selected.type != "skill":
-                    agent = next(
-                        item.resource
-                        for item in closure
-                        if item.resource.id == resource_id
-                    )
-                    available_skills = [
-                        {"resource_id": item.resource.id, "slug": item.resource.slug}
-                        for item in closure
-                        if item.resource.type == "skill"
-                    ]
+                    agent = next(item.resource for item in closure if item.resource.id == resource_id)
+                    available_skills = [{"resource_id": item.resource.id, "slug": item.resource.slug} for item in closure if item.resource.type == "skill"]
                     raise SelectedSkillOutsideClosure(
                         agent={"resource_id": agent.id, "slug": agent.slug},
                         requested_skill=str(preferred_skill),
@@ -173,15 +158,9 @@ async def prepare_canonical_agent_run(
             storage = ResourceStorage(get_paths().base_dir)
             loader = CanonicalResourceLoader(session, storage)
             definition = await loader.load_agent(run_id, resource_id)
-            skill_definitions = await loader.load_agent_skill_definitions(
-                run_id, resource_id, definition=definition
-            )
+            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
-            knowledge_resources = {
-                item.resource.id: item.resource
-                for item in closure
-                if item.resource.type == "knowledge_base"
-            }
+            knowledge_resources = {item.resource.id: item.resource for item in closure if item.resource.type == "knowledge_base"}
             # LIVE/PINNED bindings come from the revision resolved into the
             # closure (frozen at enqueue), never from the mutable draft
             # dataset binding; the allowlist is the revision's own document
@@ -196,24 +175,12 @@ async def prepare_canonical_agent_run(
                 if revision is None or not revision.provider_dataset_id:
                     continue
                 bindings[item.resource.id] = revision.provider_dataset_id
-                ready_document_ids[revision.provider_dataset_id] = [
-                    str(provider_document_id)
-                    for provider_document_id in (
-                        revision.provider_doc_map_json or {}
-                    ).values()
-                ]
+                ready_document_ids[revision.provider_dataset_id] = [str(provider_document_id) for provider_document_id in (revision.provider_doc_map_json or {}).values()]
                 profiles = next(
-                    (
-                        entry.get("knowledge_profiles")
-                        for entry in (revision.manifest_json or [])
-                        if isinstance(entry, dict)
-                        and isinstance(entry.get("knowledge_profiles"), dict)
-                    ),
+                    (entry.get("knowledge_profiles") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and isinstance(entry.get("knowledge_profiles"), dict)),
                     {},
                 )
-                retrieval = (
-                    profiles.get("retrieval") if isinstance(profiles, dict) else None
-                )
+                retrieval = profiles.get("retrieval") if isinstance(profiles, dict) else None
                 if isinstance(retrieval, dict):
                     retrieval_profiles[revision.provider_dataset_id] = dict(retrieval)
                 revision_metadata[revision.provider_dataset_id] = {
@@ -226,29 +193,15 @@ async def prepare_canonical_agent_run(
                         str(provider_document_id): {
                             "logical_document_id": str(document_id),
                             "display_name": next(
-                                (
-                                    entry.get("filename")
-                                    for entry in (revision.manifest_json or [])
-                                    if isinstance(entry, dict)
-                                    and str(entry.get("document_id"))
-                                    == str(document_id)
-                                ),
+                                (entry.get("filename") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and str(entry.get("document_id")) == str(document_id)),
                                 None,
                             ),
                             "content_hash": next(
-                                (
-                                    entry.get("content_hash")
-                                    for entry in (revision.manifest_json or [])
-                                    if isinstance(entry, dict)
-                                    and str(entry.get("document_id"))
-                                    == str(document_id)
-                                ),
+                                (entry.get("content_hash") for entry in (revision.manifest_json or []) if isinstance(entry, dict) and str(entry.get("document_id")) == str(document_id)),
                                 None,
                             ),
                         }
-                        for document_id, provider_document_id in (
-                            revision.provider_doc_map_json or {}
-                        ).items()
+                        for document_id, provider_document_id in (revision.provider_doc_map_json or {}).items()
                     },
                 }
             run_context = diagnostic_context or {}
@@ -270,23 +223,15 @@ async def prepare_canonical_agent_run(
                 bindings,
                 caller_allowed=caller_allowed,
                 workflow_allowed=_scope_restriction(run_context, "knowledge_scope"),
-                runtime_allowed=_scope_restriction(
-                    run_context, "runtime_knowledge_scope"
-                ),
+                runtime_allowed=_scope_restriction(run_context, "runtime_knowledge_scope"),
                 deployment_allowed=deployment_allowed,
             )
-            knowledge_scope = {
-                logical: dataset
-                for logical, dataset in knowledge_scope.items()
-                if ready_document_ids.get(dataset)
-            }
+            knowledge_scope = {logical: dataset for logical, dataset in knowledge_scope.items() if ready_document_ids.get(dataset)}
             await asyncio.to_thread(
                 storage.create_run_skill_view,
                 run_id,
-                [
-                    (value.resource_id, value.version, value.content_hash)
-                    for value in skill_definitions
-                ],
+                [(value.resource_id, value.version, value.content_hash) for value in skill_definitions],
+                aliases={value.resource_id: value.skill.name for value in skill_definitions},
             )
             await session.commit()
         local_authorization = None
@@ -324,18 +269,12 @@ async def prepare_canonical_agent_run(
                 run_id=run_id,
                 thread_id=str(thread_id or "canonical"),
                 device_id=str(local_device_id),
-                policy_version=str(
-                    local_context.get("policy_version", "runtime-default")
-                ),
+                policy_version=str(local_context.get("policy_version", "runtime-default")),
                 authorization=local_authorization,
             )
-            route = RunDeviceRouter(
-                DeviceRoute(str(local_device_id)), local_authorization
-            )
+            route = RunDeviceRouter(DeviceRoute(str(local_device_id)), local_authorization)
 
-            async def send_local(
-                device_id: str, capability: str, payload: dict[str, Any]
-            ) -> Any:
+            async def send_local(device_id: str, capability: str, payload: dict[str, Any]) -> Any:
                 from app.device_control.broker import TaskStatus, get_device_broker
 
                 broker = get_device_broker()
@@ -361,35 +300,20 @@ async def prepare_canonical_agent_run(
                     raise RuntimeError(record.error or record.status.value)
                 return record.result
 
-            local_tool_executor = LocalToolExecutor(
-                local_authorization, route, send_local
-            )
+            local_tool_executor = LocalToolExecutor(local_authorization, route, send_local)
         return build_canonical_agent_factory(
             definition,
             skills,
             runner_tool_groups=actor.tool_groups,
             knowledge_scope=KnowledgeScope.from_bindings(
                 knowledge_scope,
-                ready_document_ids={
-                    dataset: ready_document_ids[dataset]
-                    for dataset in knowledge_scope.values()
-                },
-                retrieval_profiles={
-                    dataset: retrieval_profiles[dataset]
-                    for dataset in knowledge_scope.values()
-                    if dataset in retrieval_profiles
-                },
-                revision_metadata={
-                    dataset: revision_metadata[dataset]
-                    for dataset in knowledge_scope.values()
-                    if dataset in revision_metadata
-                },
+                ready_document_ids={dataset: ready_document_ids[dataset] for dataset in knowledge_scope.values()},
+                retrieval_profiles={dataset: retrieval_profiles[dataset] for dataset in knowledge_scope.values() if dataset in retrieval_profiles},
+                revision_metadata={dataset: revision_metadata[dataset] for dataset in knowledge_scope.values() if dataset in revision_metadata},
             ),
             local_authorization=local_authorization,
             local_tool_executor=local_tool_executor,
-            local_tool_descriptors=local_tool_descriptors
-            if isinstance(local_tool_descriptors, dict)
-            else None,
+            local_tool_descriptors=local_tool_descriptors if isinstance(local_tool_descriptors, dict) else None,
         )
     except ResourceNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -419,9 +343,7 @@ async def prepare_canonical_agent_run(
                 "requested_skill": exc.requested_skill,
                 "available_skills": exc.available_skills,
                 "task_id": (diagnostic_context or {}).get("task_id"),
-                "context_source": (diagnostic_context or {}).get(
-                    "context_source", "request"
-                ),
+                "context_source": (diagnostic_context or {}).get("context_source", "request"),
                 "reason": "skill_outside_agent_closure",
             },
         )
@@ -433,9 +355,7 @@ async def prepare_canonical_agent_run(
                 "agent": exc.agent,
                 "requested_skill": exc.requested_skill,
                 "available_skills": exc.available_skills,
-                "context_source": (diagnostic_context or {}).get(
-                    "context_source", "request"
-                ),
+                "context_source": (diagnostic_context or {}).get("context_source", "request"),
             },
         ) from exc
     except (ResourceConflict, ResourceRuntimeError) as exc:

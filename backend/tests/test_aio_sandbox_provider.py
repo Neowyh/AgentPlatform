@@ -250,6 +250,24 @@ def test_get_user_skill_mounts_mounts_only_global_integrations(tmp_path, monkeyp
     assert bob["/mnt/skills/integrations"] == str(tmp_path / "home" / "users" / "bob" / "skills_view" / "integrations")
 
 
+def test_canonical_run_extra_mounts_do_not_overlay_frozen_skill_root(tmp_path, monkeypatch):
+    aio_mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
+    config = SimpleNamespace(skills=SimpleNamespace(container_path="/mnt/skills"))
+    view = tmp_path / "run-skill-view"
+    view.mkdir()
+    monkeypatch.setattr(aio_mod, "get_app_config", lambda: config)
+    monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path / "home"))
+    monkeypatch.setattr(aio_mod, "RUN_SKILL_VIEW_RESOLVER", lambda _scope: ("run-1", view))
+    provider = _make_provider(tmp_path)
+    provider._config["skills_container_path"] = "/mnt/skills"
+
+    mounts = provider._get_extra_mounts("canonical_run_scope", user_id="alice")
+
+    containers = {container for _host, container, _read_only in mounts}
+    assert {"/mnt/user-data/workspace", "/mnt/user-data/uploads", "/mnt/user-data/outputs", "/mnt/acp-workspace", "/mnt/skills"} <= containers
+    assert "/mnt/skills/integrations" not in containers
+
+
 def test_get_extra_mounts_provisioner_payload_has_unique_container_paths(tmp_path, monkeypatch, provisioner_module):
     """Full AIO mount composition must not send duplicate paths to provisioner."""
     aio_mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
@@ -331,6 +349,25 @@ def test_thread_skill_projection_mounts_all_categories(
 
     assert {container_path: host_path for host_path, container_path, _ in mounts} == {f"/mnt/skills/{category}": str(projection_root / category) for category in ("public", "custom", "legacy", "integrations")}
     assert all(read_only for _host, _container, read_only in mounts)
+
+
+def test_canonical_run_skill_view_mounts_frozen_root(
+    tmp_path,
+    monkeypatch,
+):
+    aio_mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
+    view = tmp_path / "run-skill-view"
+    (view / "custom" / "fault-zeroing").mkdir(parents=True)
+    monkeypatch.setattr(aio_mod, "get_app_config", lambda: SimpleNamespace(skills=SimpleNamespace(container_path="/mnt/skills")))
+    monkeypatch.setattr(aio_mod, "get_paths", lambda: Paths(base_dir=tmp_path / "home"))
+    monkeypatch.setattr(aio_mod, "RUN_SKILL_VIEW_RESOLVER", lambda _scope: ("run-1", view))
+
+    mounts = aio_mod.AioSandboxProvider._get_skills_mounts(
+        "canonical_run_scope",
+        user_id="alice",
+    )
+
+    assert mounts == [(str(view), "/mnt/skills", True)]
 
 
 def test_thread_skill_projection_uses_distinct_sandbox_identity(
