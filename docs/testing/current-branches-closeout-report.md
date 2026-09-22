@@ -73,6 +73,7 @@ Python 3.8 compatibility candidate.
 | M9 device/MCP focused tests | passed: 82 tests with `PYTHONPATH=tests` (device control, MCP router/OAuth, Local Runtime MCP integration) |
 | Gate 8 artifact validator unit tests | passed: 12 passed |
 | Gate 7/8 artifact validator rerun | passed on candidate `a86f6b3c`: 11 passed; no real artifact was supplied, so this verifies validator behavior only | 2026-09-21; 3.74s |
+| Gate 8 artifact CLI validator | passed: `backend/tests/scripts/test_validate_gate8_artifact_cli.py` 2 passed; the command rejects stale candidates and malformed/incomplete records instead of manufacturing a pass | 2026-09-22; 3.36s |
 | Gate 7 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated dataset marker created, retrieved, archived, and deleted |
 | Gate 8 real RAGFlow provider probe | passed on current candidate: 1 passed / 1 artifact-dependent case skipped; isolated marker search and unrelated zero-hit query both verified |
 | Gate 7 provider replay after Evidence fix | passed on current candidate `4120c7cf` with isolated allowlisted dataset: archived-delivery assertion 1 passed; no credentials or provider payload persisted in the report |
