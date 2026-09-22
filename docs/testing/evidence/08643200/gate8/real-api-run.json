@@ -1,0 +1,63 @@
+{
+  "candidate_code_commit": "08643200a0111fce31f560025a06f1820c8d766b",
+  "recorded_at": "2026-09-22T14:12:00+08:00",
+  "status": "partial",
+  "environment": {
+    "provider": "ragflow",
+    "real": true,
+    "model": "agnes-3.0-flash"
+  },
+  "knowledge_base": {
+    "logical_id": "8f8eec52-0a87-4ae6-ba8f-994c605a7322",
+    "revision_id": "769573b3-353c-402d-ac84-4d53f8b58395",
+    "revision_no": 1,
+    "manifest_hash": "6aa47e77e3052a842c0eea8a44fb8205aac874a65ab64be8913856642d74cd51",
+    "document_id": "e8c9cf02-c655-435e-8b02-13f154554526",
+    "document_name": "g7-marker.txt"
+  },
+  "eval_case": {
+    "case_id": "72ff0a10-c7b0-43d5-8aaa-6cd26d7aa7fb",
+    "version_no": 1,
+    "expected_document_count": 1
+  },
+  "observations": {
+    "candidate_preparation": "published revision exposed through the resource API with one ready document",
+    "trial_retrieval": "archived retrieval test returned one hit and preserved the exact marker content",
+    "eval_case_management": "case was created through the eval-case API and bound to the canonical document",
+    "matching_candidate_evaluation": {
+      "run_id": "05cc5ac2-9dbe-44eb-b9e9-7f81d5a18834",
+      "status": "completed",
+      "qualification": "passed",
+      "expected_hit_rate": 1.0,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0
+    },
+    "profile_ab_comparison": {
+      "comparison_id": "021fe09d-e3aa-4462-9771-7eea35ec21ee",
+      "status": "completed",
+      "eligible": true,
+      "delta": {
+        "expected_hit_rate": 0.0,
+        "recall_at_k": 0.0,
+        "mrr_at_k": 0.0
+      }
+    },
+    "browser_review": {
+      "result": "passed",
+      "test": "knowledge-evaluation-gate8.spec.ts",
+      "observed": [
+        "retrieval record expanded and exact marker displayed",
+        "A/B revisions selected and comparison submitted",
+        "publish-gate feedback and evaluation history displayed",
+        "keyboard focus returned to the first control"
+      ]
+    }
+  },
+  "unexecuted_scenarios": [
+    "formal_publish",
+    "run_snapshot_freeze",
+    "rbac_and_secrecy",
+    "failure_recovery"
+  ],
+  "sensitive_values": "provider credentials, addresses, and dataset identifiers omitted"
+}
