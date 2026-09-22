@@ -5,9 +5,8 @@
 > unexecuted. GitNexus could not register this worktree after a full index
 > attempt, so impact and detect-changes gates remain blocked.
 >
-> candidate: `feature/m5-retrieval-evidence` working tree, based on
-> `72bb9eb861a175352c159998c0293c1f1a289f0e` (uncommitted changes)
-> date: 2026-09-17 (Asia/Shanghai)
+> candidate: `develop@18adbe993` (integrated M5/M6/M9/TTFT candidate)
+> date: 2026-09-22 (Asia/Shanghai)
 
 This is the formal acceptance record for
 [Gate 7](../../.scratch/m5-retrieval-evidence/issues/05-gate7-acceptance.md).
@@ -88,6 +87,7 @@ browser, or credentials is recorded as `unexecuted`, never as pass.
 | **2026-09-22 Step 1** regression slice | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_retrieval_receipts.py tests/unit/gateway/test_run_evidence.py tests/test_tool_receipt_middleware.py -q` | passed | 2026-09-22 / 3.95s / 0 | 42 passed |
 | **2026-09-22 current candidate** Agent source-chain replay | Isolated Gateway `:8003`, Agnes `agnes-3.0-flash`, run `3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83` | passed for the Agent row; source-chain artifact persisted at `docs/testing/evidence/08643200/gate7/source-chain.json` and validates every persisted hop | 2026-09-22 / 16s / 0 |
 | **2026-09-22 current candidate** matrix continuation | `/tmp/g7_matrix.py workflow_subagent` | incomplete before execution: existing workflow slug conflicted; the remaining 15 matrix rows and browser citation remain unexecuted | 2026-09-22 / 0.2s / 1 |
+| **2026-09-22 current candidate** persisted artifact validation | `docs/testing/evidence/08643200/gate7/source-chain.json` plus `executed-matrix.json` | source-chain validator passed; matrix artifact is intentionally partial (Agent row passed, Workflow/Sub-Agent incomplete, 14 rows and browser unexecuted) | 2026-09-22 / <1s / 0 |
 
 ## Required manual matrix
 
