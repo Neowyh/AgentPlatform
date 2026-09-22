@@ -205,3 +205,27 @@ test("sanitize step does not break KaTeX math rendering", () => {
   // produced (both inline and display math markers survive sanitization).
   expect(html.match(/class="katex"/g)?.length).toBeGreaterThanOrEqual(2);
 });
+
+test("sanitize step keeps evidence:// citation hrefs for the evidence panel", () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      SafeStreamdown,
+      {
+        ...streamdownPlugins,
+        components: toStreamdownComponents({
+          // The chat path (message-list-item) renders links through this
+          // component with the run id; without the run id the button stays
+          // disabled, so the run id is part of the assertion.
+          a: createMarkdownLinkComponent("thread-1", "run-1"),
+        }),
+      },
+      '"Quoted sentence." [citation:g7-marker.txt](evidence://rr_abc123_i1)',
+    ),
+  );
+
+  // The app's own citation feature (CitationLink → evidence panel) depends
+  // on evidence:// hrefs surviving sanitization; isSafeHref already
+  // restricts them to [A-Za-z0-9_-].
+  expect(html).toContain('aria-label="Open g7-marker.txt"');
+  expect(html).toContain("<button");
+});

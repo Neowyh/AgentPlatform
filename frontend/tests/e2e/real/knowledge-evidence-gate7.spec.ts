@@ -30,16 +30,23 @@ test.describe("real retrieval evidence Gate 7", () => {
       timeout: 120_000,
     });
 
-    const evidenceLink = page.getByRole("button", { name: /open/i }).first();
+    const answer = page
+      .locator("p", { hasText: expectedSnippet! })
+      .filter({ has: page.getByRole("button", { name: /open/i }) })
+      .last();
+    const evidenceLink = answer.getByRole("button", { name: /open/i });
     await expect(evidenceLink).toBeVisible();
     await evidenceLink.focus();
     const expectedEvidenceUrl = new URL(
       `/api/runs/${encodeURIComponent(runId!)}/evidence`,
       process.env.IDEER_INTERNAL_GATEWAY_BASE_URL,
     ).toString();
-    const evidenceRequest = page.waitForRequest(
-      (request) => request.url() === expectedEvidenceUrl,
-    );
+    const evidenceRequest = page.waitForRequest((request) => {
+      // The browser calls the frontend proxy origin; only the path is stable.
+      const url = new URL(request.url());
+      const expected = new URL(expectedEvidenceUrl);
+      return url.pathname === expected.pathname;
+    });
     await evidenceLink.press("Enter");
     await evidenceRequest;
     await expect(page.getByTestId("evidence-panel")).toBeVisible();

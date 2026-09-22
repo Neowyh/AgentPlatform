@@ -60,7 +60,11 @@ const sanitizeSchema: SanitizeOptions = {
   ...defaultSchema,
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "tel"],
+    // `tel` mirrors streamdown's built-in schema. `evidence` is the app's
+    // own retrieval-receipt scheme: CitationLink opens the evidence panel
+    // from it, and isSafeHref (markdown-link.tsx) already restricts it to
+    // [A-Za-z0-9_-], so no new XSS surface is introduced.
+    href: [...(defaultSchema.protocols?.href ?? []), "tel", "evidence"],
   },
   attributes: {
     ...defaultSchema.attributes,
