@@ -59,6 +59,7 @@ Python 3.8 compatibility candidate.
 | `backend-serial` rerun | passed on candidate `a86f6b3c`: 54 passed / 10 skipped / 2 warnings; 26,360 deselected; `TEST_LANE_DURATION=30s`, status 0 | 2026-09-21 |
 | `backend-blocking-io` | passed on current candidate: 97 passed, 16s (with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`) |
 | `backend-blocking-io` rerun | passed on candidate `a86f6b3c`: 97 passed, 5 warnings; `TEST_LANE_DURATION=9s`, status 0 |
+| `backend-blocking-io` current-candidate verification | passed on `99aa4a13`: 97 passed, 5 warnings; `TEST_LANE_DURATION=13s`, status 0 |
 | `local-runtime` | passed on current candidate in socket-enabled environment: 192 passed, 4 skipped, 1 warning; `TEST_LANE_DURATION=10s` |
 | M9 Local Runtime/MCP backend integration | passed on current candidate in socket-enabled environment: 36 passed, 4 warnings | 6.73s |
 | `frontend-a11y` | passed: 3 passed, 177s |
