@@ -3,7 +3,7 @@
 Date: 2026-09-21
 Updated: 2026-09-22
 Baseline: `develop@ca65c5770`  
-Candidate: `develop@3eb4e8bd`, containing the reviewed M5, M6, M9, TTFT, and canonical workflow sandbox-path fixes plus the closeout verification and Gate 7/Gate 8 real evidence updates.
+Candidate: `develop@b70fdbb2`, containing the reviewed M5, M6, M9, TTFT, and canonical workflow sandbox-path fixes plus the closeout verification and Gate 7/Gate 8 real evidence updates.
 
 Status: **本机集成候选已复核；正式收口未完成（draft）**. The candidate is fast-forwarded into `develop`; local lanes and the real Nginx→Gateway→AIO/Agnes TTFT measurement path pass. Formal closeout remains open for the complete Gate 7/8 matrices, production MCP→Evidence proof, and fault-zeroing completion.
 
@@ -14,7 +14,7 @@ Status: **本机集成候选已复核；正式收口未完成（draft）**. The 
 | 0 | 收桌子 + 宣布2暂缓 | done 2026-09-22 | — |
 | 1 | Gate7 补考卷（provider live + artifact + regression） | **partial** 2026-09-22 | Agent/Workflow/Sub-Agent source chain and browser citation passed; revision-only snapshot projection is fixed and real-checked; latest Agnes replay completed successfully with an archived retrieval receipt and frozen KB revision; 14-row permission/state matrix remains unexecuted |
 | 2 | Fault-zeroing 真实三案例闭环 | **incomplete** | Codex GPT-5.5 real AIO replay reached production nodes and wrote valid evidence/tree artifacts; canonical output roots, deductive-tree workspace reads, and frozen Skill schema resolution now pass. The run remained `running` after repeated Codex peer-closed/SSL EOF errors and was stopped as incomplete. Evidence: [`20260922-codex-fz6-incomplete.json`](evidence/fault-zeroing/20260922-codex-fz6-incomplete.json) |
-| 3 | Gate8 补考卷（artifact validator + live + eval） | **partial** 2026-09-22 | 当前候选又完成了一次真实 revision 2 发布、匹配评估和 Profile A/B comparison；证据已绑定 `b70fdbb2`。完整 failure/recovery、RBAC/browser 组合 artifact 仍待补齐 |
+| 3 | Gate8 补考卷（artifact validator + live + eval） | **partial** 2026-09-22 | 当前候选又完成了一次真实 revision 2 发布、匹配评估和 Profile A/B comparison；证据绑定代码候选 `b70fdbb2`；RBAC 实时步骤已补入，但完整 failure/recovery、browser 组合 artifact 仍待补齐 |
 | 4 | TTFT 配速实验 | **done** 2026-09-22 | AIO + Nginx→Gateway, 0/1/5/10 ×5 valid; 0 stream errors; high variance; no optimization claim; 20-file scenario excluded |
 | 5 | M9 MCP→Evidence（Linux） | **partial** | Real stdio MCP→Local Runtime→broker receipt path passed in the device integration harness; production Gateway Agent Run→Run Evidence still needs a real configured MCP server and receipt artifact. Windows 7 is removed from tracking |
 | 6 | frontend-real seeding | **done** 2026-09-22 | 7/10 pass incl. Agnes real-model run; 3 skips gated on Gate7/8 browser artifacts |
