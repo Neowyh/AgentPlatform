@@ -1,0 +1,14 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "candidate_preparation",
+  "real_execution": true,
+  "observed_steps": [
+    "used the public resource API as the KnowledgeBase owner",
+    "created revision 2 and waited for the real provider worker to mark it ready",
+    "revision 2 reached published with one ready document and a stable manifest hash"
+  ],
+  "revision_id": "5fb76d21-e446-4373-a405-9a18aecf283b",
+  "revision_no": 2,
+  "document_count": 1,
+  "manifest_recorded": true
+}

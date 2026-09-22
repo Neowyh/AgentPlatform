@@ -1,0 +1,14 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "formal_publish",
+  "real_execution": true,
+  "observed_steps": [
+    "prepared and published the candidate revision through the public API",
+    "ran the matching-candidate evaluation and observed qualification passed",
+    "confirmed the revision remained published after the qualified evaluation"
+  ],
+  "published_revision_id": "5fb76d21-e446-4373-a405-9a18aecf283b",
+  "active_revision_id": "5fb76d21-e446-4373-a405-9a18aecf283b",
+  "gate_decision": "passed",
+  "evaluation_run_id": "af71a887-9acd-4008-932f-a245072287f6"
+}

@@ -1,0 +1,19 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "matching_candidate_evaluation",
+  "real_execution": true,
+  "observed_steps": [
+    "created an evaluation case through the public API and bound the expected document",
+    "queued an evaluation for the published revision",
+    "the real evaluation worker completed one case with qualification passed"
+  ],
+  "revision_id": "5fb76d21-e446-4373-a405-9a18aecf283b",
+  "evaluation_run_id": "af71a887-9acd-4008-932f-a245072287f6",
+  "qualification": "passed",
+  "metrics": {
+    "expected_hit_rate": 1.0,
+    "recall_at_k": 1.0,
+    "mrr_at_k": 1.0,
+    "denominator": 1
+  }
+}

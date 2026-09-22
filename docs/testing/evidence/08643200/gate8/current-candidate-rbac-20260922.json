@@ -1,0 +1,23 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "rbac_and_secrecy",
+  "real_execution": true,
+  "observed_steps": [
+    "Logged in as the existing owner, super administrator, and a newly created ordinary user through the live Gateway at 127.0.0.1:8003.",
+    "Owner submitted a knowledge-base visibility application and super administrator approved it.",
+    "Ordinary user read the public knowledge base successfully (HTTP 200).",
+    "Owner changed the knowledge base back to private; ordinary user then received HTTP 404.",
+    "Owner resource and knowledge-revision responses did not contain provider_dataset_id."
+  ],
+  "observed_result": {
+    "application_status": 201,
+    "review_status": 200,
+    "public_read_status": 200,
+    "revocation_status": 200,
+    "revoked_read_status": 404,
+    "owner_resource_status": 200,
+    "resource_provider_identity_redacted": true,
+    "revision_provider_identity_redacted": true
+  },
+  "evidence_scope": "Live local Gateway and current knowledge-base records; credentials and tokens omitted."
+}

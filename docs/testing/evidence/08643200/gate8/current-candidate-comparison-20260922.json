@@ -1,0 +1,19 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "profile_ab_comparison",
+  "real_execution": true,
+  "observed_steps": [
+    "started a comparison through the public evaluation-comparisons API",
+    "compared published revision 1/frozen with revision 2/configured",
+    "both real evaluation sides completed and the comparison was eligible with unchanged metrics"
+  ],
+  "comparison_id": "8bb58c27-b059-40da-add2-e3890436e5c2",
+  "profile_a": "frozen",
+  "profile_b": "configured",
+  "metrics": {
+    "expected_hit_rate_delta": 0.0,
+    "recall_at_k_delta": 0.0,
+    "mrr_at_k_delta": 0.0,
+    "outcome": "unchanged"
+  }
+}

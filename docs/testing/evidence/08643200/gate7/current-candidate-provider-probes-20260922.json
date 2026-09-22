@@ -1,0 +1,12 @@
+{
+  "candidate_commit": "b70fdbb2",
+  "scenario": "provider_live_probes",
+  "real_execution": true,
+  "observed_steps": [
+    "ran the Gate 7 and Gate 8 live provider probe files with the configured RAGFlow dataset",
+    "the provider rows passed and the artifact-dependent rows were explicitly skipped",
+    "no provider credentials, endpoint, or dataset identifier was persisted"
+  ],
+  "command": "DEER_FLOW_RUN_LIVE_TESTS=1 ... pytest tests/test_knowledge_gate7_live.py tests/test_knowledge_gate8_live.py -q -s",
+  "result": "2 passed, 2 skipped"
+}
