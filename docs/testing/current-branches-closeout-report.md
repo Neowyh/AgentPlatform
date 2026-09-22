@@ -3,7 +3,7 @@
 Date: 2026-09-21
 Updated: 2026-09-22
 Baseline: `develop@ca65c5770`  
-Candidate: `develop@3b188a81`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7 source-chain evidence updates.
+Candidate: `develop@5aef815c`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7 source-chain and browser evidence updates.
 
 Status: **本机集成候选仍待复核；正式收口未完成（draft）**. The candidate is fast-forwarded into `develop`; local lanes pass, while real acceptance remains blocked by sandbox/runtime and external environment requirements. 2026-09-22: fault-zeroing deferred to a later session; root cause is an intermittent silent Agnes streaming stall (no response, no chunk-watchdog fire, no retry) that hits `WorkflowNodeTimeout` after 300s/900s depending on branch. All other tasks proceed without waiting for fault-zeroing.
 
@@ -203,7 +203,7 @@ not stored in this ledger.
 - **Step 1 Gate7 provider probe 通过**：`test_gate7_real_provider_content_matches_archived_delivery` 在 Agnes `agnes-3.0-flash` 上 1 passed，RAGFlow `737991f4...` 数据集可达
 - **Step 1 artifact validator 通过**：`test_gate7_acceptance_artifacts.py` 3 passed
 - **Step 1 回归 42 passed**：retrieval receipts + run evidence + tool receipt middleware
-- **仍 pending**：`test_gate7_real_run_artifacts_prove_source_chain_and_matrix` 需 `RAGFLOW_GATE7_SOURCE_CHAIN_JSON / MATRIX_JSON / RUN_ID / EXPECTED_SNIPPET` 四个真实 run 产物（artifact-only skipped）；16-row 权限矩阵 + 浏览器引用证据 待补
+- **仍 pending**：`test_gate7_real_run_artifacts_prove_source_chain_and_matrix` 仍需完整矩阵 artifact；Agent/Workflow/Sub-Agent 来源链和浏览器引用证据已通过，剩余 14 行权限/故障矩阵待真实执行
 
 ### 2026-09-22 Step 2 Gate8 完成记录
 - **Step 2 artifact validator 通过**：`test_gate8_acceptance_artifacts.py` 8 passed（场景完整性、真实执行证据、provider 身份/密钥拒绝、过期 candidate、敏感值等全部校验）
