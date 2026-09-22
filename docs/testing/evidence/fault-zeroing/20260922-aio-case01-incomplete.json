@@ -1,7 +1,7 @@
 {
   "artifact": "fault-zeroing-real-acceptance",
   "recorded_at": "2026-09-22T19:34:48+08:00",
-  "candidate_commit": "aa89734f",
+  "candidate_commit": "6a79bab1",
   "case": "case_01_wind_tunnel_heat_flux_drift",
   "real_execution": true,
   "environment": {

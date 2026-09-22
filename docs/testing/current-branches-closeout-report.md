@@ -3,7 +3,7 @@
 Date: 2026-09-21
 Updated: 2026-09-22
 Baseline: `develop@ca65c5770`  
-Candidate: `develop` (latest closeout evidence commit), containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7/Gate 8 real evidence updates.
+Candidate: `develop@6a79bab1`, containing the reviewed M5, M6, M9, and TTFT integration commits plus the closeout verification and Gate 7/Gate 8 real evidence updates.
 
 Status: **本机集成候选已复核；正式收口未完成（draft）**. The candidate is fast-forwarded into `develop`; local lanes and the real Nginx→Gateway→AIO/Agnes TTFT measurement path pass. Formal closeout remains open for the complete Gate 7/8 matrices, production MCP→Evidence proof, and fault-zeroing completion.
 
