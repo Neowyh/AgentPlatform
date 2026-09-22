@@ -1,0 +1,42 @@
+{
+  "candidate_commit": "5a85fd84",
+  "scenario": "agent_source_chain_replay",
+  "real_execution": true,
+  "executed_at": "2026-09-22 08:56:29.883181",
+  "observed_steps": [
+    "published a fresh Agent with a live KnowledgeBase dependency through the resource API",
+    "created a canonical Run and persisted Agent plus KnowledgeBase revision snapshots",
+    "Agnes emitted knowledge_search with the exact logical KnowledgeBase UUID",
+    "RAGFlow returned the marker document and the Evidence middleware archived a retrieval receipt",
+    "Run Evidence API projection retained the receipt, revision, manifest hash, document hash, and citation evidence id"
+  ],
+  "observations": {
+    "run_id": "8c22ca88-7548-4640-8b09-58524d9dcc46",
+    "run_status": "error",
+    "run_error": "GraphRecursionError after the successful retrieval call",
+    "tool_call_id": "call_0e11233a58444a7e92fbcdda",
+    "tool_name": "knowledge_search",
+    "tool_status": "success",
+    "knowledge_base_logical_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+    "revision_id": "0ef42a95-2773-4669-944c-904e531f7263",
+    "revision_no": 1,
+    "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+    "document_id": "0d439439-f11f-4cb4-984b-fb3eae867595",
+    "document_name": "gate8.txt",
+    "document_content_hash": "00f445218f2be02f39eaf5911269fde6eef32eb1856131761e64d3934e615f8a",
+    "chunk_content": "\nGate 8 formal publish marker g8-gate8-real-20260922-6f2ed6b3",
+    "evidence_id": "rr_448b29fe3d8b8c8dda15e68e_i1",
+    "citation_label": "gate8.txt",
+    "configuration_source": "frozen_run_revision",
+    "archive_status": "archived",
+    "snapshot_resource_ids": [
+      "743f9a6b-bf45-45fe-877b-890f5603d560",
+      "985614f5-67d9-4b3d-96d7-8fb436a1c3c4"
+    ],
+    "snapshot_contains_knowledge_revision": true
+  },
+  "limitations": [
+    "The Agent Run ended with GraphRecursionError after the successful retrieval rather than a clean terminal success; this is not a full end-to-end Agent success claim.",
+    "Provider dataset identity and credentials omitted."
+  ]
+}
