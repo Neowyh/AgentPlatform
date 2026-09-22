@@ -15,6 +15,7 @@ import app.agentplatform.resource_models  # noqa: F401 - register resource table
 import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.knowledge.models import KnowledgeBase, KnowledgeRevision
 from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import (
     Resource,
@@ -210,6 +211,56 @@ async def test_visibility_application_freezes_version_and_hash_and_prevents_dupl
             scope_department_id="dept-a",
             reason="duplicate",
         )
+
+
+@pytest.mark.asyncio
+async def test_knowledge_revision_is_publish_anchor_for_visibility_application(session: AsyncSession) -> None:
+    resource = _resource("knowledge-share")
+    resource.type = "knowledge_base"
+    resource.storage_kind = "database"
+    resource.storage_key = "knowledge_bases/knowledge-share"
+    resource.latest_version = 0
+    knowledge_base = KnowledgeBase(resource_id=resource.id, initialization_status="ready")
+    revision = KnowledgeRevision(
+        id="knowledge-revision-1",
+        knowledge_base_id=resource.id,
+        revision_no=1,
+        status="published",
+        manifest_hash="b" * 64,
+        document_count=1,
+        integrity_status="verified",
+        created_by="owner",
+    )
+    knowledge_base.active_revision_id = revision.id
+    session.add_all([resource, knowledge_base, revision])
+    await session.commit()
+
+    application = await ResourceService(session, _actor("owner")).request_visibility(
+        resource.id,
+        target_visibility="public",
+        scope_department_id=None,
+        reason="share published knowledge revision",
+    )
+
+    assert application.requested_version == revision.revision_no
+    assert application.requested_hash == revision.manifest_hash
+
+    reviewed = await ResourceService(
+        session,
+        _actor(
+            "reviewer",
+            role="super_admin",
+            permissions={ResourceAction.READ, ResourceAction.APPROVE},
+        ),
+    ).review_visibility_application(
+        application.id,
+        approve=True,
+        comment="approved published knowledge revision",
+        expected_version=application.version,
+    )
+
+    assert reviewed.status == "approved"
+    assert resource.visibility == "public"
 
 
 @pytest.mark.asyncio

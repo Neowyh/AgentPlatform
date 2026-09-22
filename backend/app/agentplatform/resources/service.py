@@ -644,7 +644,30 @@ class ResourceService:
             raise ValueError("Visibility application must expand access")
         if target_visibility == "department" and scope_department_id is None:
             raise ValueError("scope_department_id is required for department visibility")
-        if resource.latest_version < 1:
+        published_version: ResourceVersion | None = None
+        published_knowledge_revision: KnowledgeRevision | None = None
+        if resource.latest_version >= 1:
+            published_version = (
+                await self.session.execute(
+                    select(ResourceVersion).where(
+                        ResourceVersion.resource_id == resource.id,
+                        ResourceVersion.version == resource.latest_version,
+                    )
+                )
+            ).scalar_one_or_none()
+        elif resource.type == ResourceType.KNOWLEDGE_BASE.value:
+            knowledge_base = await self.session.get(KnowledgeBase, resource.id)
+            if knowledge_base is not None and knowledge_base.active_revision_id:
+                published_knowledge_revision = (
+                    await self.session.execute(
+                        select(KnowledgeRevision).where(
+                            KnowledgeRevision.id == knowledge_base.active_revision_id,
+                            KnowledgeRevision.knowledge_base_id == resource.id,
+                            KnowledgeRevision.status.in_(("published", "superseded")),
+                        )
+                    )
+                ).scalar_one_or_none()
+        if published_version is None and published_knowledge_revision is None:
             raise ResourceConflict("Only a published resource may expand visibility")
         pending = (
             await self.session.execute(
@@ -656,16 +679,8 @@ class ResourceService:
         ).scalar_one_or_none()
         if pending is not None:
             raise ResourceConflict("Resource already has a pending visibility application")
-        published = (
-            await self.session.execute(
-                select(ResourceVersion).where(
-                    ResourceVersion.resource_id == resource.id,
-                    ResourceVersion.version == resource.latest_version,
-                )
-            )
-        ).scalar_one_or_none()
-        if published is None:
-            raise ResourceConflict("Resource latest version is missing")
+        requested_version = published_version.version if published_version is not None else published_knowledge_revision.revision_no
+        requested_hash = published_version.content_hash if published_version is not None else published_knowledge_revision.manifest_hash
         violations = await self._visibility_closure_violations_for(
             resource,
             source_visibility=target_visibility,
@@ -685,8 +700,8 @@ class ResourceService:
             resource_type=resource.type,
             resource_id=resource.slug,
             canonical_resource_id=resource.id,
-            requested_version=published.version,
-            requested_hash=published.content_hash,
+            requested_version=requested_version,
+            requested_hash=requested_hash,
             applicant_id=self.actor.user_id,
             current_visibility=resource.visibility,
             target_visibility=target_visibility,
@@ -758,7 +773,23 @@ class ResourceService:
                     )
                 )
             ).scalar_one_or_none()
-            if version is None or resource.latest_version != application.requested_version or version.content_hash != application.requested_hash or resource.visibility != application.current_visibility:
+            knowledge_revision = None
+            if version is None and resource.type == ResourceType.KNOWLEDGE_BASE.value:
+                knowledge_base = await self.session.get(KnowledgeBase, resource.id)
+                if knowledge_base is not None and knowledge_base.active_revision_id:
+                    knowledge_revision = (
+                        await self.session.execute(
+                            select(KnowledgeRevision).where(
+                                KnowledgeRevision.id == knowledge_base.active_revision_id,
+                                KnowledgeRevision.knowledge_base_id == resource.id,
+                                KnowledgeRevision.status.in_(("published", "superseded")),
+                            )
+                        )
+                    ).scalar_one_or_none()
+            anchor_matches = (version is not None and resource.latest_version == application.requested_version and version.content_hash == application.requested_hash) or (
+                knowledge_revision is not None and knowledge_revision.revision_no == application.requested_version and knowledge_revision.manifest_hash == application.requested_hash
+            )
+            if not anchor_matches or resource.visibility != application.current_visibility:
                 raise ResourceConflict("Visibility application is stale")
             violations = await self._visibility_closure_violations_for(
                 resource,
