@@ -258,6 +258,7 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
         "read": [
             "/mnt/skills/fault-zeroing",
             "/mnt/skills/fault-zeroing/templates",
+            "{{inputs.output_base_dir}}/artifacts/tree/",
         ],
         "write": ["{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"],
     }
