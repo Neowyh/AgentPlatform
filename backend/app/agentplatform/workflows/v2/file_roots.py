@@ -24,6 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from app.agentplatform.resources.canonical_sandbox import canonical_run_skill_view_host_path, parse_canonical_sandbox_scope
 from deerflow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from deerflow.sandbox.tools import (
     _get_custom_mounts,
@@ -207,6 +208,9 @@ def make_host_resolver(
     """
     paths = get_paths()
     path_scope = sandbox_scope or run_id
+    frozen_skills_host = None
+    if sandbox_scope and parse_canonical_sandbox_scope(sandbox_scope) is not None:
+        frozen_skills_host = canonical_run_skill_view_host_path(run_id)
     mappings: dict[str, str] = {
         f"{VIRTUAL_PATH_PREFIX}/code-evidence": str(paths.thread_dir(path_scope, user_id=user_id) / "user-data" / "code-evidence"),
         f"{VIRTUAL_PATH_PREFIX}/workspace": str(paths.sandbox_work_dir(path_scope, user_id=user_id)),
@@ -221,7 +225,7 @@ def make_host_resolver(
                 candidates.append((len(virtual_base), actual_base, virtual_base))
         skills_prefix = _get_skills_container_path()
         if skills_prefix and (path == skills_prefix or path.startswith(f"{skills_prefix}/")):
-            skills_host = _get_skills_host_path()
+            skills_host = frozen_skills_host or _get_skills_host_path()
             if skills_host:
                 candidates.append((len(skills_prefix), skills_host, skills_prefix))
         for mount in _get_custom_mounts():

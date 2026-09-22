@@ -144,6 +144,13 @@ class TestHostResolver:
         assert resolver("/mnt/user-data/outputs/artifacts/a.json") == f"{expected}/artifacts/a.json"
         assert resolver("/mnt/user-data/uploads/input.md") == str(host_resolver.sandbox_uploads_dir(scope, user_id="user-1") / "input.md")
 
+    def test_canonical_sandbox_scope_maps_frozen_skills(self, monkeypatch, tmp_path: Path) -> None:
+        scope = canonical_sandbox_scope("run-1", "run-1")
+        frozen = tmp_path / "run-skill-view"
+        monkeypatch.setattr(file_roots, "canonical_run_skill_view_host_path", lambda _run_id: str(frozen))
+        resolver = make_host_resolver("run-1", "user-1", sandbox_scope=scope)
+        assert resolver("/mnt/skills/fault-zeroing/templates/fault_tree.schema.json") == str(frozen / "fault-zeroing/templates/fault_tree.schema.json")
+
     def test_custom_mount_mapping(self, custom_mounts) -> None:
         resolver = make_host_resolver("run-1", "user-1")
         assert resolver("/mnt/eval-cases/case_01") == "/host/eval-cases/case_01"
