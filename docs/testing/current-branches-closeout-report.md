@@ -17,8 +17,8 @@ Status: **本机集成候选仍待复核；正式收口未完成（draft）**. T
 | 3 | Gate8 补考卷（artifact validator + live + eval） | **done** 2026-09-22 | `RAGFLOW_GATE8_ARTIFACT_JSON` 多场景 + browser 待补 |
 | 4 | TTFT 配速实验 | pending | 缺用户授权的本地 payload 外发 |
 | 5 | M9 Win7 + MCP→Evidence | pending | 缺 Win7 机器 |
-| 6 | frontend-real seeding | pending | 缺 Gateway/Gate7-8 artifacts/model/RBAC 变量 |
-| 7 | 部分收口评审（仍 draft） | pending | 等 4/5/6 |
+| 6 | frontend-real seeding | **blocked** 2026-09-22 | 缺 Gateway seeding + 5 env vars；preflight ready，10 tests skip |
+| 7 | 部分收口评审（仍 draft） | **partial** 2026-09-22 | pr-standard parent status=1（2个缺rg环境失败，focused重跑已绿）；完整重跑待定 |
 
 ## Completion correction
 
@@ -188,6 +188,7 @@ not stored in this ledger.
 | `a86f6b3c` (2026-09-22) | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_knowledge_evaluation.py tests/unit/knowledge/test_gate8_acceptance_artifacts.py tests/test_knowledge_gate8_live.py -v` | passed: 18 passed, 1 skipped (artifact-only skipped — RAGFLOW_GATE8_ARTIFACT_JSON not supplied) | 2026-09-22; 8.29s |
 | `a86f6b3c` (2026-09-22) | `UV_CACHE_DIR=/tmp/deer-flow-uv-cache DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/test_knowledge_gate8_live.py::test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hit -q -s` | passed: 1 passed in 6.06s; fresh marker uploaded, parsed, retrieved, zero-hit verified, deleted | 2026-09-22; 6.06s |
 | `a86f6b3c` (2026-09-22) | `bash scripts/run-test-lane.sh frontend-real` (preflight ready; Chromium + loopback OK) | `TEST_LANE_DURATION=2s, status=0`; 10 real browser tests all skipped — no seeded Gateway (`E2E_STATE_DIR/manifest.json`, `E2E_RUN_ID`, `IDEER_INTERNAL_GATEWAY_BASE_URL`) and no Gate7/8 artifact/model/RBAC variables | 2026-09-22; 2s |
+| current HEAD `e3092569` (2026-09-22) | `UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh pr-standard` | parent `TEST_LANE_DURATION=1753s, status=1`: local-runtime 192/4 skipped status 0, backend-standard 26,052 passed/145 skipped + **1 failed**, frontend-standard 369 files/10,221 tests + **1 failed**, frontend-smoke 29 passed status 0. Both failures are environmental (missing `rg` binary), not code regressions — see Step 6 note | 2026-09-22; 1753s |
 
 ### 2026-09-22 Step 0 + Step 1 完成记录
 - **Step 0 完成**：fault-zeroing 标记 deferred；`scripts/run_fault_zeroing_acceptance.py` 产品化修复已提交（`_pending_interrupt_ids` + 6次 resume 循环）；`frontend/report/` 加入 `.gitignore`；`develop` 仍 `ahead 117` 保持 draft
@@ -207,6 +208,15 @@ not stored in this ledger.
 - `bash scripts/run-test-lane.sh frontend-real` 跑完：`TEST_LANE_DURATION=2s, status=0`，10 个 real browser tests 全部 skip。
 - skip 原因：无已播种 Gateway（缺 `E2E_STATE_DIR/manifest.json`、`E2E_RUN_ID`、`IDEER_INTERNAL_GATEWAY_BASE_URL`），也无 Gate7/8 artifact、model、RBAC 变量。按 lane 契约记为 `unexecuted`，不记 pass。
 - 下一步需起隔离 Gateway + seed（KB/Revision/Agent publish + RBAC 用户）+ 导出上述变量后重跑；否则 Step 5 保持未完成。
+
+### 2026-09-22 Step 6 pr-standard 结果（parent status=1，环境原因）
+- local-runtime：192 passed / 4 skipped，`status=0`；frontend-smoke：29 passed，`status=0`。
+- backend-standard：26,052 passed / 145 skipped / 821 warnings，**1 failed**：`test_runtime_boundary_requires_zero_legacy_imports[from ideer.config import get_app_config-1]`。根因是本机缺 `rg`：门禁脚本 `scripts/check-runtime-boundary.sh` 首行即调 `rg`，`rg` 缺失导致 gate 退出码非预期。非代码回归。
+- frontend-standard：369 files / 10,221 tests，**1 failed**：`typography-contract.test.ts` 报 `spawn rg ENOENT`。同为缺 `rg`。非代码回归。
+- 修复：`uv tool install ripgrep`（15.1.0，用户目录，无 sudo）后 focused 重跑全绿：
+  - `pytest tests/unit/scripts/test_runtime_boundary.py -q` → 2 passed
+  - `pnpm vitest run tests/unit/typography-contract.test.ts` → 3 passed
+- 未改任何产品代码/测试。完整 `pr-standard` 重跑约需 30 分钟，未执行；当前结论以 focused 重跑为准，parent 仍记 `status=1`。
 
 ## External replay checklist
 - Gate 8: provide `RAGFLOW_GATE8_DATASET_ID` and `RAGFLOW_GATE8_ARTIFACT_JSON`, run the live test and artifact validator commands in [`knowledge-gate8-acceptance.md`](knowledge-gate8-acceptance.md), then execute the real browser lane.
