@@ -1,0 +1,12 @@
+{
+  "artifact": "model-fallback-startup-check",
+  "recorded_at": "2026-09-22T20:31:30+08:00",
+  "candidate_commit": "4b8697f4",
+  "configured_model": "codex-gpt-5-5",
+  "source": "config.yaml",
+  "temporary_config": "generated from config.yaml with codex-gpt-5-5 first and AIO 1.9.3 sandbox",
+  "real_execution": false,
+  "result": "incomplete",
+  "reason": "Gateway startup stopped during canonical resource reconciliation with CatalogConsistencyError for missing catalog versions; no Codex request was sent and no model acceptance claim is made.",
+  "secrets_recorded": false
+}
