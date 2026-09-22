@@ -1,0 +1,38 @@
+{
+  "candidate_commit": "08643200a0111fce31f560025a06f1820c8d766b",
+  "recorded_at": "2026-09-22T13:19:44+08:00",
+  "status": "partial",
+  "rows": {
+    "agent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "unexecuted",
+      "run_id": "3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83",
+      "evidence": "source-chain.json"
+    },
+    "workflow_subagent": {
+      "result": "incomplete",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "unexecuted",
+      "reason": "Existing workflow slug conflicted before a fresh run could be started"
+    }
+  },
+  "unexecuted_rows": [
+    "two_users_two_kbs",
+    "revoked_access",
+    "revision_freeze_provider_outage",
+    "empty_hit",
+    "truncated",
+    "retry",
+    "duplicate",
+    "archive_failure",
+    "forged_citation",
+    "history_without_receipt",
+    "mixed_web",
+    "streaming",
+    "loading_error_restricted",
+    "keyboard"
+  ]
+}

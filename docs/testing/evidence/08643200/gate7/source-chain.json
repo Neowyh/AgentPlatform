@@ -1,0 +1,42 @@
+{
+  "candidate_commit": "08643200a0111fce31f560025a06f1820c8d766b",
+  "run_id": "3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83",
+  "thread_id": "fddbc087-0b6d-452f-b4c8-bc33cbd4861d",
+  "model": "agnes-3.0-flash",
+  "tool_calls": [
+    {
+      "id": "call_09725e037db94231b9c8bba2",
+      "name": "knowledge_search",
+      "arguments": {
+        "query": "marker",
+        "knowledge_base": "8f8eec52-0a87-4ae6-ba8f-994c605a7322"
+      }
+    }
+  ],
+  "knowledge_base": {
+    "id": "8f8eec52-0a87-4ae6-ba8f-994c605a7322"
+  },
+  "revision": {
+    "id": "769573b3-353c-402d-ac84-4d53f8b58395",
+    "number": 1,
+    "manifest_hash": "6aa47e77e3052a842c0eea8a44fb8205aac874a65ab64be8913856642d74cd51"
+  },
+  "document": {
+    "id": "e8c9cf02-c655-435e-8b02-13f154554526",
+    "display_name": "g7-marker.txt",
+    "content_hash": "7b9d65bbebeb75f366a7a29640b34401adeb7fa22677eb80f5bdb165de74e42e"
+  },
+  "chunk": {
+    "id": "rr_48ef7e04aef6e6cbcbfb7f4f_i1",
+    "content": "\nGate 7 browser source-chain marker g7-browser-c58b071c.\nRetrieval must return this exact sentence.",
+    "score": 0.7368423196847934
+  },
+  "receipt": {
+    "receipt_id": "rr_48ef7e04aef6e6cbcbfb7f4f",
+    "run_id": "3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83",
+    "tool_call_id": "call_09725e037db94231b9c8bba2",
+    "chunk_id": "rr_48ef7e04aef6e6cbcbfb7f4f_i1",
+    "archive_status": "archived",
+    "configuration_source": "frozen_run_revision"
+  }
+}

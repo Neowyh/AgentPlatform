@@ -86,6 +86,8 @@ browser, or credentials is recorded as `unexecuted`, never as pass.
 | **2026-09-22 Step 1** `test_gate7_acceptance_artifacts.py` | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_gate7_acceptance_artifacts.py -q` | passed | 2026-09-22 / 2.95s / 0 | 3 passed |
 | **2026-09-22 Step 1** `test_knowledge_gate7_live.py` full | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=737991f4ab7a11f1b2776b607031e48e uv run --no-sync pytest tests/test_knowledge_gate7_live.py -q -s` | passed: 1 passed, 1 skipped | 2026-09-22 / 12.43s / 0 | artifact-only test skipped (needs RAGFLOW_GATE7_SOURCE_CHAIN_JSON/MATRIX_JSON/RUN_ID/SNIPPET env vars) |
 | **2026-09-22 Step 1** regression slice | `DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --no-sync pytest tests/unit/knowledge/test_retrieval_receipts.py tests/unit/gateway/test_run_evidence.py tests/test_tool_receipt_middleware.py -q` | passed | 2026-09-22 / 3.95s / 0 | 42 passed |
+| **2026-09-22 current candidate** Agent source-chain replay | Isolated Gateway `:8003`, Agnes `agnes-3.0-flash`, run `3cd3d3f8-5ed2-4cdd-a504-13e2a7ec6d83` | passed for the Agent row; source-chain artifact persisted at `docs/testing/evidence/08643200/gate7/source-chain.json` and validates every persisted hop | 2026-09-22 / 16s / 0 |
+| **2026-09-22 current candidate** matrix continuation | `/tmp/g7_matrix.py workflow_subagent` | incomplete before execution: existing workflow slug conflicted; the remaining 15 matrix rows and browser citation remain unexecuted | 2026-09-22 / 0.2s / 1 |
 
 ## Required manual matrix
 
