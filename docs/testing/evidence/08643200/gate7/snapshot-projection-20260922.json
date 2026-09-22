@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "fc5a24e7",
+  "executed_at": "2026-09-22T16:11:26+08:00",
+  "environment": {
+    "gateway": "isolated real Gateway :8010",
+    "database": "persistent isolated SQLite",
+    "provider": "real RAGFlow configured; model call reached Agnes and returned 402 Insufficient Balance"
+  },
+  "run_id": "4a680cd2-c46b-4cea-b308-ffdb41e44f28",
+  "agent_resource_id": "725354e9-0872-44c0-9416-83576698422f",
+  "snapshot_assertions": {
+    "run_resource_snapshots": [
+      {
+        "resource_type": "agent",
+        "resource_id": "725354e9-0872-44c0-9416-83576698422f",
+        "version": 1,
+        "selection_role": "root"
+      },
+      {
+        "resource_type": "knowledge_base",
+        "resource_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+        "version": 1,
+        "selection_role": "resolved",
+        "knowledge_revision_no": 1,
+        "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f"
+      }
+    ],
+    "selection_snapshot_contains_revision_only_dependency": true,
+    "run_evidence_contains_revision_only_dependency": true,
+    "agent_and_knowledge_manifest_hashes_match_database": true
+  },
+  "run_result": {
+    "status": "error",
+    "error_class": "provider_account",
+    "error_code": 402,
+    "retrieval_receipt_created": false,
+    "reason": "The configured Agnes account returned Insufficient Balance before a tool call. This run validates snapshot projection only and is not a successful retrieval acceptance."
+  },
+  "configuration_blocker": "The temporary knowledge tool allowlist did not include the KB provider dataset, so knowledge_scope was empty for this run; no retrieval conclusion is drawn."
+}
