@@ -1,0 +1,41 @@
+{
+  "candidate_commit": "4bc6aa5e",
+  "scenario": "agent_source_chain_replay",
+  "real_execution": true,
+  "executed_at": "2026-09-22 08:58:31.201384",
+  "observed_steps": [
+    "published Agent with live KnowledgeBase dependency through resource API",
+    "created canonical Run with Agent and KnowledgeBase revision snapshots",
+    "Agnes emitted one knowledge_search call with the exact logical KnowledgeBase UUID",
+    "RAGFlow returned the marker document",
+    "Run Evidence archived and exposed the Retrieval Receipt with revision, manifest, document hash, and citation evidence id",
+    "Agent completed successfully after the exact one-tool instruction"
+  ],
+  "observations": {
+    "run_id": "ece23ef5-d12f-4ea3-8185-9f206ee75903",
+    "run_status": "success",
+    "tool_call_id": "call_5aee79701a8d4bb7a0881546",
+    "tool_name": "knowledge_search",
+    "tool_status": "success",
+    "knowledge_base_logical_id": "985614f5-67d9-4b3d-96d7-8fb436a1c3c4",
+    "revision_id": "0ef42a95-2773-4669-944c-904e531f7263",
+    "revision_no": 1,
+    "manifest_hash": "080db4abc4a68cefd3be3e38c2cd0b29eea06d6a3a271243b93cc23dc709cb1f",
+    "document_id": "0d439439-f11f-4cb4-984b-fb3eae867595",
+    "document_name": "gate8.txt",
+    "document_content_hash": "00f445218f2be02f39eaf5911269fde6eef32eb1856131761e64d3934e615f8a",
+    "chunk_content": "\nGate 8 formal publish marker g8-gate8-real-20260922-6f2ed6b3",
+    "evidence_id": "rr_41eaefae208ebcb104fb4445_i1",
+    "citation_label": "gate8.txt",
+    "configuration_source": "frozen_run_revision",
+    "archive_status": "archived",
+    "snapshot_resource_ids": [
+      "743f9a6b-bf45-45fe-877b-890f5603d560",
+      "985614f5-67d9-4b3d-96d7-8fb436a1c3c4"
+    ],
+    "snapshot_contains_knowledge_revision": true
+  },
+  "limitations": [
+    "Provider dataset identity and credentials omitted."
+  ]
+}
