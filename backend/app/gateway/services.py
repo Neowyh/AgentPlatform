@@ -591,7 +591,7 @@ async def _canonical_selection_metadata(
                         RunResourceSnapshot,
                         RunResourceSnapshot.resource_id == Resource.id,
                     )
-                    .join(
+                    .outerjoin(
                         ResourceVersion,
                         (ResourceVersion.resource_id == Resource.id)
                         & (ResourceVersion.version == RunResourceSnapshot.version),
@@ -600,38 +600,57 @@ async def _canonical_selection_metadata(
                 )
             ).all()
         )
-    by_id = {resource.id: (resource, version) for resource, version, _snapshot in rows}
-    agent, agent_version = by_id.get(agent_resource_id, (None, None))
-    if agent is None or agent_version is None:
+    by_id = {
+        resource.id: (resource, version, snapshot)
+        for resource, version, snapshot in rows
+    }
+    agent, agent_version, agent_snapshot = by_id.get(
+        agent_resource_id, (None, None, None)
+    )
+    if agent is None or (agent_version is None and agent_snapshot is None):
         return {}
     selected_skill = body_context.get("skill_resource_id") or body_context.get(
         "skill_name"
     )
     skill_entry = None
     if selected_skill:
-        for resource, version in by_id.values():
+        for resource, version, snapshot in by_id.values():
             if resource.type == "skill" and (
                 resource.id == selected_skill or resource.slug == selected_skill
             ):
+                if version is None and snapshot is None:
+                    continue
                 skill_entry = {
                     "resource_id": resource.id,
                     "display_name": resource.display_name,
                     "slug": resource.slug,
-                    "version": version.version,
-                    "content_hash": version.content_hash,
+                    "version": version.version if version is not None else snapshot.version,
+                    "content_hash": (
+                        version.content_hash
+                        if version is not None
+                        else snapshot.content_hash
+                    ),
                 }
                 break
+    agent_version_number = (
+        agent_version.version if agent_version is not None else agent_snapshot.version
+    )
+    agent_content_hash = (
+        agent_version.content_hash
+        if agent_version is not None
+        else agent_snapshot.content_hash
+    )
     selection: dict[str, Any] = {
         "agent": {
             "resource_id": agent.id,
             "display_name": agent.display_name,
             "slug": agent.slug,
-            "version": agent_version.version,
-            "content_hash": agent_version.content_hash,
+            "version": agent_version_number,
+            "content_hash": agent_content_hash,
         },
         "resolved_skill_ids": sorted(
             resource.id
-            for resource, _version in by_id.values()
+            for resource, _version, _snapshot in by_id.values()
             if resource.type == "skill"
         ),
         "resource_snapshots": [
