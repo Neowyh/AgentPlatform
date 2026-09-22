@@ -33,6 +33,10 @@ import httpx
 DEFAULT_COUNTS = (0, 1, 5, 10, 20)
 SUPPORTED_FILE_SUFFIXES = {".pdf", ".docx", ".xlsx", ".txt", ".md"}
 
+# Chunk-stream event names whose per-chunk metadata carries LangGraph routing
+# keys but no run_id (see _stream_signal).
+_CHUNK_EVENT_NAMES = {"messages", "messages-tuple"}
+
 
 def _parse_header(value: str) -> tuple[str, str]:
     name, separator, content = value.partition("=")
@@ -90,9 +94,13 @@ def _stream_signal(
     if message is None:
         return ("sse" if payload is not None else None), expected_run_id
     event_run_id = metadata.get("run_id") or message.get("run_id")
-    if expected_run_id and not event_run_id:
+    if expected_run_id and not event_run_id and event_name not in _CHUNK_EVENT_NAMES:
         return None, expected_run_id
-    if expected_run_id and str(event_run_id) != expected_run_id:
+    # Per-chunk `messages` metadata carries LangGraph routing keys but no
+    # run_id; on this dedicated sequential thread such chunks belong to the
+    # in-flight run pinned by the leading metadata event. Full-state `values`
+    # replays keep the strict match above, so stale runs stay rejected.
+    if expected_run_id and event_run_id and str(event_run_id) != expected_run_id:
         return None, expected_run_id
     role = _message_role(message)
     content = _text_content(message.get("content"))

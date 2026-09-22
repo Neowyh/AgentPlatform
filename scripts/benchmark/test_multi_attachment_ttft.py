@@ -39,6 +39,20 @@ def test_stream_signal_separates_tool_and_error_events() -> None:
     )
 
 
+def test_stream_signal_accepts_chunk_without_run_id_on_dedicated_thread() -> None:
+    # The gateway's per-chunk `messages` metadata carries LangGraph routing
+    # keys (langgraph_node, thread_id, ...) but no run_id; the run is pinned
+    # by the leading metadata event. Such chunks must still count as tokens.
+    chunk = [
+        {"type": "AIMessageChunk", "content": "Hello", "additional_kwargs": {}},
+        {"langgraph_node": "agent", "thread_id": "t1"},
+    ]
+    assert _MODULE._stream_signal("messages", chunk, "r1") == ("assistant", "r1")
+    # Stale full-state replays that DO carry a mismatched run_id stay rejected.
+    stale = [{"type": "ai", "content": "old"}, {"run_id": "old"}]
+    assert _MODULE._stream_signal("values", stale, "r1") == (None, "r1")
+
+
 def test_observe_stream_uses_monotonic_marks_for_calibration() -> None:
     ticks = iter([10.0, 10.25, 10.5])
     events = [
