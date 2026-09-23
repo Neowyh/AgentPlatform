@@ -48,6 +48,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument(
+        "--expected-commit",
+        default=os.environ.get("GATE7_EXPECTED_COMMIT"),
+        help="refuse to run unless HEAD matches this frozen candidate commit",
+    )
+    p.add_argument(
         "--gateway", default=os.environ.get("GATE7_GATEWAY", "http://127.0.0.1:8003")
     )
     p.add_argument("--dataset", default=os.environ.get("RAGFLOW_GATE7_DATASET_ID"))
@@ -398,6 +403,13 @@ def _annotate_real_evidence(
     return evidence
 
 
+def _check_expected_candidate(candidate: str, expected: str | None) -> None:
+    if expected is not None and candidate != expected:
+        raise ValueError(
+            f"current candidate {candidate} does not match expected {expected}"
+        )
+
+
 def _external_row(
     row: str, spec: dict[str, Any], output: Path, candidate: str
 ) -> dict[str, Any]:
@@ -453,10 +465,10 @@ def _external_row(
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     candidate = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    if not candidate.startswith("5694971b"):
-        raise SystemExit(
-            f"refusing to run: current candidate is {candidate}, expected 5694971b"
-        )
+    try:
+        _check_expected_candidate(candidate, args.expected_commit)
+    except ValueError as exc:
+        raise SystemExit(f"refusing to run: {exc}") from exc
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     specs = manifest.get("scenarios", {})
     if set(specs) != set(ROWS):

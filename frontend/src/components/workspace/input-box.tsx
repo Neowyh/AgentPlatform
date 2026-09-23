@@ -428,6 +428,16 @@ export function InputBox({
   const preuploadPromisesRef = useRef(
     new Map<File, Promise<UploadedFileInfo>>(),
   );
+  const pendingDraftSubmissionKeyRef = useRef<string | null>(null);
+  const notifyUploadError = useCallback(
+    (error: unknown) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload attachment.",
+        { id: `upload-error-${threadId}` },
+      );
+    },
+    [threadId],
+  );
 
   const ensurePreuploaded = useCallback(
     (file: File) => {
@@ -471,10 +481,15 @@ export function InputBox({
       attachmentTraceIdRef.current = null;
       return;
     }
+    if (!uploadLimits) {
+      return;
+    }
 
     const files = attachmentParts
       .map((part) => part.file)
       .filter((file): file is File => file instanceof File);
+    const validation = validateUploadLimits([], files, uploadLimits);
+    const rejectedFiles = new Set(validation.rejected);
     const activeFiles = new Set(files);
     if (files.length > 0) {
       attachmentTraceIdRef.current ??= crypto.randomUUID();
@@ -485,12 +500,21 @@ export function InputBox({
       if (!activeFiles.has(file)) preuploadedFilesRef.current.delete(file);
     }
 
-    void Promise.all(files.map(ensurePreuploaded)).catch((error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upload attachment.",
-      );
+    void Promise.all(
+      files.filter((file) => !rejectedFiles.has(file)).map(ensurePreuploaded),
+    ).catch((error) => {
+      if (pendingDraftSubmissionKeyRef.current !== null) {
+        return;
+      }
+      notifyUploadError(error);
     });
-  }, [attachmentParts, ensurePreuploaded, threadId]);
+  }, [
+    attachmentParts,
+    ensurePreuploaded,
+    notifyUploadError,
+    threadId,
+    uploadLimits,
+  ]);
   const voiceLatestTextRef = useRef("");
   const voiceLastErrorKindRef = useRef<SpeechRecognitionErrorKind | null>(null);
   const voiceStopRequestedRef = useRef(false);
@@ -502,7 +526,6 @@ export function InputBox({
   >(null);
   const promptHistoryIndexRef = useRef<number | null>(null);
   const promptHistoryDraftRef = useRef("");
-  const pendingDraftSubmissionKeyRef = useRef<string | null>(null);
   const latestDraftRef = useRef<{
     key: string;
     draft: { text: string; skillName: string | null };
@@ -1210,6 +1233,11 @@ export function InputBox({
 
   const submitThreadMessage = useCallback(
     async (message: PromptInputMessage) => {
+      if (pendingDraftSubmissionKeyRef.current === draftKey) {
+        return Promise.reject(
+          new Error("A message is already being submitted."),
+        );
+      }
       const files = message.files.flatMap((file) =>
         file.file instanceof File ? [file.file] : [],
       );
@@ -1242,7 +1270,29 @@ export function InputBox({
       const quotes = sidecar?.conversationQuotes ?? [];
       const quoteIds = quotes.map((quote) => quote.id);
       const quoteContexts = quotes.map((quote) => quote.context);
+      const pendingDraft: ComposerDraft = {
+        text: textInput.value ?? "",
+        skillName:
+          selectedSlashSkill?.kind === "skill" ? selectedSlashSkill.name : null,
+      };
       pendingDraftSubmissionKeyRef.current = draftKey;
+      if (threadId !== "new" && message.files.length > 0) {
+        invalidateDraftSaveTimer();
+        latestDraftRef.current = null;
+        clearComposerDraft(getSessionComposerDraftStorage(), draftKey);
+      }
+      const restorePendingDraft = () => {
+        if (pendingDraftSubmissionKeyRef.current !== draftKey) {
+          return;
+        }
+        pendingDraftSubmissionKeyRef.current = null;
+        latestDraftRef.current = { key: draftKey, draft: pendingDraft };
+        writeComposerDraft(
+          getSessionComposerDraftStorage(),
+          draftKey,
+          pendingDraft,
+        );
+      };
       const submitOptions: InputBoxSubmitOptions = {
         ...(quotes.length
           ? {
@@ -1284,16 +1334,19 @@ export function InputBox({
           submitOptions.preuploadedFiles = preuploadedFiles;
           submitOptions.traceId = attachmentTraceIdRef.current ?? undefined;
         } catch (error) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Failed to upload attachment.",
-          );
+          restorePendingDraft();
+          notifyUploadError(error);
           throw error;
         }
       }
 
-      const submit = () => onSubmit?.(message, submitOptions);
+      const submit = async () => {
+        try {
+          await onSubmit?.(message, submitOptions);
+        } finally {
+          restorePendingDraft();
+        }
+      };
 
       // Guard against submitting before the initial model auto-selection
       // effect has flushed thread settings to storage/state.
@@ -1319,15 +1372,18 @@ export function InputBox({
       context,
       draftKey,
       invalidateDraftSaveTimer,
+      notifyUploadError,
       onContextChange,
       onSubmit,
       reportUploadLimitViolations,
       resolvedModelName,
+      selectedSlashSkill,
       selectedModel?.supports_thinking,
       sidecar,
       ensurePreuploaded,
       threadId,
       t.inputBox.suggestionPlaceholderRequired,
+      textInput.value,
       uploadLimits,
     ],
   );

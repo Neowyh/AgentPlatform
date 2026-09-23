@@ -1112,6 +1112,11 @@ test.describe("Chat workspace", () => {
       .filter({ hasText: "body.files: Field required" });
     await expect(errorToast).toBeVisible();
     await expect(errorToast).not.toContainText("[object Object]");
+    expect(
+      await page.evaluate(() =>
+        Object.values(window.sessionStorage).join("\n"),
+      ),
+    ).toContain("Summarize this report");
   });
 
   test("rejects an oversized attachment before upload", async ({ page }) => {

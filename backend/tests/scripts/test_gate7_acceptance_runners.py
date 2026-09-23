@@ -11,12 +11,19 @@ from scripts.acceptance.run_gate7_fault_recovery import _validate_outage, _valid
 from scripts.acceptance.run_gate7_matrix import (
     Gateway,
     _annotate_real_evidence,
+    _check_expected_candidate,
     _has_workflow_citation,
     _resumable_row,
 )
 from scripts.acceptance.run_gate7_mixed_web import _validate_mixed_sources
 from scripts.acceptance.run_gate7_streaming import _validate_stream_event_types
 from scripts.acceptance.run_gate7_truncated import _validate_truncated_output
+
+
+def test_gate7_matrix_binds_to_an_explicit_current_candidate() -> None:
+    _check_expected_candidate("candidate-sha", "candidate-sha")
+    with pytest.raises(ValueError, match="expected other-sha"):
+        _check_expected_candidate("candidate-sha", "other-sha")
 
 
 def test_empty_hit_rejects_an_access_denied_receipt() -> None:

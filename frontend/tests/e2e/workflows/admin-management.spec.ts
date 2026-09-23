@@ -83,13 +83,14 @@ test.describe("Admin management", () => {
       });
       await page.goto("/workspace/admin");
 
-      // The dashboard owns six current product statistics.
+      // The dashboard owns seven current product statistics.
       await expect(page.getByText("Total Users")).toBeVisible({
         timeout: 15_000,
       });
       await expect(page.getByText("Total Departments")).toBeVisible();
       await expect(page.getByText("Total Resources")).toBeVisible();
-      await expect(page.getByTestId("admin-stat-card")).toHaveCount(6);
+      await expect(page.getByText("Knowledge Reconciliation")).toBeVisible();
+      await expect(page.getByTestId("admin-stat-card")).toHaveCount(7);
     });
   });
 
