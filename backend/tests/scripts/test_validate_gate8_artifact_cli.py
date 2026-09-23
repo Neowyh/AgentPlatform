@@ -5,6 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+VALIDATOR = REPO_ROOT / "scripts" / "acceptance" / "validate_gate8_artifact.py"
+
 
 def _minimal_artifact(tmp_path: Path) -> Path:
     evidence_dir = tmp_path / "evidence"
@@ -66,7 +69,7 @@ def _minimal_artifact(tmp_path: Path) -> Path:
 def test_validate_gate8_artifact_cli_passes_valid_record(tmp_path: Path) -> None:
     artifact = _minimal_artifact(tmp_path)
     result = subprocess.run(
-        [sys.executable, "scripts/acceptance/validate_gate8_artifact.py", str(artifact), "--current-commit", "abc123"],
+        [sys.executable, str(VALIDATOR), str(artifact), "--current-commit", "abc123"],
         check=False,
         capture_output=True,
         text=True,
@@ -78,7 +81,7 @@ def test_validate_gate8_artifact_cli_passes_valid_record(tmp_path: Path) -> None
 def test_validate_gate8_artifact_cli_rejects_stale_candidate(tmp_path: Path) -> None:
     artifact = _minimal_artifact(tmp_path)
     result = subprocess.run(
-        [sys.executable, "scripts/acceptance/validate_gate8_artifact.py", str(artifact), "--current-commit", "different"],
+        [sys.executable, str(VALIDATOR), str(artifact), "--current-commit", "different"],
         check=False,
         capture_output=True,
         text=True,

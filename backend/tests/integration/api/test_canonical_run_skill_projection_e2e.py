@@ -179,8 +179,10 @@ def test_canonical_run_projects_frozen_skill_view_only(
         view_root = isolated_deer_flow_home / "resources" / "run-skill-views" / run_id
         assert view_root.is_dir(), f"missing run skill view at {view_root}"
         skill_dirs = list((view_root / "custom").iterdir()) if (view_root / "custom").is_dir() else []
-        assert [path.name for path in skill_dirs] == [skill_id], "the view must contain exactly the frozen dependency skill"
+        assert {path.name for path in skill_dirs} == {skill_id, SKILL_SLUG}, "the view must contain only the frozen skill and its alias"
         projected = {str(path.relative_to(view_root / "custom" / skill_id)): path.read_text(encoding="utf-8") for path in (view_root / "custom" / skill_id).rglob("*") if path.is_file()}
         assert projected.get("SKILL.md") == SKILL_FILES["SKILL.md"]
         assert projected.get("references/notes.md") == SKILL_FILES["references/notes.md"]
+        aliased = {str(path.relative_to(view_root / "custom" / SKILL_SLUG)): path.read_text(encoding="utf-8") for path in (view_root / "custom" / SKILL_SLUG).rglob("*") if path.is_file()}
+        assert aliased == projected, "the human-facing alias must contain the same frozen skill bytes"
         del agent_id

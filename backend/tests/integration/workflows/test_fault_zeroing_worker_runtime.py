@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -9,7 +10,7 @@ import pytest_asyncio
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
+from app.agentplatform.resources.canonical_sandbox import canonical_run_key, canonical_sandbox_scope
 from app.agentplatform.resources.runtime import _json_hash
 from app.agentplatform.resources.service import ResourceAction, ResourceActor
 from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
@@ -174,6 +175,9 @@ async def _run_worker_once(
         "app.agentplatform.workflows.v2.file_roots._get_skills_host_path",
         lambda: str(REPO_ROOT / "resources" / "skills"),
     )
+    monkeypatch.setenv("IDEER_HOST_BASE_DIR", str(tmp_path / "base"))
+    frozen_skill = tmp_path / "base" / "resources" / "run-skill-views" / canonical_run_key(run_id) / "fault-zeroing"
+    shutil.copytree(REPO_ROOT / "resources" / "skills" / "fault-zeroing", frozen_skill)
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     await _make_canonical_run(
         durable_store,

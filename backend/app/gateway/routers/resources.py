@@ -2332,7 +2332,14 @@ async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
         str(run.created_by),
         sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
     )
-    return collect_artifacts(rendered.get("write", []), resolver)
+    artifacts = collect_artifacts(rendered.get("write", []), resolver)
+    if artifacts:
+        return artifacts
+
+    # Runs created before canonical sandbox scoping wrote into the run-id
+    # workspace. Keep their completed artifacts readable after the migration.
+    legacy_resolver = make_host_resolver(run.run_id, str(run.created_by))
+    return collect_artifacts(rendered.get("write", []), legacy_resolver)
 
 
 @router.get("/{resource_id}/workflow-runs/{run_id}/artifacts")
@@ -2388,6 +2395,10 @@ async def download_canonical_run_record(
         str(run.created_by),
         sandbox_scope=canonical_sandbox_scope(run.run_id, run.run_id),
     )(workflow_record_path(format))
+    if host is None or not Path(host).is_file():
+        # Records written before canonical sandbox scoping live under the
+        # original run-id workspace. Preserve read access to those Runs.
+        host = make_host_resolver(run.run_id, str(run.created_by))(workflow_record_path(format))
     if host is None or not Path(host).is_file():
         raise ResourceNotFound(f"Run record for run '{run_id}' is not available")
     media_types = {"jsonl": "application/x-ndjson", "md": "text/markdown"}
