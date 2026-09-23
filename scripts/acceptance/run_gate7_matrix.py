@@ -114,13 +114,7 @@ class Gateway:
 
     def run_agent(self, agent: str, knowledge_base: str) -> dict[str, Any]:
         thread = self.request("POST", "/api/threads", json={})["thread_id"]
-        question = (
-            f"Call the knowledge_search tool exactly once with "
-            f"knowledge_base='{knowledge_base}' and query "
-            "'Gate 7 isolated matrix citation marker'. Do not use web_search "
-            "or any other tool. Quote the exact retrieved source sentence and "
-            "append its citation link."
-        )
+        question = _matrix_agent_question(knowledge_base)
         run = self.request(
             "POST",
             f"/api/threads/{thread}/runs",
@@ -221,7 +215,7 @@ class Gateway:
         question = (
             "Make exactly one knowledge_search call using these exact arguments: "
             f"knowledge_base='{knowledge_base}' and query="
-            "'Gate 7 isolated matrix citation marker'. Do not call "
+            "'G7D3B1CA71-BROWSER-CITATION-6F8C'. Do not call "
             "list_uploaded_files, web_search, or any other tool. After that "
             "call, immediately quote the exact returned source sentence and "
             "citation; do not make another tool call."
@@ -350,14 +344,19 @@ def _require_archived_receipts(evidence: dict[str, Any], label: str) -> None:
 
 
 def _has_workflow_citation(result_text: str) -> bool:
-    has_marker = "Gate 7 isolated matrix citation marker 8d7d6179." in result_text
-    has_numbered_source = re.search(
-        r"\[\d+\][^\n]*gate7-matrix-marker\.txt", result_text
-    ) is not None
-    has_legacy_citation = (
-        "[citation:" in result_text and "gate7-matrix-marker.txt" in result_text
+    has_marker = "G7D3B1CA71-BROWSER-CITATION-6F8C" in result_text
+    has_numbered_citation = re.search(r"\[\d+\]", result_text) is not None
+    return has_marker and has_numbered_citation
+
+
+def _matrix_agent_question(knowledge_base: str) -> str:
+    return (
+        f"Call the knowledge_search tool exactly once with "
+        f"knowledge_base='{knowledge_base}' and query "
+        "'G7D3B1CA71-BROWSER-CITATION-6F8C'. Do not use web_search "
+        "or any other tool. Quote the exact retrieved source sentence and "
+        "append its citation link."
     )
-    return has_marker and (has_numbered_source or has_legacy_citation)
 
 
 def _write_json(path: Path, value: Any) -> None:

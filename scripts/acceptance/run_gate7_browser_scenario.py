@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
-import argparse
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,6 +16,27 @@ def _required(name: str) -> str:
     if not value:
         raise SystemExit(f"missing required real-browser variable: {name}")
     return value
+
+
+def _browser_citation_snippet(receipts: list[dict]) -> str:
+    items = [item for receipt in receipts for item in receipt.get("items", [])]
+    item = next(
+        (
+            candidate
+            for candidate in items
+            if candidate.get("display_name") == "gate7-matrix-marker.txt"
+        ),
+        None,
+    )
+    if item is None:
+        raise ValueError("Agent evidence has no gate7-matrix-marker.txt receipt item")
+    content = item.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Gate 7 matrix marker receipt item has no citation snippet")
+    snippet = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if not snippet:
+        raise ValueError("Gate 7 matrix marker receipt item has no citation snippet")
+    return snippet
 
 
 def main() -> int:
@@ -29,20 +50,12 @@ def main() -> int:
     matrix_dir = Path(_required("GATE7_MATRIX_OUTPUT_DIR"))
     agent_evidence = json.loads((matrix_dir / "agent.json").read_text(encoding="utf-8"))
     receipts = agent_evidence.get("receipts", [])
-    items = [item for receipt in receipts for item in receipt.get("items", [])]
-    if not items:
-        raise SystemExit("Agent evidence contains no archived retrieval item for the browser citation")
-    item_content = items[0].get("content")
-    if not isinstance(item_content, str) or not item_content.strip():
-        raise SystemExit("Agent receipt does not contain a citation snippet")
+    snippet = _browser_citation_snippet(receipts)
     state_dir = str(manifest["state_dir"])
     run_id = str(manifest["run_id"])
     gateway = args.gateway
     thread = str(agent_evidence["thread_id"])
     evidence_run = str(agent_evidence["run_id"])
-    snippet = next((line.strip() for line in item_content.splitlines() if line.strip()), "")
-    if not snippet:
-        raise SystemExit("Agent receipt does not contain a non-empty citation snippet")
     command = [
         "pnpm",
         "exec",

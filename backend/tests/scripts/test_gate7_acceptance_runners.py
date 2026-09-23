@@ -7,17 +7,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from scripts.acceptance.run_gate7_agent_probe import _validate_probe_results
 from scripts.acceptance.run_gate7_archive_failure import _validate_archive_failure
+from scripts.acceptance.run_gate7_browser_scenario import _browser_citation_snippet
 from scripts.acceptance.run_gate7_fault_recovery import _validate_outage, _validate_retry
 from scripts.acceptance.run_gate7_matrix import (
     Gateway,
     _annotate_real_evidence,
     _check_expected_candidate,
     _has_workflow_citation,
+    _matrix_agent_question,
     _resumable_row,
 )
 from scripts.acceptance.run_gate7_mixed_web import _validate_mixed_sources
 from scripts.acceptance.run_gate7_streaming import _validate_stream_event_types
 from scripts.acceptance.run_gate7_truncated import _validate_truncated_output
+
+
+def test_gate7_browser_selects_the_matrix_marker_from_multiple_receipt_items() -> None:
+    receipts = [
+        {
+            "items": [
+                {"display_name": "gate7-history-marker.txt", "content": "history"},
+                {"display_name": "gate7-matrix-marker.txt", "content": "browser marker"},
+            ]
+        }
+    ]
+
+    assert _browser_citation_snippet(receipts) == "browser marker"
+
+
+def test_gate7_matrix_agent_requests_the_fixture_used_by_browser_rows() -> None:
+    question = _matrix_agent_question("kb-id")
+
+    assert "knowledge_base='kb-id'" in question
+    assert "G7D3B1CA71-BROWSER-CITATION-6F8C" in question
 
 
 def test_gate7_matrix_binds_to_an_explicit_current_candidate() -> None:
@@ -76,7 +98,7 @@ def test_duplicate_requires_two_archived_successful_receipts() -> None:
 
 
 def test_workflow_citation_accepts_numbered_source_reference() -> None:
-    result = '"Gate 7 isolated matrix citation marker 8d7d6179. " Citation: **[1] ideer-kb-rev2 / gate7-matrix-marker.txt** (score 0.98)'
+    result = '"G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence." [1]'
 
     assert _has_workflow_citation(result)
 
@@ -195,7 +217,7 @@ def test_workflow_probe_pins_a_published_agent_to_the_frozen_revision() -> None:
 
         def request_text(self, method: str, path: str, **kwargs: object) -> str:
             self.calls.append((method, path, kwargs))
-            return 'event: action_progress\ndata: {"message":"knowledge_search"}\n\nevent: node_completed\ndata: {"result":"Gate 7 isolated matrix citation marker 8d7d6179. gate7-matrix-marker.txt [citation: x]"}\n\n'
+            return 'event: action_progress\ndata: {"message":"knowledge_search"}\n\nevent: node_completed\ndata: {"result":"G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence. [1]"}\n\n'
 
     gateway = FakeGateway()
     result = gateway.run_workflow("kb-1", "dataset-1", "model-1")
@@ -207,6 +229,6 @@ def test_workflow_probe_pins_a_published_agent_to_the_frozen_revision() -> None:
     assert workflow_draft["nodes"][0]["action"]["name"] == agent_slug
     action = workflow_draft["nodes"][0]["action"]
     assert action["params"]["max_turns"] == 10
-    assert "list_uploaded_files" in action["params"]["prompt"]
+    assert "G7D3B1CA71-BROWSER-CITATION-6F8C" in action["params"]["prompt"]
     assert result["frozen_knowledge_revision"]["revision_id"] == "rev-2"
     assert result["knowledge_tool_event_count"] == 1

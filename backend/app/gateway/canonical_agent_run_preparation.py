@@ -275,6 +275,8 @@ async def prepare_canonical_agent_run(
             route = RunDeviceRouter(DeviceRoute(str(local_device_id)), local_authorization)
 
             async def send_local(device_id: str, capability: str, payload: dict[str, Any]) -> Any:
+                from agentplatform_extension.evidence import current_tool_call_evidence
+
                 from app.device_control.broker import TaskStatus, get_device_broker
 
                 broker = get_device_broker()
@@ -283,8 +285,11 @@ async def prepare_canonical_agent_run(
                     operation=capability,
                     path=payload.get("path", ""),
                     run_id=str(payload.get("run_id", run_id)),
-                    tool_call_id=str(payload.get("tool_call_id", "")),
-                    payload_extra={**payload, "operation": capability},
+                    tool_call_id=str(payload.get("tool_call_id") or current_tool_call_evidence() or ""),
+                    payload_extra={
+                        "arguments": {key: value for key, value in payload.items() if key not in {"run_id", "tool_call_id"}},
+                        "operation": capability,
+                    },
                     authorization_snapshot=snapshot.as_mapping(),
                 )
                 while record.status in {
@@ -296,6 +301,15 @@ async def prepare_canonical_agent_run(
                 }:
                     await asyncio.sleep(0.05)
                     record = broker.get_task(record.task_id)
+                if record.receipt is not None:
+                    from agentplatform_extension.evidence import (
+                        record_local_execution_receipt,
+                    )
+
+                    record_local_execution_receipt(
+                        record.receipt,
+                        tool_call_id=record.tool_call_id or None,
+                    )
                 if record.status is not TaskStatus.COMPLETED:
                     raise RuntimeError(record.error or record.status.value)
                 return record.result

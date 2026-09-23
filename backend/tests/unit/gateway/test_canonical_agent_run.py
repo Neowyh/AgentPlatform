@@ -155,3 +155,128 @@ async def test_prepare_canonical_agent_run_freezes_visible_version_and_hides_pri
     async with session_factory() as session:
         hidden = list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == hidden_run_id))).scalars())
         assert hidden == []
+
+
+@pytest.mark.asyncio
+async def test_canonical_mcp_dispatch_nests_tool_arguments_for_local_runtime(
+    session_factory: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentplatform_extension.evidence import (
+        AuthorizationContext,
+        RunEvidenceBinding,
+        bind_run_evidence,
+        bind_tool_call_evidence,
+        current_run_evidence,
+    )
+
+    from app.device_control.broker import TaskStatus
+
+    run_id = str(uuid.uuid4())
+    source = tmp_path / "mcp-agent-source"
+    source.mkdir()
+    (source / "config.yaml").write_text("name: canonical-mcp-agent\n")
+    (source / "SOUL.md").write_text("read the requested local file\n")
+    async with session_factory() as session:
+        session.add(
+            UserModel(
+                id="runner",
+                username="runner@test.com",
+                role="user",
+                department_id=None,
+                disabled=False,
+            )
+        )
+        await session.commit()
+        service = ResourceService(session, _actor("runner"))
+        resource = await service.create_resource(
+            resource_type="agent",
+            slug="canonical-mcp-agent",
+            display_name="Canonical MCP Agent",
+            storage_kind="filesystem",
+        )
+        await session.commit()
+        publisher = ResourcePublisher(service, ResourceStorage(tmp_path))
+        draft = await publisher.save_filesystem_draft(resource.id, source_dir=source, expected_revision=0)
+        await publisher.publish_filesystem(resource.id, expected_draft_revision=draft.revision, scan_result={})
+        resource_id = resource.id
+
+    monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    sent = []
+    device_receipt = {
+        "capability": "local.mcp.fs.read_file",
+        "status": "completed",
+        "request_hash": "a" * 64,
+        "result_hash": "b" * 64,
+        "policy_version": "runtime-default",
+        "consent_decision": "allow",
+        "run_id": run_id,
+        "task_id": "task-1",
+        "runtime_version": "test",
+    }
+
+    class FakeBroker:
+        async def send_task(self, **kwargs):
+            sent.append(kwargs)
+            return SimpleNamespace(
+                status=TaskStatus.COMPLETED,
+                result={"status": "completed"},
+                receipt=device_receipt,
+                tool_call_id="call-1",
+            )
+
+        def get_task(self, _task_id):
+            raise AssertionError("completed task should not be polled")
+
+    monkeypatch.setattr("app.device_control.broker.get_device_broker", lambda: FakeBroker())
+    prepared = {}
+
+    def capture_factory(*_args, **kwargs):
+        prepared.update(kwargs)
+        return lambda *_factory_args, **_factory_kwargs: object()
+
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.build_canonical_agent_factory", capture_factory)
+    request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id="runner")))
+    capability = "local.mcp.fs.read_file"
+    await prepare_canonical_agent_run(
+        resource_id,
+        request,
+        run_id,
+        diagnostic_context={
+            "local_device_id": "device-1",
+            "local_authorization": {
+                key: [capability]
+                for key in (
+                    "agent_capabilities",
+                    "caller_capabilities",
+                    "device_capabilities",
+                    "local_policy_capabilities",
+                    "workflow_capabilities",
+                    "platform_capabilities",
+                )
+            },
+        },
+    )
+
+    executor = prepared["local_tool_executor"]
+    binding = RunEvidenceBinding(
+        snapshots=(),
+        authorization=AuthorizationContext(
+            caller_user_id="runner",
+            effective_agent_id=resource_id,
+            policy_revision="runtime-default",
+        ),
+        run_id=run_id,
+    )
+    with bind_run_evidence(binding), bind_tool_call_evidence("call-1"):
+        await executor.sender("device-1", capability, {"path": "marker.txt"})
+        evidence = current_run_evidence()
+
+    assert sent[0]["payload_extra"]["arguments"] == {"path": "marker.txt"}
+    assert sent[0]["tool_call_id"] == "call-1"
+    assert evidence is not None
+    local_receipts = [item.get("local_execution_receipt") for item in evidence.tool_receipts if item.get("receipt_kind") == "tool"]
+    assert any(item and item.get("capability") == capability and item.get("status") == "completed" and item.get("task_id") == "task-1" for item in local_receipts)
