@@ -684,6 +684,9 @@ test.describe("Chat workspace", () => {
   test("goal command sets a goal and starts an agent run", async ({ page }) => {
     let streamCalls = 0;
     mockLangGraphAPI(page);
+    await page.addInitScript((threadId) => {
+      sessionStorage.setItem("deerflow:new-thread-id:v1", threadId);
+    }, MOCK_THREAD_ID);
     await page.goto("/workspace/chats/new");
     await page.route("**/runs/stream", (route) => {
       streamCalls += 1;
