@@ -1,6 +1,10 @@
 import { expect, test, type Route } from "@playwright/test";
 
-import { handleRunStream, mockLangGraphAPI } from "./utils/mock-api";
+import {
+  handleRunStream,
+  MOCK_THREAD_ID,
+  mockLangGraphAPI,
+} from "./utils/mock-api";
 
 function textFromMessageContent(content: unknown) {
   if (typeof content === "string") {
@@ -705,6 +709,9 @@ test.describe("Chat workspace", () => {
   test("goal command keeps the welcome header clear of the goal status", async ({
     page,
   }) => {
+    await page.addInitScript((threadId) => {
+      sessionStorage.setItem("deerflow:new-thread-id:v1", threadId);
+    }, MOCK_THREAD_ID);
     await page.goto("/workspace/chats/new");
 
     const textarea = page.getByPlaceholder(/how can i assist you/i);
