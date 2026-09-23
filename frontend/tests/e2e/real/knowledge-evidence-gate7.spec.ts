@@ -30,11 +30,9 @@ test.describe("real retrieval evidence Gate 7", () => {
       timeout: 120_000,
     });
 
-    const answer = page
-      .locator("p", { hasText: expectedSnippet! })
-      .filter({ has: page.getByRole("button", { name: /open/i }) })
+    const evidenceLink = page
+      .getByRole("button", { name: /open.*gate7-matrix-marker\.txt/i })
       .last();
-    const evidenceLink = answer.getByRole("button", { name: /open/i });
     await expect(evidenceLink).toBeVisible();
     await evidenceLink.focus();
     const expectedEvidenceUrl = new URL(

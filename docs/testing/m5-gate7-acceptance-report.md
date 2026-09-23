@@ -1,17 +1,47 @@
 # M5 Gate 7 retrieval evidence acceptance
 
-> status: partial — live provider passed against the configured isolated
-> RAGFlow stack; browser execution and the complete 16-row matrix remain
-> unexecuted. GitNexus could not register this worktree after a full index
-> attempt, so impact and detect-changes gates remain blocked.
+> status: passed for the 2026-09-23 candidate matrix; see the current-candidate
+> closeout below. Older dated ledger entries retain their original status.
 >
-> candidate: `develop@18adbe993` (integrated M5/M6/M9/TTFT candidate)
-> date: 2026-09-22 (Asia/Shanghai)
+> candidate: `5694971bc06648e8de958c6d5f4c8d7b5c1989bb`
+> date: 2026-09-23 (Asia/Shanghai)
 
 This is the formal acceptance record for
 [Gate 7](../../.scratch/m5-retrieval-evidence/issues/05-gate7-acceptance.md).
 Mock tests establish product contracts; they do not substitute for the real
 provider, model, or browser checks.
+
+## 2026-09-23 current-candidate closeout
+
+Candidate `5694971bc06648e8de958c6d5f4c8d7b5c1989bb` completed the real Gate 7
+matrix. The top-level artifact and all 16 per-scenario evidence files are under
+[`evidence/5694971b/gate7/`](evidence/5694971b/gate7/). The strict artifact
+validator passed:
+
+```text
+python3 scripts/acceptance/validate_gate7_artifact.py \
+  docs/testing/evidence/5694971b/gate7/gate7-matrix.json
+Gate 7 artifact: PASS (5694971bc06648e8de958c6d5f4c8d7b5c1989bb, 16 rows)
+```
+
+All 16 scenarios recorded `passed`, including live RAGFlow/Agnes Agent and
+Workflow/Sub-Agent runs, access isolation/revocation, retrieval edge cases,
+archive/citation/history failures, mixed web citations, streaming, and browser
+loading/error/restricted and keyboard states. Evidence is sanitized by the
+acceptance runners and candidate-bound; the matrix is the source of truth for
+per-row provider/model/browser metadata and timings.
+
+Implementation validation was not fully green. Focused runner/auth tests
+passed (77 tests), relevant Ruff checks, frontend formatting, test inventory,
+and `git diff --check` passed. The `backend-standard` lane completed with
+26,067 passed, 145 skipped, and 12 failed (`TEST_LANE_DURATION`: 1,401s,
+status 1). The required `pr-standard` lane also failed because its
+`backend-standard` child had the same 12 failures; its other children passed:
+`local-runtime` 192 passed/4 skipped, `frontend-standard` 10,221 passed (plus
+Rstest 759/759), and `frontend-smoke` 29 passed. The backend failures were in
+resource/run-artifact downloads, workflow fault-zeroing runtime, Gate 8
+validator CLI, and canonical run skill projection tests. These are recorded
+as unresolved lane failures, not attributed to Gate 7 without diagnosis.
 
 ## Acceptance commands
 

@@ -1,0 +1,19 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "history_without_receipt",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "completed a real Agent retrieval Run and confirmed an archived receipt",
+    "confirmed the persisted Run message history contains the retrieved citation marker",
+    "removed only this Run's receipt from the isolated SQLite metadata row",
+    "confirmed the Evidence API returned no receipt while historical messages remained readable"
+  ],
+  "thread_id": "6d122bf1-b494-4115-8f77-f6c566062b20",
+  "run_id": "633e4058-4f78-4d95-ab1b-8bc873799c0d",
+  "receipts_before": 1,
+  "receipts_after": 0,
+  "history_contains_marker": true,
+  "recorded_at": "2026-09-23T02:40:06.204421+00:00",
+  "runner_duration_seconds": 15.477
+}

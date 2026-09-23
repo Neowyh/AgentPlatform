@@ -1,0 +1,25 @@
+{
+  "workflow_id": "5fc47b82-a3cf-4d00-86aa-4e65321aa975",
+  "run_id": "a80a1337-cd67-4130-8c1e-d887d3e389eb",
+  "status": "completed",
+  "receipts": [],
+  "frozen_knowledge_revision": {
+    "revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+    "revision_no": 2,
+    "manifest_hash": "32e2f372f0ee1dafd3e9b873f4493f840f23112cac09b5fe8b4a8bf7022afbb4",
+    "retrieval_profile": {},
+    "embedding_profile": {}
+  },
+  "knowledge_tool_event_count": 1,
+  "node_result": "The single knowledge_search call completed successfully.\n\n**Exact returned source sentence:**\n\"Gate 7 isolated matrix citation marker 8d7d6179. Use this exact sentence for the live acceptance source chain.\"\n\n**Citation:** [1] ideer-kb-139f877d-rev2-9c6d121a / gate7-matrix-marker.txt (score 0.98) — matched document: gate7-matrix-marker.txt (1 chunk)\n\nNo other tool was called.\n\n---\nSelf-report:\n- Executed exactly one knowledge_search call with the specified query [r1].\n- The returned chunk contains the sentence quoted above, sourced from gate7-matrix-marker.txt in the knowledge base, scored 0.98.",
+  "receipt_chain_persisted": false,
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "workflow_subagent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Workflow resource",
+    "published an Agent action and ran it",
+    "verified terminal completion"
+  ]
+}

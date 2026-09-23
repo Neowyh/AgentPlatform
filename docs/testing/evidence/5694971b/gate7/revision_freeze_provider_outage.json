@@ -1,0 +1,56 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "revision_freeze_provider_outage",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "ran a real Agent against a deliberately unavailable local provider endpoint",
+    "verified the archived provider_error receipt retained the frozen KB revision"
+  ],
+  "frozen_revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+  "runs": [
+    {
+      "thread_id": "b7337947-709d-439f-9a7c-d06694d1b6b1",
+      "run_id": "e5b6b164-baa8-4d80-9425-c7b55346db33",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_83b9a4437f3ebcd72173eab7",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "knowledge_base_id": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+          "revision_no": 2,
+          "manifest_hash": "32e2f372f0ee1dafd3e9b873f4493f840f23112cac09b5fe8b4a8bf7022afbb4",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_dcc453aa834447148ff14713",
+          "parent_tool_receipt_id": null,
+          "run_id": "e5b6b164-baa8-4d80-9425-c7b55346db33",
+          "caller_user_id": "4beb1a9a-3454-4510-9961-e5cc27795fa7",
+          "effective_agent_id": "fc3cf038-e303-470b-b29b-0cd7cf39ba03",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T02:38:09.679480+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "provider_error",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 0,
+          "returned_count": 0,
+          "delivered_count": 0,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [],
+          "archive_status": "archived"
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T02:38:13.545724+00:00",
+  "runner_duration_seconds": 6.536
+}

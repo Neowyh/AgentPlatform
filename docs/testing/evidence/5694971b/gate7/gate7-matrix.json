@@ -1,0 +1,168 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "recorded_at": "2026-09-23T02:52:19.220285+00:00",
+  "status": "passed",
+  "rows": {
+    "agent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "knowledge-evidence-gate7.spec.ts",
+      "evidence": "agent.json",
+      "started_at": "2026-09-23T02:37:32.554231+00:00",
+      "finished_at": "2026-09-23T02:37:44.000965+00:00",
+      "duration_seconds": 10.086
+    },
+    "workflow_subagent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "workflow_subagent.json",
+      "started_at": "2026-09-23T02:37:44.000991+00:00",
+      "finished_at": "2026-09-23T02:38:04.179604+00:00",
+      "duration_seconds": 20.179
+    },
+    "two_users_two_kbs": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "two_users_two_kbs.json",
+      "started_at": "2026-09-23T02:38:04.179624+00:00",
+      "finished_at": "2026-09-23T02:38:05.283622+00:00",
+      "duration_seconds": 1.104
+    },
+    "revoked_access": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "revoked_access.json",
+      "started_at": "2026-09-23T02:38:05.283641+00:00",
+      "finished_at": "2026-09-23T02:38:06.081818+00:00",
+      "duration_seconds": 0.798
+    },
+    "revision_freeze_provider_outage": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "revision_freeze_provider_outage.json",
+      "started_at": "2026-09-23T02:38:06.081838+00:00",
+      "finished_at": "2026-09-23T02:38:13.580223+00:00",
+      "duration_seconds": 6.536
+    },
+    "empty_hit": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "empty_hit.json",
+      "started_at": "2026-09-23T02:38:13.580248+00:00",
+      "finished_at": "2026-09-23T02:38:34.164532+00:00",
+      "duration_seconds": 20.584
+    },
+    "truncated": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "truncated.json",
+      "started_at": "2026-09-23T02:38:34.164555+00:00",
+      "finished_at": "2026-09-23T02:38:46.492568+00:00",
+      "duration_seconds": 11.13
+    },
+    "retry": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "retry.json",
+      "started_at": "2026-09-23T02:38:46.492585+00:00",
+      "finished_at": "2026-09-23T02:39:05.153054+00:00",
+      "duration_seconds": 18.66
+    },
+    "duplicate": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "duplicate.json",
+      "started_at": "2026-09-23T02:39:05.153093+00:00",
+      "finished_at": "2026-09-23T02:39:31.524757+00:00",
+      "duration_seconds": 25.527
+    },
+    "archive_failure": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "archive_failure.json",
+      "started_at": "2026-09-23T02:39:31.524775+00:00",
+      "finished_at": "2026-09-23T02:39:44.064035+00:00",
+      "duration_seconds": 12.539
+    },
+    "forged_citation": {
+      "result": "passed",
+      "provider": "agnes-ai",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "forged_citation.json",
+      "started_at": "2026-09-23T02:39:44.064058+00:00",
+      "finished_at": "2026-09-23T02:39:49.529747+00:00",
+      "duration_seconds": 5.466
+    },
+    "history_without_receipt": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "history_without_receipt.json",
+      "started_at": "2026-09-23T02:39:49.529768+00:00",
+      "finished_at": "2026-09-23T02:40:06.225657+00:00",
+      "duration_seconds": 15.478
+    },
+    "mixed_web": {
+      "result": "passed",
+      "provider": "ragflow+ddg",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "mixed_web.json",
+      "started_at": "2026-09-23T02:40:06.225673+00:00",
+      "finished_at": "2026-09-23T02:40:32.002622+00:00",
+      "duration_seconds": 24.617
+    },
+    "streaming": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "not-applicable",
+      "evidence": "streaming.json",
+      "started_at": "2026-09-23T02:40:32.002641+00:00",
+      "finished_at": "2026-09-23T02:40:42.880937+00:00",
+      "duration_seconds": 10.878
+    },
+    "loading_error_restricted": {
+      "result": "passed",
+      "provider": "Gateway Evidence API with deterministic browser fault injection",
+      "model": "not-applicable",
+      "browser": "Chromium",
+      "evidence": "loading_error_restricted.json",
+      "started_at": "2026-09-23T02:52:19.516178+00:00",
+      "finished_at": "2026-09-23T02:53:37.633578+00:00",
+      "duration_seconds": 76.945
+    },
+    "keyboard": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "agnes-3.0-flash",
+      "browser": "knowledge-evidence-gate7.spec.ts",
+      "evidence": "keyboard.json",
+      "started_at": "2026-09-23T02:48:09.979547+00:00",
+      "finished_at": "2026-09-23T02:49:44.617827+00:00",
+      "duration_seconds": 92.171
+    }
+  },
+  "resumed_at": "2026-09-23T02:52:19.220297+00:00"
+}

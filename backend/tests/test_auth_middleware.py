@@ -281,6 +281,32 @@ def test_protected_path_no_cookie_returns_401(client):
     assert body["detail"]["code"] == "not_authenticated"
 
 
+def test_disabled_platform_identity_is_returned_as_forbidden_response(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    async def authenticated_user(_request):
+        return SimpleNamespace(
+            id="disabled-user",
+            email="disabled@example.com",
+            system_role="user",
+            needs_setup=False,
+        )
+
+    async def disabled_identity(_request, _user):
+        raise HTTPException(status_code=403, detail="User account is disabled")
+
+    monkeypatch.setenv("DEER_FLOW_AUTH_DISABLED", "")
+    monkeypatch.setattr("app.gateway.deps.get_current_user_from_request", authenticated_user)
+    monkeypatch.setattr("app.gateway.authz.resolve_platform_identity", disabled_identity)
+    client = TestClient(_make_app(), raise_server_exceptions=False)
+
+    response = client.get("/api/models", cookies={"access_token": "valid-session"})
+
+    assert response.status_code == 403
+
+
 def test_auth_disabled_allows_protected_path_without_cookie(monkeypatch):
     monkeypatch.setenv("DEER_FLOW_AUTH_DISABLED", "1")
     client = TestClient(_make_app())

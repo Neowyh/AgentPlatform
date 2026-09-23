@@ -1,0 +1,111 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "retry",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "ran a real Agent against a deliberately unavailable local provider endpoint",
+    "verified the archived provider_error receipt retained the frozen KB revision",
+    "restored the isolated provider endpoint",
+    "retried the same retrieval request and verified archived success on the same revision"
+  ],
+  "frozen_revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+  "runs": [
+    {
+      "thread_id": "392eef97-8532-49a3-9ceb-338fd5987990",
+      "run_id": "68b2b0dd-8f84-4e6b-a260-28d4a665d0ed",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_ef6d259c67b46e3ae8ce7895",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "knowledge_base_id": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+          "revision_no": 2,
+          "manifest_hash": "32e2f372f0ee1dafd3e9b873f4493f840f23112cac09b5fe8b4a8bf7022afbb4",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_ed84199f2317445494a7e105",
+          "parent_tool_receipt_id": null,
+          "run_id": "68b2b0dd-8f84-4e6b-a260-28d4a665d0ed",
+          "caller_user_id": "4beb1a9a-3454-4510-9961-e5cc27795fa7",
+          "effective_agent_id": "fc3cf038-e303-470b-b29b-0cd7cf39ba03",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T02:38:48.764093+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "provider_error",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 0,
+          "returned_count": 0,
+          "delivered_count": 0,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [],
+          "archive_status": "archived"
+        }
+      ]
+    },
+    {
+      "thread_id": "60f38eec-9b1c-449f-91cd-bb1b6d618a77",
+      "run_id": "68f37f0d-ee16-4b6d-9266-2065bb5f3ee9",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_900c74375de8c3bddc57b8f6",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "knowledge_base_id": "139f877d-9756-4a46-9fca-d51256cc9db3",
+          "revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+          "revision_no": 2,
+          "manifest_hash": "32e2f372f0ee1dafd3e9b873f4493f840f23112cac09b5fe8b4a8bf7022afbb4",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_4cae95a7551e4e719ab1369e",
+          "parent_tool_receipt_id": null,
+          "run_id": "68f37f0d-ee16-4b6d-9266-2065bb5f3ee9",
+          "caller_user_id": "4beb1a9a-3454-4510-9961-e5cc27795fa7",
+          "effective_agent_id": "fc3cf038-e303-470b-b29b-0cd7cf39ba03",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T02:39:00.005211+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "success",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 1,
+          "returned_count": 1,
+          "delivered_count": 1,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [
+            {
+              "document_id": "eb12a36a-6077-4fbe-9f39-d81074cd3cbc",
+              "display_name": "gate7-matrix-marker.txt",
+              "content_hash": "2e16c432838256a129dd096b950c94feb9a6e3d8caf423669b1fa0dfdd7b3da7",
+              "chunk_ref": null,
+              "content": "\nGate 7 isolated matrix citation marker 8d7d6179. Use this exact sentence for the live acceptance source chain.",
+              "score": 0.98269042,
+              "position": {},
+              "evidence_id": "rr_900c74375de8c3bddc57b8f6_i1",
+              "citation_label": "gate7-matrix-marker.txt"
+            }
+          ],
+          "archive_status": "archived"
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T02:39:05.121722+00:00",
+  "runner_duration_seconds": 18.66
+}

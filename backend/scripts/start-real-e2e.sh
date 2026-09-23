@@ -17,6 +17,16 @@ REAL_MODEL_NAME="${REAL_E2E_MODEL_NAME:-real-e2e-model}"
 REAL_MODEL="${REAL_E2E_MODEL:-gpt-4o-mini}"
 REAL_MODEL_BASE="${REAL_E2E_MODEL_BASE:-https://example.invalid}"
 RAGFLOW_BASE_URL="${RAGFLOW_BASE_URL:-http://127.0.0.1:9380}"
+RAGFLOW_DATASET_ALLOWLIST_YAML=""
+
+if [[ -n "${REAL_E2E_RAGFLOW_DATASET_ID:-}" ]]; then
+  if ! [[ "$REAL_E2E_RAGFLOW_DATASET_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "REAL_E2E_RAGFLOW_DATASET_ID contains unsupported characters." >&2
+    exit 2
+  fi
+  RAGFLOW_DATASET_ALLOWLIST_YAML="    datasets:
+      - $REAL_E2E_RAGFLOW_DATASET_ID"
+fi
 
 if [[ "$REAL_MODEL_ENABLED" == "1" ]]; then
   [[ -n "${REAL_E2E_MODEL_API_KEY:-}" ]] || {
@@ -82,11 +92,12 @@ tools:
     use: deerflow.community.ragflow.tools:knowledge_search_tool
     base_url: $RAGFLOW_BASE_URL
     api_key: \$RAGFLOW_API_KEY
+${RAGFLOW_DATASET_ALLOWLIST_YAML}
     timeout: 30
     page_size: 8
     top_k: 16
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 agents_api:
   enabled: true
 database:

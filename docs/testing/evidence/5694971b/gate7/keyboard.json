@@ -1,0 +1,17 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "keyboard",
+  "real_execution": true,
+  "observed_steps": [
+    "built and started the real Next.js frontend",
+    "opened the real thread and verified the exact archived snippet",
+    "opened Evidence Panel with Enter and closed it with Escape",
+    "verified keyboard focus returned to the citation control"
+  ],
+  "thread_id": "7ac3aad5-e3e7-4e8f-b89f-c6d7330417a4",
+  "run_id": "c0faa578-9c01-4f6d-b54d-f0bd9caca94f",
+  "playwright_summary": "1 passed",
+  "recorded_at": "2026-09-23T02:49:44.606943+00:00",
+  "result": "passed",
+  "runner_duration_seconds": 92.17
+}

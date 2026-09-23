@@ -1,0 +1,68 @@
+{
+  "candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "scenario": "archive_failure",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "installed a temporary SQLite trigger on the isolated run-evidence row to reject archived retrieval receipt writes",
+    "executed a real model-backed Agent retrieval",
+    "verified the failed receipt was not cited in the persisted assistant response",
+    "removed the trigger in a finally block"
+  ],
+  "run": {
+    "thread_id": "5ea536d9-8a82-407e-b758-2798236e0d1f",
+    "run_id": "f5c85ed2-5629-4816-a27e-3c3e66f00296",
+    "status": "success",
+    "receipts": [
+      {
+        "receipt_id": "rr_09733c4fe2b32bd59c9e2bae",
+        "receipt_kind": "retrieval",
+        "logical_knowledge_base": "139f877d-9756-4a46-9fca-d51256cc9db3",
+        "knowledge_base_id": "139f877d-9756-4a46-9fca-d51256cc9db3",
+        "revision_id": "9c6d121a-361e-482e-a812-64a9eef060d8",
+        "revision_no": 2,
+        "manifest_hash": "32e2f372f0ee1dafd3e9b873f4493f840f23112cac09b5fe8b4a8bf7022afbb4",
+        "configuration_source": "frozen_run_revision",
+        "tool_call_id": "call_d4026b56e9244edaa228c869",
+        "parent_tool_receipt_id": null,
+        "run_id": "f5c85ed2-5629-4816-a27e-3c3e66f00296",
+        "caller_user_id": "4beb1a9a-3454-4510-9961-e5cc27795fa7",
+        "effective_agent_id": "fc3cf038-e303-470b-b29b-0cd7cf39ba03",
+        "child_task_id": null,
+        "child_agent_id": null,
+        "created_at": "2026-09-23T02:39:39.246295+00:00",
+        "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+        "result_status": "success",
+        "budget": {
+          "max_items": 20,
+          "max_chars_per_item": 4000
+        },
+        "provider_count": 1,
+        "returned_count": 1,
+        "delivered_count": 1,
+        "truncation": {
+          "items": false,
+          "characters": false
+        },
+        "truncated": false,
+        "items": [
+          {
+            "document_id": "eb12a36a-6077-4fbe-9f39-d81074cd3cbc",
+            "display_name": "gate7-matrix-marker.txt",
+            "content_hash": "2e16c432838256a129dd096b950c94feb9a6e3d8caf423669b1fa0dfdd7b3da7",
+            "chunk_ref": null,
+            "content": "\nGate 7 isolated matrix citation marker 8d7d6179. Use this exact sentence for the live acceptance source chain.",
+            "score": 0.98269042,
+            "position": {},
+            "evidence_id": "rr_09733c4fe2b32bd59c9e2bae_i1",
+            "citation_label": "gate7-matrix-marker.txt"
+          }
+        ],
+        "archive_status": "failed"
+      }
+    ],
+    "assistant_text": "\nI called `knowledge_search` exactly once with knowledge_base `139f877d-9756-4a46-9fca-d51256cc9db3` and query \"Gate 7 isolated matrix citation marker\". The call failed — no evidence was archived, so no verifiable citation is available for this query."
+  },
+  "recorded_at": "2026-09-23T02:39:44.022719+00:00",
+  "runner_duration_seconds": 12.539
+}
