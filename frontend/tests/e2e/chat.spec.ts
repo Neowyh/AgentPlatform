@@ -683,14 +683,24 @@ test.describe("Chat workspace", () => {
 
   test("goal command sets a goal and starts an agent run", async ({ page }) => {
     let streamCalls = 0;
+    let releaseStream!: () => void;
+    let markStreamStarted!: () => void;
+    const streamStarted = new Promise<void>((resolve) => {
+      markStreamStarted = resolve;
+    });
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
     mockLangGraphAPI(page);
     await page.addInitScript((threadId) => {
       sessionStorage.setItem("deerflow:new-thread-id:v1", threadId);
     }, MOCK_THREAD_ID);
     await page.goto("/workspace/chats/new");
-    await page.route("**/runs/stream", (route) => {
+    await page.route("**/runs/stream", async (route) => {
       streamCalls += 1;
-      return route.fallback();
+      markStreamStarted();
+      await streamGate;
+      await route.fallback();
     });
 
     const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -702,20 +712,40 @@ test.describe("Chat workspace", () => {
     await textarea.fill("/goal finish all tests");
     await textarea.press("Enter");
 
-    await expect(
-      page.locator("span.font-medium", { hasText: "finish all tests" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await streamStarted;
+    const goal = page.locator("span.font-medium", {
+      hasText: "finish all tests",
+    });
+    try {
+      await expect(goal).toBeVisible({ timeout: 15_000 });
+    } finally {
+      releaseStream();
+    }
     await expect.poll(() => streamCalls).toBe(1);
     await expect(page.getByText("Hello from iDeer!")).toBeVisible();
+    await expect(goal).toBeVisible();
   });
 
   test("goal command keeps the welcome header clear of the goal status", async ({
     page,
   }) => {
+    let releaseStream!: () => void;
+    let markStreamStarted!: () => void;
+    const streamStarted = new Promise<void>((resolve) => {
+      markStreamStarted = resolve;
+    });
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
     await page.addInitScript((threadId) => {
       sessionStorage.setItem("deerflow:new-thread-id:v1", threadId);
     }, MOCK_THREAD_ID);
     await page.goto("/workspace/chats/new");
+    await page.route("**/runs/stream", async (route) => {
+      markStreamStarted();
+      await streamGate;
+      await route.fallback();
+    });
 
     const textarea = page.getByPlaceholder(/how can i assist you/i);
     await expect(textarea).toBeVisible({ timeout: 15_000 });
@@ -724,10 +754,17 @@ test.describe("Chat workspace", () => {
       "/goal finish a small repo check and report the result",
     );
     await textarea.press("Enter");
+    await streamStarted;
 
     const goal = page.locator("span.font-medium", {
       hasText: "finish a small repo check",
     });
+    try {
+      await expect(goal).toBeVisible();
+    } finally {
+      releaseStream();
+    }
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible();
     await expect(goal).toBeVisible();
     await expect(page.getByText(/welcome to/i)).toBeHidden();
 

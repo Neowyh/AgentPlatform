@@ -125,10 +125,6 @@ const DEFAULT_SKILLS: MockSkill[] = [
   },
 ];
 
-// Latest goal set through the mock `/goal` endpoint. Module scope so the
-// run-stream builder can re-emit it in thread values.
-let latestGoal: unknown = null;
-
 export type MockUser = {
   id: string;
   username: string;
@@ -400,6 +396,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const systemRole = options?.systemRole ?? "super_admin";
   const mcpConfig = options?.mcpConfig ?? { mcp_servers: {} };
   const scheduledTasks = options?.scheduledTasks ?? [];
+  const threadGoals = new Map<string, { goal: unknown } | { goal: null }>();
 
   // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
 
@@ -807,6 +804,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
             {
               values: {
                 title: matchingThread.title ?? "Untitled",
+                goal: threadGoals.get(threadId)?.goal ?? null,
                 messages: matchingThread.messages ?? [
                   {
                     type: "human",
@@ -842,6 +840,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
             {
               values: {
                 title: created?.title ?? "New Chat",
+                goal: threadGoals.get(threadId)?.goal ?? null,
                 messages: streamed,
               },
               next: [],
@@ -939,6 +938,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           body: JSON.stringify({
             values: {
               title: matchingThread?.title ?? "Untitled",
+              goal: threadGoals.get(threadId)?.goal ?? null,
               messages: matchingThread
                 ? (matchingThread.messages ?? [
                     {
@@ -1144,14 +1144,13 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   // Goal continuation state — `/goal <objective>` stores a per-thread goal.
   // The run stream re-emits it in thread values (useStream drops the local
   // optimistic override once the thread is created).
-  const threadGoals: Record<string, { goal: unknown } | { goal: null }> = {};
   void page.route("**/api/threads/*/goal", (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const threadId = url.pathname.split("/")[4] ?? "";
+    const threadId = decodeURIComponent(url.pathname.split("/")[3] ?? "");
     if (request.method() === "PUT") {
       const body = request.postDataJSON() as { objective?: string };
-      latestGoal = {
+      const goal = {
         objective: body.objective ?? "",
         status: "active",
         created_at: new Date().toISOString(),
@@ -1161,16 +1160,15 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         no_progress_count: 0,
         max_no_progress_continuations: 2,
       };
-      threadGoals[threadId] = { goal: latestGoal };
+      threadGoals.set(threadId, { goal });
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(threadGoals[threadId]),
+        body: JSON.stringify(threadGoals.get(threadId)),
       });
     }
     if (request.method() === "DELETE") {
-      latestGoal = null;
-      threadGoals[threadId] = { goal: null };
+      threadGoals.set(threadId, { goal: null });
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -1180,7 +1178,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(threadGoals[threadId] ?? { goal: null }),
+      body: JSON.stringify(threadGoals.get(threadId) ?? { goal: null }),
     });
   });
   // Gateway-enforced upload limits surface on the attachment tooltip.
@@ -1417,7 +1415,14 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     if (runStreamHandler) {
       return runStreamHandler(route);
     }
-    return handleRunStream(route);
+    const threadId =
+      /\/threads\/([^/]+)\/runs\/stream$/.exec(
+        new URL(route.request().url()).pathname,
+      )?.[1] ?? "";
+    const goalState = threadGoals.get(threadId);
+    return handleRunStream(route, undefined, undefined, {
+      ...(goalState ? { goal: goalState.goal } : {}),
+    });
   };
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/runs\/stream$/,
@@ -2614,6 +2619,7 @@ export function handleRunStream(
   overrides?: {
     responseMessage?: Record<string, unknown>;
     messageMetadata?: Record<string, unknown>;
+    goal?: unknown;
   },
 ) {
   const aiMessage = overrides?.responseMessage ?? {
@@ -2644,13 +2650,14 @@ export function handleRunStream(
       event: "values",
       data: {
         messages: streamedMessages,
+        ...(overrides?.goal != null ? { goal: overrides.goal } : {}),
       },
     },
-    ...(latestGoal !== null
+    ...(overrides?.goal != null
       ? [
           {
             event: "updates",
-            data: { model: { goal: latestGoal } },
+            data: { model: { goal: overrides.goal } },
           } as const,
         ]
       : []),
