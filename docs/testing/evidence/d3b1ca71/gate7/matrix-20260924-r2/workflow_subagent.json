@@ -1,0 +1,25 @@
+{
+  "workflow_id": "dfecda12-c27a-4a42-8070-0b16a3adb8fb",
+  "run_id": "71d895ef-5cd7-4b78-82e8-4c2f7ec3d02f",
+  "status": "completed",
+  "receipts": [],
+  "frozen_knowledge_revision": {
+    "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+    "revision_no": 2,
+    "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+    "retrieval_profile": {},
+    "embedding_profile": {}
+  },
+  "knowledge_tool_event_count": 1,
+  "node_result": "“G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.” [1]",
+  "receipt_chain_persisted": false,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "workflow_subagent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Workflow resource",
+    "published an Agent action and ran it",
+    "verified terminal completion"
+  ]
+}

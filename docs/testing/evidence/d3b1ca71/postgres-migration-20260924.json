@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-24",
+  "environment": "disposable PostgreSQL 16 Alpine container; removed after run",
+  "result": "passed",
+  "checks": [
+    {
+      "command": "DEERFLOW_TEST_POSTGRES_URL=postgresql+asyncpg://<isolated-credentials>@127.0.0.1:55432/closeout uv run --project backend pytest backend/tests/test_pg_schema_integration.py backend/tests/test_user_oauth_partial_index.py backend/tests/test_migration_0018_oauth_identity_pg_partial.py -q -k 'not test_sync_postgres_schema_places_checkpointer_and_store_tables_together'",
+      "status": "passed",
+      "summary": "4 passed, 1 deselected, 8 warnings",
+      "duration_seconds": 7.74
+    },
+    {
+      "command": "DEERFLOW_TEST_POSTGRES_URL=postgresql://<isolated-credentials>@127.0.0.1:55432/closeout uv run --project backend pytest backend/tests/test_pg_schema_integration.py::test_sync_postgres_schema_places_checkpointer_and_store_tables_together -q",
+      "status": "passed",
+      "summary": "1 passed",
+      "duration_seconds": 2.78
+    }
+  ],
+  "notes": [
+    "An initial combined invocation passed four async checks but failed in the sync check's cleanup because it supplied the asyncpg URL scheme to psycopg. Rerunning with separate DSNs passed all five checks; no product code was changed.",
+    "This verifies PostgreSQL schema placement and migration 0018 upgrade/downgrade behavior. It is not a full application data-retention policy run."
+  ],
+  "cleanup": "Disposable PostgreSQL container removed"
+}

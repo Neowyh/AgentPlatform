@@ -1,0 +1,86 @@
+{
+  "candidate_head": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "worktree_dirty": true,
+  "recorded_at": "2026-09-24T11:43:31.326399+00:00",
+  "lanes": {
+    "backend-blocking-io": {
+      "passed": 97,
+      "warnings": 5,
+      "parent_seconds": 12,
+      "parent_status": 0,
+      "raw_log": {
+        "temporary_path": "/tmp/agentplatform-backend-blocking-io-20260924.log",
+        "sha256": "62f44f8ddbeeac6c4dbd04ba34b47747a7143151d3cfa2715975f0d468593b29",
+        "bytes": 2390,
+        "persisted_in_repository": false
+      }
+    },
+    "frontend-real-unseeded": {
+      "result": "unexecuted",
+      "parent_seconds": 2,
+      "parent_status": 1,
+      "reason": "missing isolated E2E environment variables",
+      "raw_log": {
+        "temporary_path": "/tmp/agentplatform-frontend-real-20260924-rerun.log",
+        "sha256": "c5eb77d99e41d4c8c5e811f4beb95a02dad30511cc579df3f46eb2d03fc93330",
+        "bytes": 2098,
+        "persisted_in_repository": false
+      }
+    },
+    "frontend-real-seeded": {
+      "real_browser_passed": 6,
+      "real_browser_skipped": 5,
+      "replay_passed": 3,
+      "parent_seconds": 205,
+      "parent_status": 0,
+      "automatic_cleanup_exit": 1,
+      "manual_isolated_cleanup": "completed",
+      "raw_log": {
+        "temporary_path": "/tmp/agentplatform-frontend-real-20260924-rerun-seeded.log",
+        "sha256": "b614070f2d4dcc2911f365e6e801e5f3bac7f913563c6135fa7b3eba7099111c",
+        "bytes": 9843,
+        "persisted_in_repository": false
+      }
+    },
+    "pr-standard": {
+      "local_runtime": {
+        "passed": 192,
+        "skipped": 4,
+        "warnings": 1,
+        "lane_seconds": 8
+      },
+      "backend_standard": {
+        "passed": 26087,
+        "skipped": 145,
+        "warnings": 824,
+        "lane_seconds": 1142
+      },
+      "frontend_standard": {
+        "rstest_passed": 759,
+        "rstest_files": 121,
+        "vitest_passed": 10222,
+        "vitest_files": 369,
+        "lane_seconds": 432
+      },
+      "frontend_smoke": {
+        "passed": 29,
+        "lane_seconds": 115
+      },
+      "parent_seconds": 1698,
+      "parent_status": 0,
+      "raw_log": {
+        "temporary_path": "/tmp/agentplatform-pr-standard-20260924-rerun.log",
+        "sha256": "e369e74ed09bbde7549f4a7d2bf090904138d1013af92eb82f7a560a6b71e30b",
+        "bytes": 7345329,
+        "persisted_in_repository": false
+      }
+    }
+  },
+  "commands": {
+    "backend-blocking-io": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh backend-blocking-io",
+    "frontend-real-unseeded": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh frontend-real",
+    "frontend-real-seeded": "QA_ISOLATED=1; backend/scripts/start-real-e2e.sh; backend/scripts/seed-real-e2e.sh <isolated manifest>; UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh frontend-real; backend/scripts/stop-real-e2e.sh <isolated manifest>",
+    "pr-standard": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh pr-standard"
+  },
+  "excluded": "Fault-zeroing Case 01/02/03 were not run."
+}

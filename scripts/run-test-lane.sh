@@ -176,7 +176,7 @@ case "$LANE" in
     (cd "$ROOT_DIR/frontend" && PLAYWRIGHT_AUTH_ENABLED=1 XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" playwright test tests/e2e/auth tests/e2e-auth)
     ;;
   frontend-real)
-    (cd "$ROOT_DIR/frontend" && PLAYWRIGHT_SKIP_WEB_SERVER=1 XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" playwright test tests/e2e/real tests/e2e-real-backend)
+    (cd "$ROOT_DIR/frontend" && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" exec playwright test -c playwright.real.config.ts && XDG_DATA_HOME="${TEST_PNPM_XDG:-/tmp/deer-flow-xdg}" PNPM_HOME="${TEST_PNPM_HOME:-/tmp/deer-flow-pnpm-home}" "${PNPM_CMD[@]}" exec playwright test -c playwright.real-backend.config.ts)
     ;;
   frontend-stagehand)
     if [[ -z ${OPENAI_API_KEY:-} && -z ${OPENAI_BASE_URL:-} ]]; then

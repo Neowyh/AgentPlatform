@@ -1,0 +1,9 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "artifact_candidate_commit": "5694971bc06648e8de958c6d5f4c8d7b5c1989bb",
+  "command": "python3 scripts/acceptance/validate_gate7_artifact.py docs/testing/evidence/5694971b/gate7/gate7-matrix.json --current-commit d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "status": "rejected_as_stale",
+  "exit_code": 1,
+  "validator_output": "Gate 7 artifact: FAIL: candidate_commit does not match current checkout",
+  "interpretation": "The historical 16/16 artifact is correctly prevented from certifying this current candidate."
+}

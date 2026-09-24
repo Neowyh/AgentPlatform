@@ -1,0 +1,168 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T17:27:15.901524+00:00",
+  "status": "passed",
+  "rows": {
+    "two_users_two_kbs": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "two_users_two_kbs.json",
+      "started_at": "2026-09-23T16:53:28.594059+00:00",
+      "finished_at": "2026-09-23T16:53:29.650841+00:00",
+      "duration_seconds": 1.057
+    },
+    "revoked_access": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "revoked_access.json",
+      "started_at": "2026-09-23T16:53:29.650855+00:00",
+      "finished_at": "2026-09-23T16:53:30.491504+00:00",
+      "duration_seconds": 0.841
+    },
+    "revision_freeze_provider_outage": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "revision_freeze_provider_outage.json",
+      "started_at": "2026-09-23T16:53:30.491518+00:00",
+      "finished_at": "2026-09-23T16:53:53.736542+00:00",
+      "duration_seconds": 20.581
+    },
+    "empty_hit": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "empty_hit.json",
+      "started_at": "2026-09-23T16:53:53.736557+00:00",
+      "finished_at": "2026-09-23T16:54:14.431361+00:00",
+      "duration_seconds": 20.695
+    },
+    "truncated": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "truncated.json",
+      "started_at": "2026-09-23T16:54:14.431381+00:00",
+      "finished_at": "2026-09-23T16:54:35.053644+00:00",
+      "duration_seconds": 20.622
+    },
+    "retry": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "retry.json",
+      "started_at": "2026-09-23T16:54:35.053657+00:00",
+      "finished_at": "2026-09-23T16:55:18.208408+00:00",
+      "duration_seconds": 40.707
+    },
+    "duplicate": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "duplicate.json",
+      "started_at": "2026-09-23T16:55:18.208425+00:00",
+      "finished_at": "2026-09-23T16:56:03.889995+00:00",
+      "duration_seconds": 40.606
+    },
+    "archive_failure": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "archive_failure.json",
+      "started_at": "2026-09-23T16:56:03.890010+00:00",
+      "finished_at": "2026-09-23T16:56:22.532071+00:00",
+      "duration_seconds": 18.642
+    },
+    "forged_citation": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "forged_citation.json",
+      "started_at": "2026-09-23T16:56:22.532098+00:00",
+      "finished_at": "2026-09-23T16:56:44.582794+00:00",
+      "duration_seconds": 20.475
+    },
+    "history_without_receipt": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "history_without_receipt.json",
+      "started_at": "2026-09-23T16:56:44.582807+00:00",
+      "finished_at": "2026-09-23T16:57:07.935993+00:00",
+      "duration_seconds": 20.461
+    },
+    "mixed_web": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "mixed_web.json",
+      "started_at": "2026-09-23T16:57:07.936006+00:00",
+      "finished_at": "2026-09-23T16:57:35.604855+00:00",
+      "duration_seconds": 27.669
+    },
+    "streaming": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "streaming.json",
+      "started_at": "2026-09-23T16:57:35.604868+00:00",
+      "finished_at": "2026-09-23T16:57:57.348772+00:00",
+      "duration_seconds": 19.46
+    },
+    "agent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "agent.json",
+      "started_at": "2026-09-23T17:22:05.794673+00:00",
+      "finished_at": "2026-09-23T17:22:23.510252+00:00",
+      "duration_seconds": 15.078
+    },
+    "workflow_subagent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "workflow_subagent.json",
+      "started_at": "2026-09-23T17:27:16.176574+00:00",
+      "finished_at": "2026-09-23T17:27:26.333366+00:00",
+      "duration_seconds": 10.157
+    },
+    "loading_error_restricted": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "gate7-evidence-states.spec.ts",
+      "evidence": "loading_error_restricted.json",
+      "started_at": "2026-09-23T17:22:33.683614+00:00",
+      "finished_at": "2026-09-23T17:23:50.039243+00:00",
+      "duration_seconds": 70.95
+    },
+    "keyboard": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "knowledge-evidence-gate7.spec.ts",
+      "evidence": "keyboard.json",
+      "started_at": "2026-09-23T17:23:50.039267+00:00",
+      "finished_at": "2026-09-23T17:25:06.033751+00:00",
+      "duration_seconds": 70.522
+    }
+  },
+  "resumed_at": "2026-09-23T17:27:15.901539+00:00"
+}

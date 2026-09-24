@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23",
+  "scenario": "real provider hit and zero-hit distinction",
+  "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml uv run --project backend python - (stdin Python creates a unique dataset, runs the pytest command below, then deletes the dataset by ID in finally)",
+  "status": "passed",
+  "exit_code": 0,
+  "duration_seconds": 9.95,
+  "summary": "1 passed",
+  "assertions": [
+    "created a uniquely named temporary RAGFlow dataset for Gate 8",
+    "uploaded and parsed a unique marker document, then waited until searchable",
+    "verified the marker query returned the document and a separate random zero-hit query did not",
+    "deleted the marker document and deleted the temporary dataset in a finally block"
+  ],
+  "cleanup": "passed",
+  "log": "/tmp/agentplatform-closeout/gate8-provider-d3b1ca71.log",
+  "pytest_command": "uv run --project backend pytest backend/tests/test_knowledge_gate8_live.py::test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hit -q"
+}

@@ -1,0 +1,116 @@
+{
+  "candidate_sha": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "date": "2026-09-23",
+  "inventory": {
+    "command": "python3 scripts/test_inventory.py",
+    "status": "passed",
+    "exit_code": 0,
+    "log": "/tmp/agentplatform-closeout/test-inventory-d3b1ca71.tsv"
+  },
+  "pr_standard": {
+    "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh pr-standard",
+    "status": "passed",
+    "exit_code": 0,
+    "duration_seconds": 1585,
+    "sub_lanes": [
+      {
+        "lane": "local-runtime",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 7,
+        "summary": "192 passed, 4 skipped, 1 warning"
+      },
+      {
+        "lane": "backend-standard",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 1044,
+        "summary": "26082 passed, 145 skipped, 821 warnings"
+      },
+      {
+        "lane": "frontend-standard",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 409,
+        "summary": "10221 tests across 369 files"
+      },
+      {
+        "lane": "frontend-smoke",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 123,
+        "summary": "29 passed"
+      }
+    ],
+    "log": "/tmp/agentplatform-closeout/pr-standard-d3b1ca71.log"
+  },
+  "backend_blocking_io": {
+    "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh backend-blocking-io",
+    "status": "passed",
+    "exit_code": 0,
+    "duration_seconds": 12,
+    "summary": "97 passed, 5 warnings",
+    "log": "/tmp/agentplatform-closeout/backend-blocking-io-d3b1ca71.log"
+  },
+  "core_full": {
+    "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh core-full",
+    "status": "passed",
+    "exit_code": 0,
+    "duration_seconds": 2080,
+    "sub_lanes": [
+      {
+        "lane": "local-runtime",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 9,
+        "summary": "192 passed, 4 skipped, 1 warning"
+      },
+      {
+        "lane": "backend-full",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 1076,
+        "summary": "backend-standard: 26082 passed, 145 skipped, 821 warnings in 984.92s; backend-serial: 54 passed, 10 skipped, 26389 deselected, 2 warnings in 21.03s",
+        "phases": [
+          {
+            "lane": "backend-standard",
+            "status": "passed",
+            "exit_code": 0,
+            "duration_seconds": 984.92,
+            "summary": "26082 passed, 145 skipped, 821 warnings"
+          },
+          {
+            "lane": "backend-serial",
+            "status": "passed",
+            "exit_code": 0,
+            "duration_seconds": 21.03,
+            "summary": "54 passed, 10 skipped, 26389 deselected, 2 warnings"
+          }
+        ]
+      },
+      {
+        "lane": "frontend-core",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 513,
+        "summary": "Vitest: 10221 passed across 369 files; ESLint: 1316 warnings, 0 errors; TypeScript: completed without errors"
+      },
+      {
+        "lane": "frontend-mock-e2e",
+        "status": "passed",
+        "exit_code": 0,
+        "duration_seconds": 481,
+        "summary": "326 passed (7.4m)"
+      }
+    ],
+    "log": "/tmp/agentplatform-closeout/core-full-d3b1ca71.log"
+  },
+  "environment_checks": {
+    "doctor": {
+      "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache make doctor",
+      "status": "ready_with_warnings",
+      "exit_code": 0,
+      "summary": "Python 3.12.3, Node 22.23.2, pnpm 10.26.2, uv 0.12.9, nginx ready; config.yaml v41 loadable; 3 models configured; Codex CLI auth available; warnings: frontend/.env missing, web_capture tool missing, host bash enabled on LocalSandboxProvider."
+    }
+  }
+}

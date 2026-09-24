@@ -37,18 +37,20 @@ test.describe("real memory persistence", () => {
     const editor = page.getByRole("dialog");
     await editor.getByRole("textbox").nth(0).fill(fact);
     await editor.getByRole("button", { name: /save|保存/i }).click();
-    await expect(page.getByText(fact)).toBeVisible();
+    const savedFact = page
+      .getByTestId("settings-dialog-content")
+      .locator("p")
+      .filter({ hasText: fact });
+    await expect(savedFact).toBeVisible();
     await expectMemoryStorageToContain(fact);
 
     await page.reload();
     await openMemory(page);
-    await expect(page.getByText(fact)).toBeVisible();
+    await expect(savedFact).toBeVisible();
 
-    const factRow = page
-      .getByText(fact)
-      .locator(
-        "xpath=ancestor::div[contains(@class, 'rounded-md') and (.//button[@aria-label='Delete' or @aria-label='删除'] or .//button[@title='Delete' or @title='删除'])]",
-      );
+    const factRow = savedFact.locator(
+      "xpath=ancestor::div[contains(@class, 'rounded-md') and (.//button[@aria-label='Delete' or @aria-label='删除'] or .//button[@title='Delete' or @title='删除'])]",
+    );
     await factRow.getByRole("button", { name: /delete|删除/i }).click();
     const confirmation = page
       .getByRole("dialog")

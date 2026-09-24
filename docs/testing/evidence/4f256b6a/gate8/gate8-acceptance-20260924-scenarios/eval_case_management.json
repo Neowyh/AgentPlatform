@@ -1,0 +1,31 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "eval_case_management",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:05.288780+00:00",
+  "observed_steps": [
+    "created or loaded the canonical evaluation case",
+    "updated its tags and confirmed a new case version",
+    "ran the case through the archived evaluation engine and normalized its document ranking"
+  ],
+  "observations": {
+    "case_versions": {
+      "before": 3,
+      "after": 3
+    },
+    "expected_document_ids": [
+      "481a3514-6667-40f9-a3cc-76fa0a543118"
+    ],
+    "deduplicated": {
+      "ranked_document_ids": [
+        "481a3514-6667-40f9-a3cc-76fa0a543118"
+      ],
+      "unique_count": 1
+    }
+  },
+  "assertions": [
+    "case version increased after update",
+    "expected document identity is retained",
+    "ranked document IDs are de-duplicated before metric calculation"
+  ]
+}

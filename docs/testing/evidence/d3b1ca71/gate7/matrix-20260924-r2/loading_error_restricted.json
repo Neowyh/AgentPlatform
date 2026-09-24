@@ -1,0 +1,18 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "loading_error_restricted",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "opened the real chat containing the candidate-bound archived citation in Chromium",
+    "held the Evidence API response to observe the loading state",
+    "injected an HTTP 503 to verify the unavailable error state",
+    "injected an access_restricted Evidence API response and verified the restricted state"
+  ],
+  "thread_id": "09027508-bef6-4af2-829a-f799bb444cdd",
+  "run_id": "c1a613e9-4388-43b2-a57d-07fe57448f96",
+  "evidence_api_fault_injection": "browser route interception for deterministic error and access_restricted responses",
+  "playwright_summary": "1 passed",
+  "recorded_at": "2026-09-23T17:23:50.035030+00:00",
+  "runner_duration_seconds": 70.95
+}

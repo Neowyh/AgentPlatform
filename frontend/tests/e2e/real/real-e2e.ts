@@ -4,7 +4,11 @@ import { join, resolve } from "path";
 
 import { expect, type Page } from "@playwright/test";
 
-type Manifest = { database_path: string; ideer_home: string };
+type Manifest = {
+  config_path: string;
+  database_path: string;
+  ideer_home: string;
+};
 
 function requiredEnv(name: string) {
   const value = process.env[name];
@@ -110,8 +114,10 @@ function manifest(): Manifest {
   if (
     !value.database_path ||
     !value.ideer_home ||
+    !value.config_path ||
     !existsSync(value.database_path) ||
-    !existsSync(value.ideer_home)
+    !existsSync(value.ideer_home) ||
+    !existsSync(value.config_path)
   ) {
     throw new Error(`Manifest paths are unavailable: ${manifestPath}`);
   }
@@ -211,12 +217,20 @@ export async function expectMemoryStorageToContain(
     [],
     "super admin user id",
   );
-  const memoryPath = resolve(
-    manifest().ideer_home,
-    "users",
-    userId,
-    "memory.json",
-  );
+  const configuredStoragePath = execFileSync(
+    "python3",
+    [
+      "-c",
+      "import sys, yaml; config = yaml.safe_load(open(sys.argv[1], encoding='utf-8')) or {}; memory = config.get('memory') or {}; backend = memory.get('backend_config') or {}; print(backend.get('storage_path') or '')",
+      manifest().config_path,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+  const memoryStorageRoot = configuredStoragePath
+    ? resolve(manifest().ideer_home, configuredStoragePath)
+    : manifest().ideer_home;
+  const memoryRoot = resolve(memoryStorageRoot, "users", userId);
+  const memoryPath = resolve(memoryRoot, "memory.json");
 
   function storageContainsFact(): boolean {
     if (
@@ -225,13 +239,7 @@ export async function expectMemoryStorageToContain(
     ) {
       return true;
     }
-    const factsRoot = resolve(
-      memoryPath,
-      "..",
-      "agents",
-      "__default__",
-      "facts",
-    );
+    const factsRoot = resolve(memoryRoot, "agents", "__default__", "facts");
     if (!existsSync(factsRoot)) return false;
     const pending = [factsRoot];
     while (pending.length > 0) {

@@ -1,0 +1,41 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "failure_recovery",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:25:07.682322+00:00",
+  "observed_steps": [
+    "restarted the isolated Gateway with a private provider-down configuration",
+    "observed durable unavailable status for a synthetic document",
+    "observed an actual provider timeout response with zero returned items",
+    "restored the real-provider configuration, restarted Gateway, and retried the same document"
+  ],
+  "observations": {
+    "zero_hit": {
+      "query_marker_absent": true
+    },
+    "provider_down": {
+      "status": "failed",
+      "failure_code": "unavailable",
+      "ingestion_attempt": 1
+    },
+    "timeout_partial": {
+      "observed": true,
+      "http_status": 201,
+      "error_code": "timeout",
+      "duration_seconds": 0.062,
+      "returned_count": 0,
+      "partial": false
+    },
+    "retry_restart_history": {
+      "document_status": "ready",
+      "ingestion_attempt": 2,
+      "revision_history_count": 8
+    }
+  },
+  "assertions": [
+    "provider-down ingestion was recorded as unavailable",
+    "timeout was surfaced as HTTP 503 with zero returned items",
+    "the same failed document recovered to ready after restart and retry",
+    "revision history remained readable after recovery"
+  ]
+}

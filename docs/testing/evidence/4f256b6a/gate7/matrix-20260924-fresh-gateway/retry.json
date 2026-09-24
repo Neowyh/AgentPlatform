@@ -1,0 +1,126 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "retry",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "ran a real Agent against a deliberately unavailable local provider endpoint",
+    "verified the archived provider_error receipt retained the frozen KB revision",
+    "restored the isolated provider endpoint",
+    "retried the same retrieval request and verified archived success on the same revision"
+  ],
+  "frozen_revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+  "runs": [
+    {
+      "thread_id": "2ba47ea5-a513-401e-94d0-e19bed62881e",
+      "run_id": "fbf6a24a-1927-45ad-b014-407ac62c4f18",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_ad822d16c9c115ca7e1059d3",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+          "revision_no": 2,
+          "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_BrgTwl1RShTGFSN1IayIc6FG",
+          "parent_tool_receipt_id": null,
+          "run_id": "fbf6a24a-1927-45ad-b014-407ac62c4f18",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T21:33:14.248548+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "provider_error",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 0,
+          "returned_count": 0,
+          "delivered_count": 0,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [],
+          "archive_status": "archived"
+        }
+      ]
+    },
+    {
+      "thread_id": "1357443b-ea8b-438a-a0bb-901ba9e9744c",
+      "run_id": "d49431b8-fdf8-4b6f-9253-5a8693d014cf",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_be553e9a0485e6ca7eb4fb04",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+          "revision_no": 2,
+          "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_PEN88u2YlhUYUB2CnUyfWoOh",
+          "parent_tool_receipt_id": null,
+          "run_id": "d49431b8-fdf8-4b6f-9253-5a8693d014cf",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T21:33:34.440462+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "success",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 2,
+          "returned_count": 2,
+          "delivered_count": 2,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [
+            {
+              "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+              "display_name": "gate7-history-marker.txt",
+              "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+              "chunk_ref": null,
+              "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+              "score": 0.9963835779999999,
+              "position": {},
+              "evidence_id": "rr_be553e9a0485e6ca7eb4fb04_i1",
+              "citation_label": "gate7-history-marker.txt"
+            },
+            {
+              "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+              "display_name": "gate7-matrix-marker.txt",
+              "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+              "chunk_ref": null,
+              "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+              "score": 0.5530962776291577,
+              "position": {},
+              "evidence_id": "rr_be553e9a0485e6ca7eb4fb04_i2",
+              "citation_label": "gate7-matrix-marker.txt"
+            }
+          ],
+          "archive_status": "archived",
+          "cited_item_ids": [
+            "rr_be553e9a0485e6ca7eb4fb04_i1",
+            "rr_be553e9a0485e6ca7eb4fb04_i2"
+          ]
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T21:33:39.821341+00:00",
+  "runner_duration_seconds": 42.727
+}

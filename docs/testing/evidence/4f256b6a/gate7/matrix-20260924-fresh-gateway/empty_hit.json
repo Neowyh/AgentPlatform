@@ -1,0 +1,57 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "empty_hit",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created and published a scenario-specific real Agent through the Gateway",
+    "waited for the real model/provider run to reach terminal state",
+    "read persisted Evidence API receipts and verified archive status, result, and item invariants"
+  ],
+  "probe_agent_id": "0f8951c2-4c13-4b38-8829-80c3ab3d83f0",
+  "runs": [
+    {
+      "thread_id": "76d9b55f-e19c-4067-979b-19a9923d955e",
+      "run_id": "422e2851-21a7-4e53-b47d-14de1bfe5315",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_9a67ef905fd6c22990e42da1",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+          "revision_no": 2,
+          "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_lDKAh44FQmI2GcbQ8bbKUdwZ",
+          "parent_tool_receipt_id": null,
+          "run_id": "422e2851-21a7-4e53-b47d-14de1bfe5315",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "0f8951c2-4c13-4b38-8829-80c3ab3d83f0",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T21:32:29.352788+00:00",
+          "query_sha256": "8e3be6632f524e3ec0ad5bc7cf900c32d5ed47f828b71e336170855d3ab8d178",
+          "result_status": "empty_hit",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 0,
+          "returned_count": 0,
+          "delivered_count": 0,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [],
+          "archive_status": "archived"
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T21:32:35.900544+00:00",
+  "runner_duration_seconds": 25.57
+}

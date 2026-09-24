@@ -1,0 +1,113 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "retry",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "ran a real Agent against a deliberately unavailable local provider endpoint",
+    "verified the archived provider_error receipt retained the frozen KB revision",
+    "restored the isolated provider endpoint",
+    "retried the same retrieval request and verified archived success on the same revision"
+  ],
+  "frozen_revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+  "runs": [
+    {
+      "thread_id": "7eba6408-0565-43dc-82d5-3f0d669e0158",
+      "run_id": "0c6340df-3ac2-47ee-9609-3304e5505555",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_a4184e9a54d2be1d651f0b6a",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+          "revision_no": 1,
+          "manifest_hash": "7624e4d9810bb673f189d58c184065f8a6fc68d74d04e0fb49fa2f12c05f843d",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_gyXknv7unTsB6sJEaNrJHkrV",
+          "parent_tool_receipt_id": null,
+          "run_id": "0c6340df-3ac2-47ee-9609-3304e5505555",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T16:39:04.321262+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "provider_error",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 0,
+          "returned_count": 0,
+          "delivered_count": 0,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [],
+          "archive_status": "archived"
+        }
+      ]
+    },
+    {
+      "thread_id": "fc2c1750-10ae-4ce2-b214-35a5f0b55ccf",
+      "run_id": "9e4677b1-1137-43cb-a3de-9442fee33dc7",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_96cb8d8153f673dd01c19885",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+          "revision_no": 1,
+          "manifest_hash": "7624e4d9810bb673f189d58c184065f8a6fc68d74d04e0fb49fa2f12c05f843d",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_14t0EC6vxSVQruuKJowC6a2W",
+          "parent_tool_receipt_id": null,
+          "run_id": "9e4677b1-1137-43cb-a3de-9442fee33dc7",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T16:39:24.299178+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "success",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 1,
+          "returned_count": 1,
+          "delivered_count": 1,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [
+            {
+              "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+              "display_name": "gate7-matrix-marker.txt",
+              "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+              "chunk_ref": null,
+              "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+              "score": 0.5530962776291577,
+              "position": {},
+              "evidence_id": "rr_96cb8d8153f673dd01c19885_i1",
+              "citation_label": "gate7-matrix-marker.txt"
+            }
+          ],
+          "archive_status": "archived",
+          "cited_item_ids": [
+            "rr_96cb8d8153f673dd01c19885_i1"
+          ]
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T16:39:32.155493+00:00"
+}

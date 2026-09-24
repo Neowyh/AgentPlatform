@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T19:41:42.963930+00:00",
+  "scenario": "production Gateway Agent Run revoked before MCP execution",
+  "real_execution": true,
+  "status": "incomplete",
+  "observed_steps": [
+    "reused the isolated, seeded candidate Gateway after confirming its live health endpoint",
+    "paired signed device websocket and observed local.mcp.fs.read_file capability",
+    "queried the Gateway terminal run, its persisted Run Evidence metadata, messages, and archived retrieval evidence",
+    "verified same-run MCP and retrieval receipts linked to successful tool calls"
+  ],
+  "assertions": [
+    "persisted MCP receipt is linked to a model tool call: True",
+    "successful archived retrieval receipt is linked to a model tool call: True",
+    "local fixture marker was returned by the MCP tool: False",
+    "Gate 7 source marker was archived: True",
+    "device_revocation_status is revoked and local fixture marker is absent; terminal tool receipt semantics remain unverified"
+  ],
+  "limitations": [
+    "probe stopped before verified completion (AttributeError)",
+    "device revoke returned revoked and the local fixture marker was absent, but the persisted MCP record was not classified correctly; do not count this as a validated device-revocation receipt scenario"
+  ],
+  "thread_id": "449c20bb-600b-4f74-bed1-17c8d077f9d9",
+  "run_id": "7844ea82-15c7-4cad-896d-006ef8442f08",
+  "device_revocation_status": "revoked",
+  "run_status": "success",
+  "run_state_keys": [
+    "assistant_id",
+    "created_at",
+    "first_user_message",
+    "kwargs",
+    "last_assistant_message",
+    "lead_agent_tokens",
+    "llm_call_count",
+    "message_count",
+    "metadata",
+    "middleware_tokens",
+    "multitask_strategy",
+    "run_id",
+    "status",
+    "subagent_tokens",
+    "thread_id",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "updated_at"
+  ],
+  "run_evidence_keys": [
+    "has_more",
+    "receipts",
+    "run_id",
+    "thread_id"
+  ],
+  "receipt_count": 1,
+  "receipt_summaries": [
+    {
+      "receipt_id": "rr_3f9d3d6a59111c49b48fe321",
+      "receipt_kind": "retrieval",
+      "result_status": "success"
+    }
+  ],
+  "tool_receipt_count": 2,
+  "tool_receipt_summaries": [
+    {
+      "tool_name": "knowledge_search",
+      "receipt_kind": null,
+      "tool_call_id": "call_f8e7fbe956cd4886bf0fe332",
+      "status": null
+    },
+    {
+      "tool_name": "local.mcp.fs.read_file",
+      "receipt_kind": null,
+      "tool_call_id": "call_760e242e84d94a8e98de47af",
+      "status": null
+    }
+  ],
+  "mcp_tool_calls": 1,
+  "knowledge_tool_calls": 1,
+  "mcp_marker_in_tool_result": false,
+  "knowledge_marker_in_archived_receipt": true,
+  "mcp_receipt_persisted": true,
+  "knowledge_receipt_persisted": true,
+  "candidate_worktree_dirty": true,
+  "mcp_failure_recorded": true,
+  "execution_marker_absent": true
+}

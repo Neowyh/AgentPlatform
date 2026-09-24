@@ -1,0 +1,50 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "run_snapshot_freeze",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T10:06:58.176227+00:00",
+  "observed_steps": [
+    "started a fresh isolated SQLite Gateway with the configured real RAGFlow provider and Codex model",
+    "created an ordinary user and private KnowledgeBase, uploaded one synthetic document, and observed ready ingestion",
+    "prepared, qualified, and published the first provider-backed revision; ran a production Codex Agent",
+    "prepared, qualified, and published a second provider-backed revision; ran a second production Codex Agent",
+    "read both persisted Run records after the pointer switch and checked status, errors, revision IDs, and manifest hashes"
+  ],
+  "observations": {
+    "old_run_snapshot": {
+      "run_id": "8fa0aa7a-9860-45cd-9427-fb2b9d13c32b",
+      "knowledge_revision_id": "2643ae39-530b-4120-b1fd-bf2d9fdbb536",
+      "manifest_hash": "36ecd43eea7b09845e7cf5e221425f9753a3e4470cf3d213cf075a08870f81c3",
+      "run_status": "success",
+      "persisted_error_absent": true,
+      "document_count": 1,
+      "dataset_bound": true
+    },
+    "new_run_snapshot": {
+      "run_id": "8dcfa758-3426-4af5-995c-4f9e9656295c",
+      "knowledge_revision_id": "a445390d-57cd-4ccc-b650-f5b6dcc7c34e",
+      "manifest_hash": "36ecd43eea7b09845e7cf5e221425f9753a3e4470cf3d213cf075a08870f81c3",
+      "run_status": "success",
+      "persisted_error_absent": true,
+      "document_count": 1,
+      "dataset_bound": true
+    },
+    "latest_pointer": {
+      "before": "2643ae39-530b-4120-b1fd-bf2d9fdbb536",
+      "after": "a445390d-57cd-4ccc-b650-f5b6dcc7c34e"
+    }
+  },
+  "assertions": [
+    "both Codex Agent Runs completed successfully with no persisted error",
+    "each Run retained the provider-backed KnowledgeBase revision active when created",
+    "the first Run snapshot remained unchanged after the second revision was published"
+  ],
+  "replay_script": "docs/testing/evidence/4f256b6a/gate8/run-snapshot-targeted-source-20260924.py",
+  "replay_script_sha256": "198d22a9d5fbb798af535635e6ddc75d4000845ef8da9135a25b5b09fcce7ec7",
+  "isolation": "fresh private Gateway and KnowledgeBase; no public visibility grant",
+  "cleanup": {
+    "provider_datasets_created_for_this_probe_removed": 3,
+    "isolated_gateway_stopped": true,
+    "temporary_local_state_removed": true
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "browser_review",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:26:27.951734+00:00",
+  "observed_steps": [
+    "launched the real Playwright browser against the isolated Gateway and seeded browser state",
+    "reviewed archived retrieval evidence, A/B comparison, and gate feedback",
+    "used keyboard navigation and asserted focused control"
+  ],
+  "observations": {
+    "evidence": "d1fb2343-3808-431c-a880-5cefbce643a1",
+    "comparison": "74751d93-fd60-4a9c-a77e-89be8ad7ee0b",
+    "gate_feedback": "publish evaluation gate rendered",
+    "ui_states": [
+      "retrieval evidence",
+      "comparison",
+      "publish gate"
+    ],
+    "keyboard_focus": "evaluation tab reached by keyboard and first control focused"
+  },
+  "assertions": [
+    "Gate 8 browser test passed",
+    "real evidence and comparison markers were visible",
+    "keyboard focus remained visible on an interactive control"
+  ]
+}

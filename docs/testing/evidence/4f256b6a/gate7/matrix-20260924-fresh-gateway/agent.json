@@ -1,0 +1,65 @@
+{
+  "thread_id": "771e1758-c44e-4262-9d95-ced4af911823",
+  "run_id": "73b64de7-b025-4a81-98fa-fc44c2284180",
+  "status": "success",
+  "receipts": [
+    {
+      "receipt_id": "rr_1123df88a59ef0daae228bd6",
+      "receipt_kind": "retrieval",
+      "logical_knowledge_base": "658b905a-e357-4b4f-8764-9dcb3fea9a0c",
+      "knowledge_base_id": "658b905a-e357-4b4f-8764-9dcb3fea9a0c",
+      "revision_id": "1ae17e2a-cd8e-46b8-b14a-a7776bc62609",
+      "revision_no": 1,
+      "manifest_hash": "a1397ea77b55c206091f67698908e991458da332ac6cbf7298636ee0a315fa2b",
+      "configuration_source": "frozen_run_revision",
+      "tool_call_id": "call_yQMlYROupcV6xVt2eJlntizO",
+      "parent_tool_receipt_id": null,
+      "run_id": "73b64de7-b025-4a81-98fa-fc44c2284180",
+      "caller_user_id": "f8595e45-6135-41d4-bf56-f97ef735f433",
+      "effective_agent_id": "bb9c11a4-09a6-40ff-9243-b6cc879cc0d9",
+      "child_task_id": null,
+      "child_agent_id": null,
+      "created_at": "2026-09-23T21:38:37.430506+00:00",
+      "query_sha256": "df9172f8fef7571a93d45ccb8078e8fb02bbee4a09d7bbe666ead2063f924d82",
+      "result_status": "success",
+      "budget": {
+        "max_items": 20,
+        "max_chars_per_item": 4000
+      },
+      "provider_count": 1,
+      "returned_count": 1,
+      "delivered_count": 1,
+      "truncation": {
+        "items": false,
+        "characters": false
+      },
+      "truncated": false,
+      "items": [
+        {
+          "document_id": "40f16aba-de64-4785-ba6e-2e702ef567e3",
+          "display_name": "gate7-marker.txt",
+          "content_hash": "b0abee53d415058543194ffa2bc2fde79c4ec013b578ae91d4a8903bd3c66af8",
+          "chunk_ref": null,
+          "content": "\nG7D3B1CA71-SOURCE-MARKER-9F2A exact isolated test sentence.",
+          "score": 0.5311081022811396,
+          "position": {},
+          "evidence_id": "rr_1123df88a59ef0daae228bd6_i1",
+          "citation_label": "gate7-marker.txt"
+        }
+      ],
+      "archive_status": "archived",
+      "cited_item_ids": [
+        "rr_1123df88a59ef0daae228bd6_i1"
+      ]
+    }
+  ],
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "agent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Gateway Agent run",
+    "waited for terminal completion",
+    "read persisted run evidence receipts"
+  ]
+}

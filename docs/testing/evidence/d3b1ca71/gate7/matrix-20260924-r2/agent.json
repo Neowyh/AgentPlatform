@@ -1,0 +1,76 @@
+{
+  "thread_id": "09027508-bef6-4af2-829a-f799bb444cdd",
+  "run_id": "c1a613e9-4388-43b2-a57d-07fe57448f96",
+  "status": "success",
+  "receipts": [
+    {
+      "receipt_id": "rr_695805779f40453692265fba",
+      "receipt_kind": "retrieval",
+      "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+      "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+      "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+      "revision_no": 2,
+      "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+      "configuration_source": "frozen_run_revision",
+      "tool_call_id": "call_GX4qDVJrVmT89XhUNH0QmQK4",
+      "parent_tool_receipt_id": null,
+      "run_id": "c1a613e9-4388-43b2-a57d-07fe57448f96",
+      "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+      "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+      "child_task_id": null,
+      "child_agent_id": null,
+      "created_at": "2026-09-23T17:22:14.138010+00:00",
+      "query_sha256": "ed60bcc7c4b47b1256299fb3aa3a4784043c86d016bee196194381197b0db37b",
+      "result_status": "success",
+      "budget": {
+        "max_items": 20,
+        "max_chars_per_item": 4000
+      },
+      "provider_count": 2,
+      "returned_count": 2,
+      "delivered_count": 2,
+      "truncation": {
+        "items": false,
+        "characters": false
+      },
+      "truncated": false,
+      "items": [
+        {
+          "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+          "display_name": "gate7-matrix-marker.txt",
+          "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+          "chunk_ref": null,
+          "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+          "score": 0.6135280136555188,
+          "position": {},
+          "evidence_id": "rr_695805779f40453692265fba_i1",
+          "citation_label": "gate7-matrix-marker.txt"
+        },
+        {
+          "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+          "display_name": "gate7-history-marker.txt",
+          "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+          "chunk_ref": null,
+          "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+          "score": 0.3195927613725733,
+          "position": {},
+          "evidence_id": "rr_695805779f40453692265fba_i2",
+          "citation_label": "gate7-history-marker.txt"
+        }
+      ],
+      "archive_status": "archived",
+      "cited_item_ids": [
+        "rr_695805779f40453692265fba_i1"
+      ]
+    }
+  ],
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "agent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Gateway Agent run",
+    "waited for terminal completion",
+    "read persisted run evidence receipts"
+  ]
+}

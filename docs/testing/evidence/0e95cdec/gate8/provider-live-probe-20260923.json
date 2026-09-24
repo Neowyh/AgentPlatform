@@ -1,0 +1,23 @@
+{
+  "artifact": "gate8-current-candidate-provider-live-probe",
+  "candidate_commit": "0e95cdec471df1cea5d2018d1123d950c3f401e1",
+  "recorded_at": "2026-09-23T14:59:40+08:00",
+  "scenario": "provider_live_probe",
+  "real_execution": true,
+  "status": "partial",
+  "result": "1 passed, 1 skipped",
+  "exit_status": 0,
+  "duration_seconds": 10.56,
+  "command": "Created a dedicated empty RAGFlow dataset (identifier retained only under /tmp); DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE8_DATASET_ID=<isolated dataset, redacted> UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend pytest backend/tests/test_knowledge_gate8_live.py -q -s",
+  "observed_steps": [
+    "Created a uniquely named empty provider dataset dedicated to candidate 0e95cdec.",
+    "Uploaded a unique synthetic marker document, parsed it, and waited until it was searchable.",
+    "Verified the marker query returned the document and a separate random zero-hit query did not.",
+    "Deleted the unique marker document in the test cleanup path."
+  ],
+  "limitations": [
+    "The strict ten-scenario Gate 8 artifact test was skipped because no complete current-candidate artifact was supplied.",
+    "The empty isolated provider dataset remains available for follow-up acceptance; its identifier is stored only in the temporary session directory for cleanup tracking.",
+    "This probe is not a Gate 8 pass and does not replace candidate preparation, evaluation, comparison, publish, snapshot, RBAC, recovery, or browser evidence."
+  ]
+}

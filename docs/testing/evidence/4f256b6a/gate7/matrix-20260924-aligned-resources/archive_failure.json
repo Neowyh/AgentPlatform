@@ -1,0 +1,79 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "archive_failure",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "installed a temporary SQLite trigger on the isolated run-evidence row to reject archived retrieval receipt writes",
+    "executed a real model-backed Agent retrieval",
+    "verified the failed receipt was not cited in the persisted assistant response",
+    "removed the trigger in a finally block"
+  ],
+  "run": {
+    "thread_id": "287afa25-5a6c-4e6c-8383-c1ee4878e815",
+    "run_id": "5a47a3cc-7f69-4164-9045-87eb5b1537b0",
+    "status": "success",
+    "receipts": [
+      {
+        "receipt_id": "rr_bd4b265f51563446eff1cf15",
+        "receipt_kind": "retrieval",
+        "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+        "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+        "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+        "revision_no": 2,
+        "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+        "configuration_source": "frozen_run_revision",
+        "tool_call_id": "call_uvKYi2W6xYYY4ZHTmz6asH4J",
+        "parent_tool_receipt_id": null,
+        "run_id": "5a47a3cc-7f69-4164-9045-87eb5b1537b0",
+        "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+        "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+        "child_task_id": null,
+        "child_agent_id": null,
+        "created_at": "2026-09-23T21:44:53.777504+00:00",
+        "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+        "result_status": "success",
+        "budget": {
+          "max_items": 20,
+          "max_chars_per_item": 4000
+        },
+        "provider_count": 2,
+        "returned_count": 2,
+        "delivered_count": 2,
+        "truncation": {
+          "items": false,
+          "characters": false
+        },
+        "truncated": false,
+        "items": [
+          {
+            "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+            "display_name": "gate7-history-marker.txt",
+            "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+            "chunk_ref": null,
+            "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+            "score": 0.9963835779999999,
+            "position": {},
+            "evidence_id": "rr_bd4b265f51563446eff1cf15_i1",
+            "citation_label": "gate7-history-marker.txt"
+          },
+          {
+            "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+            "display_name": "gate7-matrix-marker.txt",
+            "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+            "chunk_ref": null,
+            "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+            "score": 0.5530962776291577,
+            "position": {},
+            "evidence_id": "rr_bd4b265f51563446eff1cf15_i2",
+            "citation_label": "gate7-matrix-marker.txt"
+          }
+        ],
+        "archive_status": "failed"
+      }
+    ],
+    "assistant_text": "\nNo verifiable citation is available."
+  },
+  "recorded_at": "2026-09-23T21:44:57.394980+00:00",
+  "runner_duration_seconds": 20.56
+}

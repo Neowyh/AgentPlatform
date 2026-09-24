@@ -10,10 +10,8 @@
 
 export const SUPPORTED_RUN_STREAM_MODES = new Set([
   "values",
-  "messages",
   "messages-tuple",
   "updates",
-  "events",
   "debug",
   "tasks",
   "checkpoints",
@@ -88,17 +86,42 @@ export function sanitizeRunStreamOptions<T>(options: T): T {
 
 /** Keep chat streams incremental and avoid retransmitting full thread state. */
 export function forceChatRunStreamOptions<T>(options: T): T {
-  const sanitized = sanitizeRunStreamOptions(options);
+  const requested =
+    typeof options === "object" && options !== null
+      ? Reflect.get(options, "streamMode")
+      : undefined;
+  const requestedModes = Array.isArray(requested)
+    ? requested
+    : requested == null
+      ? []
+      : [requested];
+  // LangGraph's chat client adds these modes by default, but the Gateway's
+  // public run contract does not implement them. Chat always includes the
+  // equivalent supported messages-tuple stream below.
+  const gatewayOptions =
+    typeof options === "object" && options !== null
+      ? {
+          ...options,
+          ...(requested == null
+            ? {}
+            : {
+                streamMode: requestedModes.filter(
+                  (mode) => mode !== "messages" && mode !== "events",
+                ),
+              }),
+        }
+      : options;
+  const sanitized = sanitizeRunStreamOptions(gatewayOptions);
   if (typeof sanitized !== "object" || sanitized === null) return sanitized;
-  const requested = Reflect.get(sanitized, "streamMode");
+  const sanitizedRequested = Reflect.get(sanitized, "streamMode");
   const modes = new Set<string>([
     ...CHAT_RUN_STREAM_MODES,
-    ...((Array.isArray(requested)
-      ? requested
-      : requested == null
+    ...((Array.isArray(sanitizedRequested)
+      ? sanitizedRequested
+      : sanitizedRequested == null
         ? []
-        : [requested]) as string[]),
+        : [sanitizedRequested]) as string[]),
   ]);
   modes.delete("values");
-  return { ...sanitized, streamMode: [...modes] } as T;
+  return { ...sanitized, streamMode: [...modes], streamResumable: false } as T;
 }

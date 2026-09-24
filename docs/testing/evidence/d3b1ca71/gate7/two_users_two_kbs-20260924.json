@@ -1,0 +1,25 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "two_users_two_kbs",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a second real local user through the isolated admin API",
+    "created a private Knowledge Base owned by that user",
+    "checked both users against both private KB resource APIs"
+  ],
+  "observations": {
+    "observed_steps": [
+      "created a second real local user through the isolated admin API",
+      "created a private Knowledge Base owned by that user",
+      "checked both users against both private KB resource APIs"
+    ],
+    "http_statuses": {
+      "owner1_reads_kb1": 200,
+      "owner1_reads_kb2": 404,
+      "owner2_reads_kb1": 404,
+      "owner2_reads_kb2": 200
+    }
+  },
+  "recorded_at": "2026-09-23T16:33:42.084194+00:00"
+}

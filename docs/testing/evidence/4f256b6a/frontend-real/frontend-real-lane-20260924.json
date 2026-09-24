@@ -1,0 +1,17 @@
+{
+  "candidate_product_runtime_sha": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-24",
+  "status": "passed",
+  "command": "QA_ISOLATED=1 PORT=8130 E2E_RUN_ID=closeout-real-4f256b6a bash backend/scripts/start-real-e2e.sh; QA_ISOLATED=1 bash backend/scripts/seed-real-e2e.sh <manifest>; E2E_STATE_DIR=<manifest state_dir> E2E_RUN_ID=<manifest run_id> IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8130 bash scripts/run-test-lane.sh frontend-real",
+  "summary": {
+    "real_backend": {"passed": 6, "skipped": 5, "failed": 0},
+    "deterministic_replay": {"passed": 3, "skipped": 0, "failed": 0},
+    "parent_lane_seconds": 207,
+    "parent_lane_status": 0
+  },
+  "skipped_scenarios": "Five real-backend tests require optional configured real-model or Gate 7/8 browser artifacts. They are not counted as passes.",
+  "notes": [
+    "The isolated SQLite Gateway was seeded for this run and stopped during cleanup.",
+    "Replay fixes cover Gateway-supported stream modes, auth-disabled identity contract, and screenshot review behavior when ignored baselines are absent."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-24T06:35:30+00:00",
+  "status": "incomplete",
+  "command": "E2E_STATE_DIR=/tmp/agentplatform-gate8-4f256b6a/gateway-home E2E_RUN_ID=gate8-4f256b6a IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8013 pnpm exec playwright test -c playwright.real.config.ts",
+  "configuration": "Dedicated real-backend Playwright config; fresh isolated Gateway had been seeded before the run, but this was a replay on state already mutated by an earlier run.",
+  "summary": {
+    "passed": 4,
+    "skipped": 5,
+    "failed": 1,
+    "not_run": 1
+  },
+  "passed_scenarios": [
+    "memory persistence after helper correction",
+    "super-admin RBAC",
+    "normal-user RBAC boundary",
+    "workflow run snapshot"
+  ],
+  "failed_scenario": "visibility application approval: expected submission confirmation was not visible; the previously run suite had already mutated the isolated application state.",
+  "skipped_scenarios": "Gate 7/Gate 8 and real-model browser cases had no matching live artifact/model environment variables.",
+  "limitations": [
+    "This does not satisfy Gate 7 or Gate 8 browser acceptance.",
+    "The canonical frontend-real lane command was separately attempted but used the default config and tried localhost:3000 without a server; five login-dependent tests failed there.",
+    "The production candidate code commit is unchanged. Two real E2E test helpers were edited locally after observing a stale memory storage path and an ambiguous locator; those test edits are uncommitted."
+  ]
+}

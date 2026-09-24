@@ -70,9 +70,9 @@ def _artifact(tmp_path) -> dict[str, object]:
                     "published_revision_id": "revision",
                     "active_revision_id": "revision",
                     "gate_decision": "passed",
-                    "old_run_snapshot": "old",
-                    "new_run_snapshot": "new",
-                    "latest_pointer": "revision",
+                    "old_run_snapshot": {"knowledge_revision_id": "old", "run_status": "success"},
+                    "new_run_snapshot": {"knowledge_revision_id": "new", "run_status": "success"},
+                    "latest_pointer": {"before": "old", "after": "new"},
                     "users": ["owner", "viewer"],
                     "knowledge_bases": ["kb-a", "kb-b"],
                     "revoked_access": True,
@@ -95,6 +95,15 @@ def _artifact(tmp_path) -> dict[str, object]:
 
 def test_gate8_artifact_requires_real_evidence_for_every_scenario(tmp_path) -> None:
     validate_gate8_artifact(_artifact(tmp_path), current_commit="abc123")
+
+
+def test_gate8_artifact_rejects_failed_snapshot_runs(tmp_path) -> None:
+    artifact = _artifact(tmp_path)
+    observations = artifact["scenarios"]["run_snapshot_freeze"]["observations"]  # type: ignore[index]
+    observations["old_run_snapshot"]["run_status"] = "error"
+
+    with pytest.raises(AssertionError, match="old Run status"):
+        validate_gate8_artifact(artifact)
 
 
 def test_gate8_artifact_rejects_missing_scenario(tmp_path) -> None:

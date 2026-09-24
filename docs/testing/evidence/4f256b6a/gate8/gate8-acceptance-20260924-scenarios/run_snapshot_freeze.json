@@ -1,0 +1,36 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "run_snapshot_freeze",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:38.204573+00:00",
+  "observed_steps": [
+    "created a production Agent Run while the first revision was active",
+    "published a later prepared revision",
+    "created a second Agent Run and read both durable run snapshots"
+  ],
+  "observations": {
+    "old_run_snapshot": {
+      "run_id": "d6fc8b1d-5779-477a-b516-3d48e05e28f6",
+      "knowledge_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+      "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+      "run_status": "error",
+      "run_evidence_receipts": 0
+    },
+    "new_run_snapshot": {
+      "run_id": "60775665-657e-4f82-99e5-3dbd223148d7",
+      "knowledge_revision_id": "d9da975e-b11b-4f88-885d-57511de84e01",
+      "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+      "run_status": "error",
+      "run_evidence_receipts": 0
+    },
+    "latest_pointer": {
+      "before": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+      "after": "d9da975e-b11b-4f88-885d-57511de84e01"
+    }
+  },
+  "assertions": [
+    "old Run retains the earlier revision and manifest",
+    "new Run freezes the later revision and manifest",
+    "publishing the new revision does not mutate the old Run snapshot"
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "mixed_web",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "published a real Agent with knowledge and web tool groups",
+    "observed both tool calls in persisted thread history",
+    "verified archived KB receipt and web URL attribution in assistant response"
+  ],
+  "pinned_revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+  "run": {
+    "thread_id": "97a3c09e-6a13-4f46-9722-67b25b638940",
+    "run_id": "4fd9bf18-7109-4d96-943c-3ac390642aac",
+    "status": "success",
+    "tool_names": [
+      "knowledge_search",
+      "web_search"
+    ],
+    "retrieval_receipts": [
+      {
+        "receipt_id": "rr_1c95e1e2c3214e0e0da08382",
+        "receipt_kind": "retrieval",
+        "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+        "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+        "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+        "revision_no": 2,
+        "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+        "configuration_source": "frozen_run_revision",
+        "tool_call_id": "call_zcqY2wbygoUC4LJ1zyK4mlDX",
+        "parent_tool_receipt_id": null,
+        "run_id": "4fd9bf18-7109-4d96-943c-3ac390642aac",
+        "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+        "effective_agent_id": "3887ec8f-a0dc-4e4b-be85-123386a3d0b4",
+        "child_task_id": null,
+        "child_agent_id": null,
+        "created_at": "2026-09-23T16:57:26.538035+00:00",
+        "query_sha256": "3b6fda494b31cbb8f7a435f5d7d8fe46c3c324f8962e8273251ce1a47d64b581",
+        "result_status": "success",
+        "budget": {
+          "max_items": 20,
+          "max_chars_per_item": 4000
+        },
+        "provider_count": 2,
+        "returned_count": 2,
+        "delivered_count": 2,
+        "truncation": {
+          "items": false,
+          "characters": false
+        },
+        "truncated": false,
+        "items": [
+          {
+            "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+            "display_name": "gate7-history-marker.txt",
+            "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+            "chunk_ref": null,
+            "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+            "score": 0.47876975507487846,
+            "position": {},
+            "evidence_id": "rr_1c95e1e2c3214e0e0da08382_i1",
+            "citation_label": "gate7-history-marker.txt"
+          },
+          {
+            "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+            "display_name": "gate7-matrix-marker.txt",
+            "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+            "chunk_ref": null,
+            "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+            "score": 0.4060716551908215,
+            "position": {},
+            "evidence_id": "rr_1c95e1e2c3214e0e0da08382_i2",
+            "citation_label": "gate7-matrix-marker.txt"
+          }
+        ],
+        "archive_status": "archived",
+        "cited_item_ids": [
+          "rr_1c95e1e2c3214e0e0da08382_i1"
+        ]
+      }
+    ],
+    "assistant_text": "\nKB finding: The exact Gate 7 marker is `Gate 7 isolated matrix citation marker 8d7d6179.` [citation:gate7-history-marker.txt](evidence://rr_1c95e1e2c3214e0e0da08382_i1)\n\nWeb finding: The official Python documentation entry point is Python.org’s documentation page at `https://www.python.org/doc/`, which provides Python documentation, tutorials, and guides. [citation:Our Documentation | Python.org](https://www.python.org/doc/)\n\nSources:\n- [gate7-history-marker.txt](evidence://rr_1c95e1e2c3214e0e0da08382_i1) - KB source for the exact Gate 7 marker\n- [Our Documentation | Python.org](https://www.python.org/doc/) - Python official documentation page"
+  },
+  "recorded_at": "2026-09-23T16:57:35.574838+00:00",
+  "runner_duration_seconds": 27.669
+}

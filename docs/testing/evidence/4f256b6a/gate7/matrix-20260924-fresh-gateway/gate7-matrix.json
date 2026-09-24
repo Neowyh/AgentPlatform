@@ -1,0 +1,162 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T21:38:16.762393+00:00",
+  "status": "incomplete",
+  "rows": {
+    "agent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "agent.json",
+      "started_at": "2026-09-23T21:38:17.030319+00:00",
+      "finished_at": "2026-09-23T21:38:42.140637+00:00",
+      "duration_seconds": 25.11
+    },
+    "workflow_subagent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "workflow_subagent.json",
+      "started_at": "2026-09-23T21:38:42.140664+00:00",
+      "finished_at": "2026-09-23T21:39:02.304080+00:00",
+      "duration_seconds": 20.163
+    },
+    "two_users_two_kbs": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "two_users_two_kbs.json",
+      "started_at": "2026-09-23T21:31:45.857382+00:00",
+      "finished_at": "2026-09-23T21:31:46.976380+00:00",
+      "duration_seconds": 1.119
+    },
+    "revoked_access": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "revoked_access.json",
+      "started_at": "2026-09-23T21:31:46.976399+00:00",
+      "finished_at": "2026-09-23T21:31:47.807891+00:00",
+      "duration_seconds": 0.832
+    },
+    "revision_freeze_provider_outage": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "revision_freeze_provider_outage.json",
+      "started_at": "2026-09-23T21:31:47.807913+00:00",
+      "finished_at": "2026-09-23T21:32:10.352845+00:00",
+      "duration_seconds": 22.545
+    },
+    "empty_hit": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "empty_hit.json",
+      "started_at": "2026-09-23T21:32:10.352872+00:00",
+      "finished_at": "2026-09-23T21:32:35.923631+00:00",
+      "duration_seconds": 25.571
+    },
+    "truncated": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "truncated.json",
+      "started_at": "2026-09-23T21:32:35.923646+00:00",
+      "finished_at": "2026-09-23T21:32:57.117117+00:00",
+      "duration_seconds": 21.193
+    },
+    "retry": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "retry.json",
+      "started_at": "2026-09-23T21:32:57.117132+00:00",
+      "finished_at": "2026-09-23T21:33:39.844286+00:00",
+      "duration_seconds": 42.727
+    },
+    "duplicate": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "duplicate.json",
+      "started_at": "2026-09-23T21:33:39.844307+00:00",
+      "finished_at": "2026-09-23T21:34:20.457528+00:00",
+      "duration_seconds": 40.613
+    },
+    "archive_failure": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "archive_failure.json",
+      "started_at": "2026-09-23T21:34:20.457544+00:00",
+      "finished_at": "2026-09-23T21:34:41.107285+00:00",
+      "duration_seconds": 20.65
+    },
+    "forged_citation": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "forged_citation.json",
+      "started_at": "2026-09-23T21:34:41.107300+00:00",
+      "finished_at": "2026-09-23T21:35:01.599916+00:00",
+      "duration_seconds": 20.493
+    },
+    "history_without_receipt": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "history_without_receipt.json",
+      "started_at": "2026-09-23T21:35:01.599932+00:00",
+      "finished_at": "2026-09-23T21:35:27.116600+00:00",
+      "duration_seconds": 25.517
+    },
+    "mixed_web": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "mixed_web.json",
+      "started_at": "2026-09-23T21:35:27.116618+00:00",
+      "finished_at": "2026-09-23T21:35:57.744842+00:00",
+      "duration_seconds": 30.628
+    },
+    "streaming": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "streaming.json",
+      "started_at": "2026-09-23T21:35:57.744858+00:00",
+      "finished_at": "2026-09-23T21:36:18.411379+00:00",
+      "duration_seconds": 20.667
+    },
+    "loading_error_restricted": {
+      "result": "incomplete",
+      "error": "scenario command exited 1: rt.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at requireOrImport (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/transform/transform.js:216:12)\n    at loadUserConfig (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/common/configLoader.js:107:46)\n    at loadConfig (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/common/configLoader.js:119:22)\n    at loadConfigFromFile (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/common/configLoader.js:331:10)\n    at runTests (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/testActions.js:51:18)\n    at i.<anonymous> (/home/neowyh/code/AgentPlatform/frontend/node_modules/.pnpm/playwright@1.59.1/node_modules/playwright/lib/program.js:56:7)\n\n",
+      "started_at": "2026-09-23T21:39:02.309931+00:00",
+      "finished_at": "2026-09-23T21:39:03.363704+00:00",
+      "duration_seconds": 1.054
+    },
+    "keyboard": {
+      "result": "incomplete",
+      "error": "scenario command exited 1: Traceback (most recent call last):\n  File \"/home/neowyh/code/AgentPlatform/scripts/acceptance/run_gate7_browser_scenario.py\", line 120, in <module>\n    raise SystemExit(main())\n                     ~~~~^^\n  File \"/home/neowyh/code/AgentPlatform/scripts/acceptance/run_gate7_browser_scenario.py\", line 53, in main\n    snippet = _browser_citation_snippet(receipts)\n  File \"/home/neowyh/code/AgentPlatform/scripts/acceptance/run_gate7_browser_scenario.py\", line 32, in _browser_citation_snippet\n    raise ValueError(\"Agent evidence has no gate7-matrix-marker.txt receipt item\")\nValueError: Agent evidence has no gate7-matrix-marker.txt receipt item\n",
+      "started_at": "2026-09-23T21:39:03.363741+00:00",
+      "finished_at": "2026-09-23T21:39:03.396246+00:00",
+      "duration_seconds": 0.033
+    }
+  },
+  "resumed_at": "2026-09-23T21:38:16.762404+00:00"
+}

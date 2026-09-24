@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-24",
+  "status": "passed",
+  "scenario": "real RAGFlow provider hit and zero-hit probe",
+  "runtime": "isolated temporary SQLite runtime config; disposable RAGFlow dataset",
+  "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend python <isolated Gate 8 provider runner>; runner invoked pytest backend/tests/test_knowledge_gate8_live.py::test_gate8_real_provider_probe_is_searchable_and_distinguishes_zero_hit -q",
+  "pytest_summary": "1 passed in 5.87s",
+  "exit_code": 0,
+  "observed_steps": [
+    "loaded provider configuration into an isolated runtime config without recording credentials",
+    "created a uniquely named temporary RAGFlow dataset",
+    "uploaded and parsed a unique marker document and verified provider search returned it",
+    "issued an unrelated zero-hit query and verified it did not return the marker",
+    "deleted the marker document and temporary dataset"
+  ],
+  "cleanup": "temporary RAGFlow dataset deleted; runtime directory removed",
+  "limitations": [
+    "This is one provider subcase only; it does not establish the Gate 8 ten-scenario artifact, strict validation, formal publish, RBAC, failure recovery, or browser review."
+  ]
+}

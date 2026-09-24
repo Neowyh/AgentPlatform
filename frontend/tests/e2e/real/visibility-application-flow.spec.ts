@@ -78,15 +78,18 @@ test.describe.serial("real visibility applications", () => {
   ] as const) {
     test(`user ${action === "approved" ? "approves" : "rejects"} ${suffix}`, async ({
       page,
+      context,
     }) => {
       const agentName = seedAgentResourceId(suffix);
       const reason = runScopedName(`${action}-reason`);
       await loginAsRealUser(page, "user@test.com");
       await submitApplication(page, agentName, reason);
 
-      await page.context().clearCookies();
-      await loginAsRealUser(page, "super_admin@test.com");
-      await reviewApplication(page, reason, action);
+      await context.clearCookies();
+      const adminPage = await context.newPage();
+      await loginAsRealUser(adminPage, "super_admin@test.com");
+      await reviewApplication(adminPage, reason, action);
+      await adminPage.close();
       expectVisibilityState({ agentName, reason, status: action, visibility });
     });
   }

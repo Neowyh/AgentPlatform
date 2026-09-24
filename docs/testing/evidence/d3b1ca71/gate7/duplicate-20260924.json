@@ -1,0 +1,127 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "duplicate",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created and published a scenario-specific real Agent through the Gateway",
+    "waited for the real model/provider run to reach terminal state",
+    "read persisted Evidence API receipts and verified archive status, result, and item invariants"
+  ],
+  "probe_agent_id": "07201793-dd21-4f83-aad7-c15288b19776",
+  "runs": [
+    {
+      "thread_id": "3c669374-3255-45a8-89d5-54ea782ed0bc",
+      "run_id": "80ea2ec0-bd6a-4cc0-9a78-ca5d1319ccf9",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_92d25ecb09a84967e0ee79e5",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+          "revision_no": 1,
+          "manifest_hash": "7624e4d9810bb673f189d58c184065f8a6fc68d74d04e0fb49fa2f12c05f843d",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_jGg4YnP5S8ZFdxsalPt686r6",
+          "parent_tool_receipt_id": null,
+          "run_id": "80ea2ec0-bd6a-4cc0-9a78-ca5d1319ccf9",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "07201793-dd21-4f83-aad7-c15288b19776",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T16:34:55.973057+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "success",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 1,
+          "returned_count": 1,
+          "delivered_count": 1,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [
+            {
+              "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+              "display_name": "gate7-matrix-marker.txt",
+              "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+              "chunk_ref": null,
+              "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+              "score": 0.5530962776291577,
+              "position": {},
+              "evidence_id": "rr_92d25ecb09a84967e0ee79e5_i1",
+              "citation_label": "gate7-matrix-marker.txt"
+            }
+          ],
+          "archive_status": "archived",
+          "cited_item_ids": [
+            "rr_92d25ecb09a84967e0ee79e5_i1"
+          ]
+        }
+      ]
+    },
+    {
+      "thread_id": "181a2892-7c6b-4755-9557-9611df9f0610",
+      "run_id": "264f7fa6-5cdc-4417-8730-ea1f10deea60",
+      "status": "success",
+      "receipts": [
+        {
+          "receipt_id": "rr_ced5f2796660da12756412dd",
+          "receipt_kind": "retrieval",
+          "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+          "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+          "revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+          "revision_no": 1,
+          "manifest_hash": "7624e4d9810bb673f189d58c184065f8a6fc68d74d04e0fb49fa2f12c05f843d",
+          "configuration_source": "frozen_run_revision",
+          "tool_call_id": "call_mHP4NpEYaRq6MYoohR3h0iDz",
+          "parent_tool_receipt_id": null,
+          "run_id": "264f7fa6-5cdc-4417-8730-ea1f10deea60",
+          "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+          "effective_agent_id": "07201793-dd21-4f83-aad7-c15288b19776",
+          "child_task_id": null,
+          "child_agent_id": null,
+          "created_at": "2026-09-23T16:35:18.894381+00:00",
+          "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+          "result_status": "success",
+          "budget": {
+            "max_items": 20,
+            "max_chars_per_item": 4000
+          },
+          "provider_count": 1,
+          "returned_count": 1,
+          "delivered_count": 1,
+          "truncation": {
+            "items": false,
+            "characters": false
+          },
+          "truncated": false,
+          "items": [
+            {
+              "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+              "display_name": "gate7-matrix-marker.txt",
+              "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+              "chunk_ref": null,
+              "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+              "score": 0.5530962776291577,
+              "position": {},
+              "evidence_id": "rr_ced5f2796660da12756412dd_i1",
+              "citation_label": "gate7-matrix-marker.txt"
+            }
+          ],
+          "archive_status": "archived",
+          "cited_item_ids": [
+            "rr_ced5f2796660da12756412dd_i1"
+          ]
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T16:35:25.175338+00:00"
+}

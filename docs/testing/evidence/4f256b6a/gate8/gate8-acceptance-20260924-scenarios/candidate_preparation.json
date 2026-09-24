@@ -1,0 +1,21 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "candidate_preparation",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:02.106817+00:00",
+  "observed_steps": [
+    "created candidate revision from the isolated KnowledgeBase manifest",
+    "prepared a provider-backed index",
+    "read back the ready revision and frozen manifest"
+  ],
+  "observations": {
+    "revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+    "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+    "document_count": 2
+  },
+  "assertions": [
+    "candidate status is ready",
+    "revision manifest hash is present",
+    "manifest document count matches the isolated source set"
+  ]
+}

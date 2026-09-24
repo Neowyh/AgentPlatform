@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T16:22:05.491441+00:00",
+  "scenario": "agent",
+  "real_execution": true,
+  "result": "passed",
+  "provider": "ragflow",
+  "model": "codex-gpt-5-5 (GPT-5.5)",
+  "browser": "not-applicable",
+  "command": "POST http://127.0.0.1:8003/api/threads/4a9f28cd-2ca6-4b1d-9607-d0e63f882277/runs; GET http://127.0.0.1:8003/api/runs/33cab3e7-8e46-4e97-b0d5-3b4e70626dcb/messages; GET http://127.0.0.1:8003/api/runs/33cab3e7-8e46-4e97-b0d5-3b4e70626dcb/evidence",
+  "started_at": "2026-09-23T16:16:59.727617+00:00",
+  "finished_at": "2026-09-23T16:17:22.858444+00:00",
+  "duration_seconds": 23.131,
+  "environment": {
+    "gateway": "isolated current-candidate Gateway",
+    "sandbox": "AioSandboxProvider, all-in-one-sandbox:1.9.3",
+    "database": "fresh isolated SQLite",
+    "provider": "local RAGFlow",
+    "model": "configured Codex GPT-5.5 Responses API"
+  },
+  "run_id": "33cab3e7-8e46-4e97-b0d5-3b4e70626dcb",
+  "thread_id": "4a9f28cd-2ca6-4b1d-9607-d0e63f882277",
+  "knowledge_base": {
+    "id": "658b905a-e357-4b4f-8764-9dcb3fea9a0c",
+    "provider": "ragflow"
+  },
+  "revision": {
+    "id": "1ae17e2a-cd8e-46b8-b14a-a7776bc62609",
+    "number": 1,
+    "manifest_hash": "a1397ea77b55c206091f67698908e991458da332ac6cbf7298636ee0a315fa2b"
+  },
+  "document": {
+    "id": "40f16aba-de64-4785-ba6e-2e702ef567e3",
+    "display_name": "gate7-marker.txt",
+    "content_hash": "b0abee53d415058543194ffa2bc2fde79c4ec013b578ae91d4a8903bd3c66af8"
+  },
+  "tool_calls": [
+    {
+      "id": "call_WflDAgzdsmxqlKgm5whwhG3V",
+      "name": "knowledge_search"
+    }
+  ],
+  "chunk": {
+    "id": "rr_d0b8682a65a92a0fcfa97023_i1",
+    "document_id": "40f16aba-de64-4785-ba6e-2e702ef567e3",
+    "content": "\nG7D3B1CA71-SOURCE-MARKER-9F2A exact isolated test sentence."
+  },
+  "receipt": {
+    "receipt_id": "rr_d0b8682a65a92a0fcfa97023",
+    "receipt_kind": "retrieval",
+    "logical_knowledge_base": "658b905a-e357-4b4f-8764-9dcb3fea9a0c",
+    "knowledge_base_id": "658b905a-e357-4b4f-8764-9dcb3fea9a0c",
+    "revision_id": "1ae17e2a-cd8e-46b8-b14a-a7776bc62609",
+    "revision_no": 1,
+    "manifest_hash": "a1397ea77b55c206091f67698908e991458da332ac6cbf7298636ee0a315fa2b",
+    "configuration_source": "frozen_run_revision",
+    "tool_call_id": "call_WflDAgzdsmxqlKgm5whwhG3V",
+    "parent_tool_receipt_id": null,
+    "run_id": "33cab3e7-8e46-4e97-b0d5-3b4e70626dcb",
+    "caller_user_id": "f8595e45-6135-41d4-bf56-f97ef735f433",
+    "effective_agent_id": "bb9c11a4-09a6-40ff-9243-b6cc879cc0d9",
+    "child_task_id": null,
+    "child_agent_id": null,
+    "created_at": "2026-09-23T16:17:20.153461+00:00",
+    "query_sha256": "df9172f8fef7571a93d45ccb8078e8fb02bbee4a09d7bbe666ead2063f924d82",
+    "result_status": "success",
+    "budget": {
+      "max_items": 20,
+      "max_chars_per_item": 4000
+    },
+    "provider_count": 1,
+    "returned_count": 1,
+    "delivered_count": 1,
+    "truncation": {
+      "items": false,
+      "characters": false
+    },
+    "truncated": false,
+    "items": [
+      {
+        "document_id": "40f16aba-de64-4785-ba6e-2e702ef567e3",
+        "display_name": "gate7-marker.txt",
+        "content_hash": "b0abee53d415058543194ffa2bc2fde79c4ec013b578ae91d4a8903bd3c66af8",
+        "chunk_ref": null,
+        "content": "\nG7D3B1CA71-SOURCE-MARKER-9F2A exact isolated test sentence.",
+        "score": 0.5311081022811396,
+        "position": {},
+        "evidence_id": "rr_d0b8682a65a92a0fcfa97023_i1",
+        "citation_label": "gate7-marker.txt"
+      }
+    ],
+    "archive_status": "archived",
+    "cited_item_ids": [
+      "rr_d0b8682a65a92a0fcfa97023_i1"
+    ],
+    "chunk_id": "rr_d0b8682a65a92a0fcfa97023_i1"
+  },
+  "assistant_response": "“G7D3B1CA71-SOURCE-MARKER-9F2A exact isolated test sentence.” [citation:gate7-marker.txt](evidence://rr_d0b8682a65a92a0fcfa97023_i1)",
+  "observed_steps": [
+    "Started a fresh SQLite Gateway using candidate d3b1ca71 and pinned AIO sandbox image 1.9.3.",
+    "Created isolated acceptance users and a department through the Gateway admin API.",
+    "Created the KnowledgeBase and uploaded a synthetic marker through the Gateway API; waited until ingestion was ready.",
+    "Prepared and published revision 1 through the knowledge revision APIs after a real retrieval evaluation and policy qualification.",
+    "Created and published an Agent with the KB revision pinned and configured Codex GPT-5.5 provider.",
+    "Read the terminal Agent Run, ordered run messages, and persisted Run Evidence through the Gateway APIs."
+  ],
+  "assertions": [
+    "Run reached success on the current candidate and made one knowledge_search call.",
+    "Persisted retrieval receipt is archived and belongs to this Run and pinned revision.",
+    "Receipt tool_call_id matches the knowledge_search event ID.",
+    "One source item was returned and delivered; its document ID, evidence chunk ID, content hash, and synthetic marker were observed.",
+    "Assistant response contains the returned source sentence and evidence citation.",
+    "Source-chain projection maps the archived receipt’s single cited_item_ids value to the validator chunk_id field without altering the raw cited_item_ids."
+  ],
+  "prior_attempts": [
+    {
+      "run_id": "a3ebcdb8-0083-47de-8fc2-d5e19beede5f",
+      "result": "incomplete",
+      "reason": "LocalSandboxProvider denied the Agent before model invocation because per-Agent Skill isolation could not be enforced."
+    },
+    {
+      "run_id": "d741eb26-f0d9-404b-ba44-775ba4f3d8c3",
+      "result": "incomplete",
+      "reason": "Configured DeepSeek provider returned HTTP 402 Insufficient Balance before model invocation."
+    },
+    {
+      "run_id": "73944859-21ab-4648-9ca2-e98688284d73",
+      "result": "incomplete",
+      "reason": "Model completed without knowledge_search because the frozen revision dataset was absent from the temporary deployment allowlist; no receipt was counted."
+    },
+    {
+      "run_id": "9fafa4bd-2e7a-4a89-a78b-9b38d0dbcb50",
+      "result": "incomplete",
+      "reason": "Model completed without knowledge_search because the frozen revision dataset was absent from the temporary deployment allowlist; no receipt was counted."
+    }
+  ],
+  "receipt_projection": "chunk_id is the sole cited_item_ids entry from the archived retrieval receipt; original cited_item_ids is preserved."
+}

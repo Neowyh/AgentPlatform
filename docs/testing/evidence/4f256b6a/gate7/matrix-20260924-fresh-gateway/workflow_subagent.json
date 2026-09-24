@@ -1,0 +1,25 @@
+{
+  "workflow_id": "edb9eaad-e3a0-4fa4-ad4d-72cc38edac7e",
+  "run_id": "123a2cba-25f5-4b99-a7b2-7da2d4fb71aa",
+  "status": "completed",
+  "receipts": [],
+  "frozen_knowledge_revision": {
+    "revision_id": "1ae17e2a-cd8e-46b8-b14a-a7776bc62609",
+    "revision_no": 1,
+    "manifest_hash": "a1397ea77b55c206091f67698908e991458da332ac6cbf7298636ee0a315fa2b",
+    "retrieval_profile": {},
+    "embedding_profile": {}
+  },
+  "knowledge_tool_event_count": 1,
+  "node_result": "**Exact source sentence returned:**\n\n> **G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.**\n\n**Citations (chunks containing the exact queried string):**\n\n| # | Source dataset | Document |\n|---|---|---|\n| [1] | `ideer-kb-33430047-rev2-2ba88915` | `gate7-matrix-marker.txt` |\n| [3] | `ideer-kb-33430047-rev1-12195e57` | `gate7-matrix-marker.txt` |\n\nBoth chunks contain the verbatim sentence above. No further tool calls were made.\n\n[Receipt: r1 knowledge_search — one call, status=success, query=`G7D3B1CA71-BROWSER-CITATION-6F8C`, dataset=`658b905a-e357-4b4f-8764-9dcb3fea9a0c`, returned 7 chunks]",
+  "receipt_chain_persisted": false,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "workflow_subagent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Workflow resource",
+    "published an Agent action and ran it",
+    "verified terminal completion"
+  ]
+}

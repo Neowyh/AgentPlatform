@@ -1,0 +1,31 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "diagnosis_date": "2026-09-24",
+  "historical_observation": {
+    "gate8_snapshot_scenario_result": "passed",
+    "old_run_status": "error",
+    "new_run_status": "error",
+    "old_run_retrieval_receipts": 0,
+    "new_run_retrieval_receipts": 0,
+    "persisted_error_available": false,
+    "reason": "The isolated Gateway database and logs used for the original two runs were removed; the Run detail API does not expose the persisted error field."
+  },
+  "confirmed_acceptance_gap": {
+    "scenario_driver": "scripts/acceptance/run_gate8_scenario.py::_create_snapshot_run",
+    "driver_behavior": "The wait accepts success, error, timeout, and cancelled as terminal states, checks frozen revision metadata, and writes evidence without requiring success.",
+    "validator": "backend/tests/gate8_acceptance.py::validate_gate8_artifact",
+    "validator_behavior": "The run_snapshot_freeze row requires nonempty old/new snapshot and latest-pointer observations but does not validate either run_status.",
+    "check": "The official Gate 8 artifact validator returned PASS for the current artifact, while a direct assertion requiring both stored run_status values to equal success exited 1."
+  },
+  "isolated_probes": [
+    {"codex_model": true, "knowledge_tool": false, "live_kb_dependency": false, "ordinary_user": false, "run_status": "success", "persisted_error": null},
+    {"codex_model": true, "knowledge_tool": true, "live_kb_dependency": false, "ordinary_user": false, "run_status": "success", "persisted_error": null},
+    {"codex_model": true, "knowledge_tool": true, "live_kb_dependency": true, "ordinary_user": false, "run_status": "success", "persisted_error": null},
+    {"codex_model": true, "knowledge_tool": true, "live_kb_dependency": true, "ordinary_user": true, "run_status": "success", "persisted_error": null}
+  ],
+  "probe_limits": [
+    "The isolated probe used a synthetic empty published KB revision rather than the original provider-backed Gate 8 revision.",
+    "A current successful run does not identify the historical error cause or rule out an earlier provider failure or environment difference."
+  ],
+  "underlying_historical_run_error_root_cause": "unresolved_missing_original_error_record"
+}

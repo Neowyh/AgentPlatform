@@ -8,6 +8,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).parents[2] / "scripts"
 REAL_PLAYWRIGHT_CONFIG = Path(__file__).parents[3] / "frontend" / "playwright.real.config.ts"
+TEST_LANE_RUNNER = Path(__file__).parents[3] / "scripts" / "run-test-lane.sh"
 
 
 def _script(name: str) -> str:
@@ -88,3 +89,12 @@ def test_real_playwright_uses_an_isolated_production_build() -> None:
     assert "next dev" not in config
     assert "IDEER_NEXT_DIST_DIR: `.next-e2e-${runId}`" in config
     assert "timeout: 420_000" in config
+
+
+def test_frontend_real_lane_uses_dedicated_real_playwright_configs() -> None:
+    script = TEST_LANE_RUNNER.read_text()
+    frontend_real = script.split("  frontend-real)", 1)[1].split("  frontend-stagehand)", 1)[0]
+
+    assert "playwright.real.config.ts" in frontend_real
+    assert "playwright.real-backend.config.ts" in frontend_real
+    assert "PLAYWRIGHT_SKIP_WEB_SERVER=1" not in frontend_real

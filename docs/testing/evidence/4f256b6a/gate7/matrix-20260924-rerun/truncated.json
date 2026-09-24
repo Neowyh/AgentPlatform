@@ -1,0 +1,95 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "truncated",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "published a scenario-specific real Agent pinned to the current published revision",
+    "lowered isolated formatter limits",
+    "observed the real truncation marker in Gateway SSE",
+    "verified persisted archived retrieval receipts"
+  ],
+  "thread_id": "7f80eb01-06ab-4343-8665-e8e13bbd3c95",
+  "run_id": "014e57b7-dfaf-43f3-b298-6bf51deb37dd",
+  "probe_agent_id": "93b1958a-82aa-47f4-9a61-38ca9f797d35",
+  "stream_event_types": [
+    "metadata",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "end"
+  ],
+  "receipts": [
+    {
+      "receipt_id": "rr_1a6c350b1ac03d1db9cff09c",
+      "receipt_kind": "retrieval",
+      "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+      "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+      "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+      "revision_no": 2,
+      "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+      "configuration_source": "frozen_run_revision",
+      "tool_call_id": "call_jJG6AdSJdJxau2GOsKQzMSSf",
+      "parent_tool_receipt_id": null,
+      "run_id": "014e57b7-dfaf-43f3-b298-6bf51deb37dd",
+      "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+      "effective_agent_id": "93b1958a-82aa-47f4-9a61-38ca9f797d35",
+      "child_task_id": null,
+      "child_agent_id": null,
+      "created_at": "2026-09-23T21:23:51.327934+00:00",
+      "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+      "result_status": "success",
+      "budget": {
+        "max_items": 20,
+        "max_chars_per_item": 4000
+      },
+      "provider_count": 2,
+      "returned_count": 2,
+      "delivered_count": 2,
+      "truncation": {
+        "items": false,
+        "characters": false
+      },
+      "truncated": false,
+      "items": [
+        {
+          "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+          "display_name": "gate7-history-marker.txt",
+          "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+          "chunk_ref": null,
+          "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+          "score": 0.9963835779999999,
+          "position": {},
+          "evidence_id": "rr_1a6c350b1ac03d1db9cff09c_i1",
+          "citation_label": "gate7-history-marker.txt"
+        },
+        {
+          "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+          "display_name": "gate7-matrix-marker.txt",
+          "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+          "chunk_ref": null,
+          "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+          "score": 0.5530962776291577,
+          "position": {},
+          "evidence_id": "rr_1a6c350b1ac03d1db9cff09c_i2",
+          "citation_label": "gate7-matrix-marker.txt"
+        }
+      ],
+      "archive_status": "archived",
+      "cited_item_ids": [
+        "rr_1a6c350b1ac03d1db9cff09c_i1",
+        "rr_1a6c350b1ac03d1db9cff09c_i2"
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T21:23:55.292643+00:00",
+  "runner_duration_seconds": 10.689
+}

@@ -1,0 +1,17 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "forged_citation",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created and published a real Agent that was instructed not to call tools",
+    "completed a real model run containing a fabricated evidence identifier",
+    "checked persisted run messages and confirmed no Evidence API receipt resolves that identifier"
+  ],
+  "thread_id": "48c481eb-4077-475a-987f-fe8a5c13aa82",
+  "run_id": "dd0fd005-ffe8-4605-89f2-479642c4b5d2",
+  "forged_evidence_id": "rr_gate7forged6d54adb219a8_i1",
+  "receipt_count": 0,
+  "recorded_at": "2026-09-23T21:45:17.893490+00:00",
+  "runner_duration_seconds": 20.486
+}

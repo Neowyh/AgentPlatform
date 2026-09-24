@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23",
+  "scenario": "real provider marker retrieval and archived evidence delivery",
+  "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache DEER_FLOW_CONFIG_PATH=/home/neowyh/code/AgentPlatform/config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=<configured isolated Gate 7 dataset> uv run --project backend pytest backend/tests/test_knowledge_gate7_live.py::test_gate7_real_provider_content_matches_archived_delivery -q",
+  "status": "passed",
+  "exit_code": 0,
+  "duration_seconds": 19.68,
+  "summary": "1 passed",
+  "assertions": [
+    "uploaded a unique marker document to the isolated Gate 7 provider dataset",
+    "waited until the document was parsed and marker-searchable",
+    "retrieved the marker through KnowledgeRuntimeAdapter with a frozen revision binding",
+    "verified the frozen-scope retrieval receipt object and delivered chunk content matched",
+    "deleted the uploaded marker document in a finally block"
+  ],
+  "log": "/tmp/agentplatform-closeout/gate7-provider-d3b1ca71.log"
+}

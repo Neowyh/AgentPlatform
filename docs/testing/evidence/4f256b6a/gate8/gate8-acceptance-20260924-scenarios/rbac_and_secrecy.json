@@ -1,0 +1,38 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "rbac_and_secrecy",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:39.210015+00:00",
+  "observed_steps": [
+    "authenticated as the owner and a separately seeded reviewer",
+    "verified private-resource denial for both isolated KnowledgeBases",
+    "made one temporary public grant on isolated KB A",
+    "verified reviewer access and immediately restored KB A to private",
+    "verified access was denied again and checked the owner resource payload for provider and credential fields"
+  ],
+  "observations": {
+    "users": [
+      "owner",
+      "independent reviewer"
+    ],
+    "knowledge_bases": [
+      "private KB A",
+      "private KB B"
+    ],
+    "revoked_access": {
+      "status": "public grant revoked",
+      "private_read_status": 404,
+      "second_private_read_status": 404,
+      "temporary_public_read_status": 200,
+      "post_revoke_read_status": 404
+    },
+    "redaction_check": "provider identity and credential fields absent from owner resource payload"
+  },
+  "assertions": [
+    "two distinct users and two isolated KBs were used",
+    "both private resources denied the reviewer",
+    "temporary public access succeeded and was revoked immediately",
+    "reviewer access was denied after revocation",
+    "resource API payload contained no provider identity or credential fields"
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T19:01:04.409738+00:00",
+  "scenario": "production Gateway Agent Run to Local Runtime MCP and persisted Run Evidence",
+  "real_execution": true,
+  "status": "incomplete",
+  "observed_steps": [
+    "reused the isolated, seeded candidate Gateway after confirming its live health endpoint",
+    "paired signed device websocket and observed local.mcp.fs.read_file capability",
+    "queried the Gateway terminal run and retrieved its persisted Run Evidence endpoint"
+  ],
+  "assertions": [
+    "Agent Run terminated as success",
+    "Run Evidence returned 3 persisted retrieval receipt records",
+    "all 3 retrieval receipts have result_status=access_restricted",
+    "thread history records model tool calls to knowledge_search and local.mcp.fs.read_file",
+    "thread history records tool failures; no successful MCP execution receipt was verified"
+  ],
+  "limitations": [
+    "knowledge_search failed with KNOWLEDGE_ACCESS_DENIED for all three model-selected base selectors",
+    "local.mcp.fs.read_file failed with RuntimeError for all three model-selected paths",
+    "no MCP receipt was verified; prior capability-name string match was a false positive and has been removed",
+    "expected knowledge and local fixture markers were not returned; mixed-run acceptance remains incomplete"
+  ],
+  "thread_id": "fb709886-d8a8-4303-846f-6cd684ee402d",
+  "run_id": "d99e9520-0c45-416b-b502-d2397f89478d",
+  "run_status": "success",
+  "run_state_keys": [
+    "assistant_id",
+    "created_at",
+    "first_user_message",
+    "kwargs",
+    "last_assistant_message",
+    "lead_agent_tokens",
+    "llm_call_count",
+    "message_count",
+    "metadata",
+    "middleware_tokens",
+    "multitask_strategy",
+    "run_id",
+    "status",
+    "subagent_tokens",
+    "thread_id",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "updated_at"
+  ],
+  "run_evidence_keys": [
+    "has_more",
+    "receipts",
+    "run_id",
+    "thread_id"
+  ],
+  "receipt_count": 3,
+  "receipt_summaries": [
+    {
+      "receipt_id": "rr_ad322fda2f0e5e9f97fd4fb9",
+      "receipt_kind": "retrieval",
+      "result_status": "access_restricted"
+    },
+    {
+      "receipt_id": "rr_5be7fb5ec0ef984f73c5cdfe",
+      "receipt_kind": "retrieval",
+      "result_status": "access_restricted"
+    },
+    {
+      "receipt_id": "rr_46819c5309d5b81b915e901d",
+      "receipt_kind": "retrieval",
+      "result_status": "access_restricted"
+    }
+  ],
+  "mcp_marker_in_state_or_evidence": false,
+  "knowledge_marker_in_state_or_evidence": false,
+  "mcp_receipt_persisted": false,
+  "knowledge_receipt_persisted": false,
+  "tool_call_observed": {
+    "knowledge_search": true,
+    "local_mcp_fs_read_file": true,
+    "successful_result_verified": false
+  },
+  "evidence_source": "Gateway GET /api/threads/{thread_id}/runs/{run_id}/messages and GET /api/runs/{run_id}/evidence; sanitized tool failure summaries retained"
+}

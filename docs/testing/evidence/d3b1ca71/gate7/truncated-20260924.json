@@ -1,0 +1,82 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "truncated",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "published a scenario-specific real Agent pinned to the current published revision",
+    "lowered isolated formatter limits",
+    "observed the real truncation marker in Gateway SSE",
+    "verified persisted archived retrieval receipts"
+  ],
+  "thread_id": "23566bc7-4326-4ea9-b8bc-826b3f822fde",
+  "run_id": "26725994-1724-4cf9-963e-4ece042d0e8f",
+  "probe_agent_id": "204fde6b-c807-48c1-bc79-13ab8dacd6aa",
+  "stream_event_types": [
+    "metadata",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "values",
+    "end"
+  ],
+  "receipts": [
+    {
+      "receipt_id": "rr_85c315a7b6d53931d2c525a0",
+      "receipt_kind": "retrieval",
+      "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+      "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+      "revision_id": "12195e57-46fd-4969-afdc-0bf38f4ada20",
+      "revision_no": 1,
+      "manifest_hash": "7624e4d9810bb673f189d58c184065f8a6fc68d74d04e0fb49fa2f12c05f843d",
+      "configuration_source": "frozen_run_revision",
+      "tool_call_id": "call_XEk2er9MypanObnYYuT5zjm0",
+      "parent_tool_receipt_id": null,
+      "run_id": "26725994-1724-4cf9-963e-4ece042d0e8f",
+      "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+      "effective_agent_id": "204fde6b-c807-48c1-bc79-13ab8dacd6aa",
+      "child_task_id": null,
+      "child_agent_id": null,
+      "created_at": "2026-09-23T16:41:43.795629+00:00",
+      "query_sha256": "645f427ccabd7ec44e9471a91fb50e314ac10c5c70eb08cdea1759ffdc49bfa7",
+      "result_status": "success",
+      "budget": {
+        "max_items": 20,
+        "max_chars_per_item": 4000
+      },
+      "provider_count": 1,
+      "returned_count": 1,
+      "delivered_count": 1,
+      "truncation": {
+        "items": false,
+        "characters": false
+      },
+      "truncated": false,
+      "items": [
+        {
+          "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+          "display_name": "gate7-matrix-marker.txt",
+          "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+          "chunk_ref": null,
+          "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+          "score": 0.5530962776291577,
+          "position": {},
+          "evidence_id": "rr_85c315a7b6d53931d2c525a0_i1",
+          "citation_label": "gate7-matrix-marker.txt"
+        }
+      ],
+      "archive_status": "archived",
+      "cited_item_ids": [
+        "rr_85c315a7b6d53931d2c525a0_i1"
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-23T16:41:50.164975+00:00"
+}

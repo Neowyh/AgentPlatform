@@ -31,7 +31,7 @@ def _minimal_artifact(tmp_path: Path) -> Path:
         "profile_ab_comparison": {"profile_a": "frozen", "profile_b": "configured", "metrics": {}},
         "matching_candidate_evaluation": {"candidate_revision_id": "rev", "run_id": "run", "qualification": "passed"},
         "formal_publish": {"published_revision_id": "rev", "active_revision_id": "rev", "gate_decision": "passed"},
-        "run_snapshot_freeze": {"old_run_snapshot": "old", "new_run_snapshot": "new", "latest_pointer": "rev"},
+        "run_snapshot_freeze": {"old_run_snapshot": {"run_status": "success"}, "new_run_snapshot": {"run_status": "success"}, "latest_pointer": "rev"},
         "rbac_and_secrecy": {"users": ["owner", "viewer"], "knowledge_bases": ["kb"], "revoked_access": True, "redaction_check": True},
         "failure_recovery": {"zero_hit": True, "provider_down": "error", "timeout_partial": "partial", "retry_restart_history": True},
         "browser_review": {"evidence": True, "comparison": True, "gate_feedback": True, "ui_states": ["loading"], "keyboard_focus": True},

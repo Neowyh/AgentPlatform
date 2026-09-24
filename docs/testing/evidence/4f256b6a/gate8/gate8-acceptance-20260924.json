@@ -1,0 +1,386 @@
+{
+  "candidate": {
+    "commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+    "branch": "develop",
+    "recorded_at": "2026-09-24T03:23:57.570517+00:00"
+  },
+  "prerequisites": {
+    "gate7_artifact": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate7/matrix-20260924-aligned-resources/gate7-matrix.json"
+  },
+  "environment": {
+    "provider": "ragflow",
+    "real": true,
+    "assets": [
+      "isolated Gate 8 provider and browser fixtures"
+    ]
+  },
+  "scenarios": {
+    "candidate_preparation": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/candidate_preparation.json",
+      "started_at": "2026-09-24T03:23:57.570626+00:00",
+      "finished_at": "2026-09-24T03:24:02.145222+00:00",
+      "duration_seconds": 4.575,
+      "assertions": [
+        "candidate status is ready",
+        "revision manifest hash is present",
+        "manifest document count matches the isolated source set"
+      ],
+      "observations": {
+        "revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+        "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+        "document_count": 2
+      }
+    },
+    "trial_retrieval": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/trial_retrieval.json",
+      "started_at": "2026-09-24T03:24:02.145600+00:00",
+      "finished_at": "2026-09-24T03:24:02.828036+00:00",
+      "duration_seconds": 0.683,
+      "assertions": [
+        "canonical marker was returned by the real provider",
+        "canonical marker was absent from the unrelated query",
+        "both retrieval attempts were archived against the same ready revision"
+      ],
+      "observations": {
+        "profile_parameters": {
+          "page_size": 5,
+          "similarity_threshold": 0.45,
+          "vector_similarity_weight": 0.3,
+          "top_k": 256,
+          "timeout": 30.0
+        },
+        "revision_trace": {
+          "revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+          "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504"
+        },
+        "zero_hit": {
+          "query_marker_absent": true,
+          "returned_count": 0,
+          "result_status": "empty_hit"
+        }
+      }
+    },
+    "eval_case_management": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/eval_case_management.json",
+      "started_at": "2026-09-24T03:24:02.828406+00:00",
+      "finished_at": "2026-09-24T03:24:05.322359+00:00",
+      "duration_seconds": 2.494,
+      "assertions": [
+        "case version increased after update",
+        "expected document identity is retained",
+        "ranked document IDs are de-duplicated before metric calculation"
+      ],
+      "observations": {
+        "case_versions": {
+          "before": 3,
+          "after": 3
+        },
+        "expected_document_ids": [
+          "481a3514-6667-40f9-a3cc-76fa0a543118"
+        ],
+        "deduplicated": {
+          "ranked_document_ids": [
+            "481a3514-6667-40f9-a3cc-76fa0a543118"
+          ],
+          "unique_count": 1
+        }
+      }
+    },
+    "profile_ab_comparison": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/profile_ab_comparison.json",
+      "started_at": "2026-09-24T03:24:05.322756+00:00",
+      "finished_at": "2026-09-24T03:24:09.802212+00:00",
+      "duration_seconds": 4.48,
+      "assertions": [
+        "comparison is eligible",
+        "both profiles completed against identical cases",
+        "metric deltas are present and recomputable from stored branch metrics"
+      ],
+      "observations": {
+        "profile_a": "frozen",
+        "profile_b": "configured",
+        "metrics": {
+          "eligible": true,
+          "reason": null,
+          "delta": {
+            "expected_hit_rate": 0.0,
+            "recall_at_k": 0.0,
+            "mrr_at_k": 0.0
+          },
+          "cases": [
+            {
+              "case_id": "19fee834-8633-496d-abf1-125065209362",
+              "outcome": "unchanged",
+              "left": {
+                "id": "2e105926-15cc-4f31-bac7-eda00f05dc9c",
+                "run_id": "943e2f61-8fec-4233-ad17-d72eeaaec08f",
+                "case_id": "19fee834-8633-496d-abf1-125065209362",
+                "case_version_no": 3,
+                "case_content_hash": "28e0e9eb2a9b8563158bb1ae7035a6a125a12d56b41b02182c12b0c432044ce9",
+                "query": "G8MARKERc774bd117d014a62ab1c2c9d547e2685",
+                "expected_document_ids": [
+                  "481a3514-6667-40f9-a3cc-76fa0a543118"
+                ],
+                "status": "success",
+                "error_code": null,
+                "ranked_items": [
+                  {
+                    "document_id": "481a3514-6667-40f9-a3cc-76fa0a543118",
+                    "display_name": "g8.txt",
+                    "content_hash": "64e343068b6bc873d9ba812b6576d1797d48014bf9b9fd1ee90d694016af22c1",
+                    "chunk_ref": null,
+                    "content": "\nGate 8 acceptance canonical retrieval marker G8MARKERc774bd117d014a62ab1c2c9d547e2685.",
+                    "score": 0.6766680404285714,
+                    "position": {},
+                    "chunk_rank": 1,
+                    "rank": 1
+                  }
+                ],
+                "expected_hit": true,
+                "recall_at_k": 1.0,
+                "mrr_at_k": 1.0,
+                "created_at": "2026-09-24T03:24:07.289348"
+              },
+              "right": {
+                "id": "73a233f2-1c88-44f8-88c2-7006b7425abb",
+                "run_id": "022f166d-3f03-44f8-956e-5c9f90947fa3",
+                "case_id": "19fee834-8633-496d-abf1-125065209362",
+                "case_version_no": 3,
+                "case_content_hash": "28e0e9eb2a9b8563158bb1ae7035a6a125a12d56b41b02182c12b0c432044ce9",
+                "query": "G8MARKERc774bd117d014a62ab1c2c9d547e2685",
+                "expected_document_ids": [
+                  "481a3514-6667-40f9-a3cc-76fa0a543118"
+                ],
+                "status": "success",
+                "error_code": null,
+                "ranked_items": [
+                  {
+                    "document_id": "481a3514-6667-40f9-a3cc-76fa0a543118",
+                    "display_name": "g8.txt",
+                    "content_hash": "64e343068b6bc873d9ba812b6576d1797d48014bf9b9fd1ee90d694016af22c1",
+                    "chunk_ref": null,
+                    "content": "\nGate 8 acceptance canonical retrieval marker G8MARKERc774bd117d014a62ab1c2c9d547e2685.",
+                    "score": 0.6766680404285714,
+                    "position": {},
+                    "chunk_rank": 1,
+                    "rank": 1
+                  }
+                ],
+                "expected_hit": true,
+                "recall_at_k": 1.0,
+                "mrr_at_k": 1.0,
+                "created_at": "2026-09-24T03:24:09.362481"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "matching_candidate_evaluation": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/matching_candidate_evaluation.json",
+      "started_at": "2026-09-24T03:24:09.802652+00:00",
+      "finished_at": "2026-09-24T03:24:12.682350+00:00",
+      "duration_seconds": 2.461,
+      "assertions": [
+        "evaluation matches current revision, manifest, profile, case set, and policy version",
+        "qualification passed all configured thresholds"
+      ],
+      "observations": {
+        "candidate_revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+        "run_id": "405fb30d-209d-4cc0-b953-99d12126cc0d",
+        "qualification": {
+          "status": "passed",
+          "aggregate": {
+            "denominator": 1,
+            "expected_hit_rate": 1.0,
+            "recall_at_k": 1.0,
+            "mrr_at_k": 1.0,
+            "top_k": 5,
+            "metrics_version": "retrieval-metrics-v1"
+          },
+          "policy_version": 3
+        }
+      }
+    },
+    "formal_publish": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/formal_publish.json",
+      "started_at": "2026-09-24T03:24:12.683350+00:00",
+      "finished_at": "2026-09-24T03:24:23.309152+00:00",
+      "duration_seconds": 10.626,
+      "assertions": [
+        "pre-evaluation publication was denied with HTTP 409",
+        "the exact evaluated revision was published after qualification",
+        "the active revision pointer references the published candidate"
+      ],
+      "observations": {
+        "published_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+        "active_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+        "gate_decision": {
+          "before_evidence_http_status": 409,
+          "after_evidence_status": "published",
+          "qualification": "passed"
+        }
+      }
+    },
+    "run_snapshot_freeze": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/run_snapshot_freeze.json",
+      "started_at": "2026-09-24T03:24:23.309859+00:00",
+      "finished_at": "2026-09-24T03:24:38.239947+00:00",
+      "duration_seconds": 14.93,
+      "assertions": [
+        "old Run retains the earlier revision and manifest",
+        "new Run freezes the later revision and manifest",
+        "publishing the new revision does not mutate the old Run snapshot"
+      ],
+      "observations": {
+        "old_run_snapshot": {
+          "run_id": "d6fc8b1d-5779-477a-b516-3d48e05e28f6",
+          "knowledge_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+          "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+          "run_status": "error",
+          "run_evidence_receipts": 0
+        },
+        "new_run_snapshot": {
+          "run_id": "60775665-657e-4f82-99e5-3dbd223148d7",
+          "knowledge_revision_id": "d9da975e-b11b-4f88-885d-57511de84e01",
+          "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504",
+          "run_status": "error",
+          "run_evidence_receipts": 0
+        },
+        "latest_pointer": {
+          "before": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+          "after": "d9da975e-b11b-4f88-885d-57511de84e01"
+        }
+      }
+    },
+    "rbac_and_secrecy": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/rbac_and_secrecy.json",
+      "started_at": "2026-09-24T03:24:38.240449+00:00",
+      "finished_at": "2026-09-24T03:24:39.243886+00:00",
+      "duration_seconds": 1.004,
+      "assertions": [
+        "two distinct users and two isolated KBs were used",
+        "both private resources denied the reviewer",
+        "temporary public access succeeded and was revoked immediately",
+        "reviewer access was denied after revocation",
+        "resource API payload contained no provider identity or credential fields"
+      ],
+      "observations": {
+        "users": [
+          "owner",
+          "independent reviewer"
+        ],
+        "knowledge_bases": [
+          "private KB A",
+          "private KB B"
+        ],
+        "revoked_access": {
+          "status": "public grant revoked",
+          "private_read_status": 404,
+          "second_private_read_status": 404,
+          "temporary_public_read_status": 200,
+          "post_revoke_read_status": 404
+        },
+        "redaction_check": "provider identity and credential fields absent from owner resource payload"
+      }
+    },
+    "failure_recovery": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/failure_recovery.json",
+      "started_at": "2026-09-24T03:24:39.244609+00:00",
+      "finished_at": "2026-09-24T03:25:07.722628+00:00",
+      "duration_seconds": 27.337,
+      "assertions": [
+        "provider-down ingestion was recorded as unavailable",
+        "timeout was surfaced as HTTP 503 with zero returned items",
+        "the same failed document recovered to ready after restart and retry",
+        "revision history remained readable after recovery"
+      ],
+      "observations": {
+        "zero_hit": {
+          "query_marker_absent": true
+        },
+        "provider_down": {
+          "status": "failed",
+          "failure_code": "unavailable",
+          "ingestion_attempt": 1
+        },
+        "timeout_partial": {
+          "observed": true,
+          "http_status": 201,
+          "error_code": "timeout",
+          "duration_seconds": 0.062,
+          "returned_count": 0,
+          "partial": false
+        },
+        "retry_restart_history": {
+          "document_status": "ready",
+          "ingestion_attempt": 2,
+          "revision_history_count": 8
+        }
+      }
+    },
+    "browser_review": {
+      "result": "passed",
+      "status": "executed",
+      "exit_status": 0,
+      "command": "uv run --project backend python scripts/acceptance/run_gate8_scenario.py",
+      "evidence": "/home/neowyh/code/AgentPlatform/docs/testing/evidence/4f256b6a/gate8/gate8-acceptance-20260924-scenarios/browser_review.json",
+      "started_at": "2026-09-24T03:25:07.723110+00:00",
+      "finished_at": "2026-09-24T03:26:27.995738+00:00",
+      "duration_seconds": 76.255,
+      "assertions": [
+        "Gate 8 browser test passed",
+        "real evidence and comparison markers were visible",
+        "keyboard focus remained visible on an interactive control"
+      ],
+      "observations": {
+        "evidence": "d1fb2343-3808-431c-a880-5cefbce643a1",
+        "comparison": "74751d93-fd60-4a9c-a77e-89be8ad7ee0b",
+        "gate_feedback": "publish evaluation gate rendered",
+        "ui_states": [
+          "retrieval evidence",
+          "comparison",
+          "publish gate"
+        ],
+        "keyboard_focus": "evaluation tab reached by keyboard and first control focused"
+      }
+    }
+  },
+  "verdict": "passed"
+}

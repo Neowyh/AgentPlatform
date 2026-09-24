@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T21:56:47.490655+00:00",
+  "scenario": "source_chain",
+  "real_execution": true,
+  "result": "passed",
+  "provider": "ragflow",
+  "model": "agnes-3.0-flash",
+  "browser": "not-applicable",
+  "command": "POST http://127.0.0.1:8013/api/threads/{thread_id}/runs; GET http://127.0.0.1:8013/api/runs/2485f035-9caa-40e2-845f-25bc642952e0/messages; GET /api/runs/2485f035-9caa-40e2-845f-25bc642952e0/evidence",
+  "started_at": "2026-09-23T21:41:33.708538+00:00",
+  "finished_at": "2026-09-23T21:56:47.490674+00:00",
+  "duration_seconds": 0,
+  "environment": {
+    "gateway": "http://127.0.0.1:8013",
+    "database": "isolated SQLite",
+    "provider": "RAGFlow",
+    "model": "agnes-3.0-flash"
+  },
+  "run_id": "2485f035-9caa-40e2-845f-25bc642952e0",
+  "thread_id": "19335cf3-9b53-42b5-a350-5563a56f3348",
+  "knowledge_base": {
+    "id": "33430047-0300-4728-bac8-651543d28886",
+    "provider": "ragflow"
+  },
+  "revision": {
+    "id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+    "number": 2,
+    "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f"
+  },
+  "document": {
+    "id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+    "display_name": "gate7-matrix-marker.txt",
+    "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2"
+  },
+  "tool_calls": [
+    {
+      "id": "call_IZ543AliXaNe7Vy5mRmeWc5U",
+      "name": "knowledge_search"
+    }
+  ],
+  "chunk": {
+    "id": "rr_5ae4b80eb88a9207ccb4a444_i1",
+    "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+    "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence."
+  },
+  "receipt": {
+    "receipt_id": "rr_5ae4b80eb88a9207ccb4a444",
+    "receipt_kind": "retrieval",
+    "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+    "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+    "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+    "revision_no": 2,
+    "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+    "configuration_source": "frozen_run_revision",
+    "tool_call_id": "call_IZ543AliXaNe7Vy5mRmeWc5U",
+    "parent_tool_receipt_id": null,
+    "run_id": "2485f035-9caa-40e2-845f-25bc642952e0",
+    "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+    "effective_agent_id": "89236ec9-a695-4aba-92a7-3d21b48f8cee",
+    "child_task_id": null,
+    "child_agent_id": null,
+    "created_at": "2026-09-23T21:41:33.708538+00:00",
+    "query_sha256": "ed60bcc7c4b47b1256299fb3aa3a4784043c86d016bee196194381197b0db37b",
+    "result_status": "success",
+    "budget": {
+      "max_items": 20,
+      "max_chars_per_item": 4000
+    },
+    "provider_count": 2,
+    "returned_count": 2,
+    "delivered_count": 2,
+    "truncation": {
+      "items": false,
+      "characters": false
+    },
+    "truncated": false,
+    "items": [
+      {
+        "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+        "display_name": "gate7-matrix-marker.txt",
+        "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+        "chunk_ref": null,
+        "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+        "score": 0.6135280136555188,
+        "position": {},
+        "evidence_id": "rr_5ae4b80eb88a9207ccb4a444_i1",
+        "citation_label": "gate7-matrix-marker.txt"
+      },
+      {
+        "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+        "display_name": "gate7-history-marker.txt",
+        "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+        "chunk_ref": null,
+        "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+        "score": 0.3195927613725733,
+        "position": {},
+        "evidence_id": "rr_5ae4b80eb88a9207ccb4a444_i2",
+        "citation_label": "gate7-history-marker.txt"
+      }
+    ],
+    "archive_status": "archived",
+    "cited_item_ids": [
+      "rr_5ae4b80eb88a9207ccb4a444_i1"
+    ],
+    "chunk_id": "rr_5ae4b80eb88a9207ccb4a444_i1"
+  },
+  "assistant_response": "“G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.” [citation:gate7-matrix-marker.txt](evidence://rr_5ae4b80eb88a9207ccb4a444_i1)",
+  "observed_steps": [
+    "executed the frozen-candidate Agent run through the isolated Gateway",
+    "confirmed the model issued knowledge_search",
+    "confirmed the same tool call has an archived retrieval receipt",
+    "matched the delivered chunk to the archived document and revision"
+  ],
+  "assertions": [
+    "the run, knowledge_search call, and archived receipt share the same run and tool-call identifiers",
+    "the receipt chunk matches the retrieved document and revision"
+  ]
+}

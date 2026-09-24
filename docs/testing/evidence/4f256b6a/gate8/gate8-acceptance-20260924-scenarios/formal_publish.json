@@ -1,0 +1,26 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "formal_publish",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:23.275270+00:00",
+  "observed_steps": [
+    "prepared an isolated candidate revision",
+    "confirmed the publish endpoint rejected it before matching evaluation evidence",
+    "ran and qualified the exact candidate under the active policy",
+    "published the same revision and read back its active pointer"
+  ],
+  "observations": {
+    "published_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+    "active_revision_id": "146bcde0-5c0b-4d21-acf4-fe73d843c361",
+    "gate_decision": {
+      "before_evidence_http_status": 409,
+      "after_evidence_status": "published",
+      "qualification": "passed"
+    }
+  },
+  "assertions": [
+    "pre-evaluation publication was denied with HTTP 409",
+    "the exact evaluated revision was published after qualification",
+    "the active revision pointer references the published candidate"
+  ]
+}

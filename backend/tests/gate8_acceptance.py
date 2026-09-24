@@ -91,6 +91,10 @@ def validate_gate8_artifact(
         observations = _required_mapping(entry, "observations")
         for observation in _SCENARIO_OBSERVATIONS[name]:
             _required_value(observations, observation, f"{name} observations")
+        if name == "run_snapshot_freeze":
+            for label in ("old", "new"):
+                snapshot = _required_mapping(observations, f"{label}_run_snapshot")
+                _equal(snapshot.get("run_status"), "success", f"{label} Run status")
 
     _equal(artifact.get("verdict"), "passed", "Gate 8 verdict")
     _assert_no_provider_secrets(artifact, forbidden_values=forbidden_values or set())

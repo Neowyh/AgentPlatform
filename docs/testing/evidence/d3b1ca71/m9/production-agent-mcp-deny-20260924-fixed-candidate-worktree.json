@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T19:38:10.596219+00:00",
+  "scenario": "production Gateway Agent Run with local MCP policy denial and persisted Run Evidence",
+  "denial_mode": "local policy veto",
+  "real_execution": true,
+  "status": "passed",
+  "observed_steps": [
+    "reused the isolated, seeded candidate Gateway after confirming its live health endpoint",
+    "paired signed device websocket and observed local.mcp.fs.read_file capability",
+    "queried the Gateway terminal run, its persisted Run Evidence metadata, messages, and archived retrieval evidence",
+    "verified same-run MCP and retrieval receipts linked to successful tool calls"
+  ],
+  "assertions": [
+    "Agent Run terminated as success",
+    "persisted MCP receipt is linked to a model tool call: True",
+    "successful archived retrieval receipt is linked to a model tool call: True",
+    "local fixture marker was returned by the MCP tool: False",
+    "Gate 7 source marker was archived: True",
+    "same production Agent Run persisted both retrieval and MCP receipts"
+  ],
+  "limitations": [],
+  "thread_id": "8e25db0a-98a2-4f7f-876b-61d6d2bde8be",
+  "run_id": "f2fb1de9-c445-4966-8cea-2675a9de740a",
+  "run_status": "success",
+  "run_state_keys": [
+    "assistant_id",
+    "created_at",
+    "first_user_message",
+    "kwargs",
+    "last_assistant_message",
+    "lead_agent_tokens",
+    "llm_call_count",
+    "message_count",
+    "metadata",
+    "middleware_tokens",
+    "multitask_strategy",
+    "run_id",
+    "status",
+    "subagent_tokens",
+    "thread_id",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "updated_at"
+  ],
+  "run_evidence_keys": [
+    "has_more",
+    "receipts",
+    "run_id",
+    "thread_id"
+  ],
+  "receipt_count": 1,
+  "receipt_summaries": [
+    {
+      "receipt_id": "rr_f32772b7756b667442a27dad",
+      "receipt_kind": "retrieval",
+      "result_status": "success"
+    }
+  ],
+  "tool_receipt_count": 2,
+  "tool_receipt_summaries": [
+    {
+      "tool_name": "local.mcp.fs.read_file",
+      "receipt_kind": "tool",
+      "tool_call_id": "call_1d104915e8b24896a62fcbe5",
+      "status": "denied"
+    },
+    {
+      "tool_name": "knowledge_search",
+      "receipt_kind": null,
+      "tool_call_id": "call_5722add41c60453bbc9198a0",
+      "status": null
+    }
+  ],
+  "mcp_tool_calls": 1,
+  "knowledge_tool_calls": 1,
+  "mcp_marker_in_tool_result": false,
+  "knowledge_marker_in_archived_receipt": true,
+  "mcp_receipt_persisted": true,
+  "knowledge_receipt_persisted": true,
+  "candidate_worktree_dirty": true,
+  "mcp_policy_denied": true,
+  "execution_marker_absent": true,
+  "command": "python3 /tmp/run_m9_deny_gateway.py",
+  "gateway": "isolated Gateway on loopback port 8004",
+  "run_created_at": "2026-09-23T19:38:11.190875+00:00",
+  "run_updated_at": "2026-09-23T19:38:27.642280+00:00",
+  "run_elapsed_seconds": 16.451
+}

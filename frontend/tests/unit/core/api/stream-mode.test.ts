@@ -5,12 +5,14 @@ describe("stream-mode", () => {
   // `warnedUnsupportedStreamModes` Set so tests are fully isolated.
   let warnUnsupportedStreamModes: typeof import("@/core/api/stream-mode").warnUnsupportedStreamModes;
   let sanitizeRunStreamOptions: typeof import("@/core/api/stream-mode").sanitizeRunStreamOptions;
+  let forceChatRunStreamOptions: typeof import("@/core/api/stream-mode").forceChatRunStreamOptions;
 
   beforeEach(async () => {
     vi.resetModules();
     const mod = await import("@/core/api/stream-mode");
     warnUnsupportedStreamModes = mod.warnUnsupportedStreamModes;
     sanitizeRunStreamOptions = mod.sanitizeRunStreamOptions;
+    forceChatRunStreamOptions = mod.forceChatRunStreamOptions;
   });
 
   // ---------------------------------------------------------------------------
@@ -116,14 +118,17 @@ describe("stream-mode", () => {
 
     test("returns options unchanged when all array stream modes are supported", () => {
       const options = {
-        streamMode: ["values", "messages", "updates"] as string[],
+        streamMode: ["values", "messages-tuple", "updates"] as string[],
       };
       expect(sanitizeRunStreamOptions(options)).toBe(options);
     });
 
-    test("returns options unchanged when scalar stream mode is supported", () => {
-      const options = { streamMode: "events" as string };
-      expect(sanitizeRunStreamOptions(options)).toBe(options);
+    test("rejects stream modes that the Gateway does not implement", () => {
+      for (const streamMode of ["messages", "events"]) {
+        expect(() => sanitizeRunStreamOptions({ streamMode })).toThrow(
+          new RegExp(`Unsupported stream mode\\(s\\): ${streamMode}`),
+        );
+      }
     });
 
     // -- Filtering unsupported modes ------------------------------------------
@@ -140,7 +145,7 @@ describe("stream-mode", () => {
             "tools",
           ],
         }),
-      ).toThrow(/Unsupported stream mode\(s\): tools/);
+      ).toThrow(/Unsupported stream mode\(s\): events, tools/);
     });
 
     test("throws when scalar payload is unsupported", () => {
@@ -188,10 +193,8 @@ describe("stream-mode", () => {
     test("handles every supported mode type in array", () => {
       const allSupported = [
         "values",
-        "messages",
         "messages-tuple",
         "updates",
-        "events",
         "debug",
         "tasks",
         "checkpoints",
@@ -227,6 +230,22 @@ describe("stream-mode", () => {
 
       expect(spy).toHaveBeenCalledTimes(2);
       spy.mockRestore();
+    });
+  });
+
+  describe("forceChatRunStreamOptions", () => {
+    test("strips SDK-only events mode and disables resumable streams", () => {
+      const options = {
+        streamMode: ["messages-tuple", "updates", "custom", "events"],
+        streamResumable: true,
+        recursionLimit: 1000,
+      };
+
+      expect(forceChatRunStreamOptions(options)).toEqual({
+        streamMode: ["messages-tuple", "updates", "custom"],
+        streamResumable: false,
+        recursionLimit: 1000,
+      });
     });
   });
 });

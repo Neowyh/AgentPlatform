@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T22:09:06.242110+00:00",
+  "scenario": "production Gateway Agent Run with local MCP policy denial and persisted Run Evidence",
+  "denial_mode": "local policy veto",
+  "real_execution": true,
+  "status": "passed",
+  "observed_steps": [
+    "reused the isolated, seeded candidate Gateway after confirming its live health endpoint",
+    "paired signed device websocket and observed local.mcp.fs.read_file capability",
+    "queried the Gateway terminal run, its persisted Run Evidence metadata, messages, and archived retrieval evidence",
+    "verified same-run MCP and retrieval receipts linked to successful tool calls"
+  ],
+  "assertions": [
+    "Agent Run terminated as success",
+    "persisted MCP receipt is linked to a model tool call: True",
+    "successful archived retrieval receipt is linked to a model tool call: True",
+    "local fixture marker was returned by the MCP tool: False",
+    "Gate 7 source marker was archived: True",
+    "same production Agent Run persisted both retrieval and MCP receipts"
+  ],
+  "limitations": [],
+  "thread_id": "293f9d25-27cc-489b-857f-e7e76d39a698",
+  "run_id": "55e7f2e3-e439-4e96-9cad-9ead112ddc64",
+  "run_status": "success",
+  "run_state_keys": [
+    "assistant_id",
+    "created_at",
+    "first_user_message",
+    "kwargs",
+    "last_assistant_message",
+    "lead_agent_tokens",
+    "llm_call_count",
+    "message_count",
+    "metadata",
+    "middleware_tokens",
+    "multitask_strategy",
+    "run_id",
+    "status",
+    "subagent_tokens",
+    "thread_id",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "updated_at"
+  ],
+  "run_evidence_keys": [
+    "has_more",
+    "receipts",
+    "run_id",
+    "thread_id"
+  ],
+  "receipt_count": 1,
+  "receipt_summaries": [
+    {
+      "receipt_id": "rr_97849fd151c617ecaebb4433",
+      "receipt_kind": "retrieval",
+      "result_status": "success"
+    }
+  ],
+  "tool_receipt_count": 2,
+  "tool_receipt_summaries": [
+    {
+      "tool_name": "local.mcp.fs.read_file",
+      "receipt_kind": "tool",
+      "tool_call_id": "call_fd14f1e78c1f4d32b83dd331",
+      "status": "denied"
+    },
+    {
+      "tool_name": "knowledge_search",
+      "receipt_kind": null,
+      "tool_call_id": "call_171c53005176478196eb2fce",
+      "status": null
+    }
+  ],
+  "mcp_tool_calls": 1,
+  "knowledge_tool_calls": 1,
+  "mcp_marker_in_tool_result": false,
+  "knowledge_marker_in_archived_receipt": true,
+  "mcp_receipt_persisted": true,
+  "knowledge_receipt_persisted": true,
+  "candidate_worktree_dirty": true,
+  "mcp_policy_denied": true,
+  "execution_marker_absent": true
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T22:16:08.544931+00:00",
+  "scenario": "isolated real RAGFlow hit and zero-hit provider probe",
+  "real_execution": true,
+  "status": "passed",
+  "command": "python3 /tmp/run_gate8_isolated_provider.py",
+  "observed_steps": [
+    "created a uniquely named isolated temporary RAGFlow dataset",
+    "uploaded and parsed a synthetic marker, then verified searchable hit and unrelated zero-hit through the production RAGFlow client"
+  ],
+  "assertions": [
+    "real RAGFlow returned the marker for the hit query and omitted it from the independent zero-hit query"
+  ],
+  "limitations": [],
+  "cleanup_completed": true,
+  "test_exit_status": 0,
+  "elapsed_seconds": 8.824
+}

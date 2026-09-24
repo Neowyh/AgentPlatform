@@ -1,0 +1,59 @@
+{
+  "candidate_product_runtime_sha": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-24",
+  "scope": "Gate 7, Gate 8, M9 and Linux closeout verification; fault-zeroing Case 01/02/03 excluded",
+  "frontend_real": {
+    "command": "bash scripts/run-test-lane.sh frontend-real",
+    "status": "passed",
+    "duration_seconds": 207,
+    "real_backend": {"passed": 6, "skipped": 5, "failed": 0},
+    "deterministic_replay": {"passed": 3, "skipped": 0, "failed": 0},
+    "notes": "Real-backend skips depend on optional real-model or Gate 7/8 browser artifacts; not counted as passes."
+  },
+  "sqlite_migration_and_retention": {
+    "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run pytest -q tests/test_persistence_bootstrap_regression.py tests/integration/persistence/test_migration_schema.py tests/unit/resources/test_resource_retention.py tests/unit/knowledge/test_knowledge_evaluation.py",
+    "working_directory": "backend/",
+    "status": "passed",
+    "passed": 25,
+    "warnings": 6,
+    "duration_seconds": 28.38,
+    "findings": [
+      "Legacy/pre-Alembic SQLite bootstrap upgrades to current Alembic head and preserves usable schema/data paths.",
+      "Run-snapshot-referenced frozen resource versions are blocked from purge.",
+      "No independent evaluation age-based purge/retention policy was found; no retention duration claim is made."
+    ]
+  },
+  "test_inventory": {
+    "command": "python3 scripts/test_inventory.py",
+    "status": "passed",
+    "duration_seconds": 15.31
+  },
+  "focused_stream_contract": {
+    "command": "pnpm exec vitest run tests/unit/core/api/streams.test.ts tests/unit/core/api/stream-mode.test.ts --pool=forks --no-file-parallelism --maxWorkers=2 --testTimeout=5000 --hookTimeout=5000",
+    "working_directory": "frontend/",
+    "status": "passed",
+    "passed": 29,
+    "duration_seconds": 1.68
+  },
+  "core_full": {
+    "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh core-full",
+    "status": "passed",
+    "duration_seconds": 2135,
+    "children": {
+      "local-runtime": {"passed": 192, "skipped": 4, "duration_seconds": 8, "status": 0},
+      "backend-standard": {"passed": 26086, "skipped": 145, "warnings": 820, "duration_seconds": 1015, "status": 0},
+      "backend-serial": {"passed": 54, "skipped": 10, "deselected": 26393, "duration_seconds": 22, "status": 0},
+      "backend-full": {"duration_seconds": 1107, "status": 0},
+      "frontend-core": {"rstest_passed": 759, "vitest_passed": 10222, "vitest_files_passed": 369, "eslint": "passed", "typescript": "passed", "duration_seconds": 533, "status": 0},
+      "frontend-mock-e2e": {"passed": 326, "duration_seconds": 486, "status": 0}
+    },
+    "test_fix": "Updated stale streams.test.ts expectations from messages to messages-tuple and included events in unsupported-mode output."
+  },
+  "gate8_snapshot_agent_run": {
+    "snapshot_freeze_assertion": "passed",
+    "codex_agent_run_statuses": ["error", "error"],
+    "retrieval_receipts": [0, 0],
+    "status": "incomplete_for_successful_model_run",
+    "limitation": "Temporary Gateway database/logs were cleaned before run error detail was captured; no Agent Run success is claimed."
+  }
+}

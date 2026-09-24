@@ -1,0 +1,168 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T21:51:42.645187+00:00",
+  "status": "passed",
+  "rows": {
+    "agent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "agent.json",
+      "started_at": "2026-09-23T21:41:16.781448+00:00",
+      "finished_at": "2026-09-23T21:41:36.877760+00:00",
+      "duration_seconds": 20.096
+    },
+    "workflow_subagent": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "workflow_subagent.json",
+      "started_at": "2026-09-23T21:41:36.877778+00:00",
+      "finished_at": "2026-09-23T21:41:57.049600+00:00",
+      "duration_seconds": 20.172
+    },
+    "two_users_two_kbs": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "two_users_two_kbs.json",
+      "started_at": "2026-09-23T21:41:57.049618+00:00",
+      "finished_at": "2026-09-23T21:41:58.133720+00:00",
+      "duration_seconds": 1.084
+    },
+    "revoked_access": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "not-applicable",
+      "browser": "not-applicable",
+      "evidence": "revoked_access.json",
+      "started_at": "2026-09-23T21:41:58.133739+00:00",
+      "finished_at": "2026-09-23T21:41:58.983260+00:00",
+      "duration_seconds": 0.85
+    },
+    "revision_freeze_provider_outage": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "revision_freeze_provider_outage.json",
+      "started_at": "2026-09-23T21:41:58.983277+00:00",
+      "finished_at": "2026-09-23T21:42:21.617605+00:00",
+      "duration_seconds": 22.634
+    },
+    "empty_hit": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "empty_hit.json",
+      "started_at": "2026-09-23T21:42:21.617624+00:00",
+      "finished_at": "2026-09-23T21:42:42.205107+00:00",
+      "duration_seconds": 20.588
+    },
+    "truncated": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "truncated.json",
+      "started_at": "2026-09-23T21:42:42.205134+00:00",
+      "finished_at": "2026-09-23T21:43:03.451101+00:00",
+      "duration_seconds": 21.246
+    },
+    "retry": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "retry.json",
+      "started_at": "2026-09-23T21:43:03.451121+00:00",
+      "finished_at": "2026-09-23T21:43:46.204093+00:00",
+      "duration_seconds": 42.753
+    },
+    "duplicate": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "duplicate.json",
+      "started_at": "2026-09-23T21:43:46.204122+00:00",
+      "finished_at": "2026-09-23T21:44:36.865560+00:00",
+      "duration_seconds": 50.661
+    },
+    "archive_failure": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "archive_failure.json",
+      "started_at": "2026-09-23T21:44:36.865580+00:00",
+      "finished_at": "2026-09-23T21:44:57.425919+00:00",
+      "duration_seconds": 20.56
+    },
+    "forged_citation": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "forged_citation.json",
+      "started_at": "2026-09-23T21:44:57.425943+00:00",
+      "finished_at": "2026-09-23T21:45:17.912533+00:00",
+      "duration_seconds": 20.487
+    },
+    "history_without_receipt": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "history_without_receipt.json",
+      "started_at": "2026-09-23T21:45:17.912548+00:00",
+      "finished_at": "2026-09-23T21:45:43.439933+00:00",
+      "duration_seconds": 25.527
+    },
+    "mixed_web": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "mixed_web.json",
+      "started_at": "2026-09-23T21:45:43.439955+00:00",
+      "finished_at": "2026-09-23T21:46:17.154087+00:00",
+      "duration_seconds": 33.714
+    },
+    "streaming": {
+      "result": "passed",
+      "provider": "ragflow",
+      "model": "codex-gpt-5-5",
+      "browser": "not-applicable",
+      "evidence": "streaming.json",
+      "started_at": "2026-09-23T21:46:17.154103+00:00",
+      "finished_at": "2026-09-23T21:46:38.906971+00:00",
+      "duration_seconds": 21.753
+    },
+    "loading_error_restricted": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "gate7-evidence-states.spec.ts",
+      "evidence": "loading_error_restricted.json",
+      "started_at": "2026-09-23T21:51:42.951105+00:00",
+      "finished_at": "2026-09-23T21:53:14.112974+00:00",
+      "duration_seconds": 91.162
+    },
+    "keyboard": {
+      "result": "passed",
+      "provider": "gateway",
+      "model": "codex-gpt-5-5",
+      "browser": "knowledge-evidence-gate7.spec.ts",
+      "evidence": "keyboard.json",
+      "started_at": "2026-09-23T21:46:39.699294+00:00",
+      "finished_at": "2026-09-23T21:48:03.275435+00:00",
+      "duration_seconds": 83.576
+    }
+  },
+  "resumed_at": "2026-09-23T21:51:42.645207+00:00"
+}

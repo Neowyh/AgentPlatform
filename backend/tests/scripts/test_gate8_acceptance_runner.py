@@ -39,6 +39,8 @@ def test_gate8_capture_runs_each_scenario_and_strictly_validates_the_artifact(
         "  'assertions': ['scenario assertion passed'],\n"
         "  'observations': {key: 'observed' for key in observations},\n"
         "}\n"
+        "if os.environ['GATE8_SCENARIO'] == 'run_snapshot_freeze':\n"
+        "  evidence['observations'].update(old_run_snapshot={'run_status': 'success'}, new_run_snapshot={'run_status': 'success'})\n"
         "with open(os.environ['GATE8_EVIDENCE_PATH'], 'w') as output:\n"
         "  json.dump(evidence, output)\n",
         encoding="utf-8",

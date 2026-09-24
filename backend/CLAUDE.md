@@ -254,6 +254,16 @@ allowed. Dangerous capabilities remain Level 2 and cannot be silently
 allowed. These operations are announced through `CAPABILITY_UPDATE`, and
 user-facing errors use stable codes without revealing physical paths.
 
+### Canonical local MCP execution
+
+Canonical Agent Runs send local MCP input arguments under
+`payload_extra.arguments`. When the broker reaches a terminal result, the
+Gateway records its Local Runtime receipt in the active Run Evidence and binds
+the matching model tool-call ID before returning a result or raising a failure.
+This keeps completion, denial, and timeout receipts attributable to the same
+Run; verify them through `GET /api/threads/{thread_id}/runs/{run_id}` Run
+Evidence metadata.
+
 **Extensions Configuration** (`extensions_config.json`):
 
 MCP servers and skills are configured together in `extensions_config.json` in project root:

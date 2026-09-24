@@ -1,0 +1,19 @@
+{
+  "artifact": "m9-stdio-mcp-broker-receipt",
+  "candidate_commit": "0e95cdec471df1cea5d2018d1123d950c3f401e1",
+  "recorded_at": "2026-09-23T15:08:37+08:00",
+  "real_execution": true,
+  "environment": "Linux isolated integration process",
+  "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend pytest backend/tests/integration/api/test_devices_router.py::test_local_runtime_completes_mcp_task_through_broker_with_receipt -q -s",
+  "result": "passed",
+  "exit_status": 0,
+  "duration_seconds": 5.0,
+  "observed_steps": [
+    "Started the checked-in filesystem MCP server as a real stdio child process with an isolated temporary root.",
+    "Paired a temporary device and established the Local Runtime websocket connection to a loopback test service.",
+    "Observed the local.mcp.fs.read_file capability advertised through the broker.",
+    "Dispatched a task through the device endpoint and completed local consent.",
+    "Verified the task completed with a broker receipt and the MCP file content."
+  ],
+  "scope_note": "This proves the stdio MCP process and broker receipt path in the device integration harness. It does not prove a production Gateway Agent Run to Run Evidence chain; no real device is registered in the active Gateway database."
+}

@@ -1,0 +1,23 @@
+{
+  "artifact": "gate7-current-candidate-provider-live-probe",
+  "candidate_commit": "0e95cdec471df1cea5d2018d1123d950c3f401e1",
+  "recorded_at": "2026-09-23T14:59:40+08:00",
+  "scenario": "provider_live_probe",
+  "real_execution": true,
+  "status": "partial",
+  "result": "1 passed, 1 skipped",
+  "exit_status": 0,
+  "duration_seconds": 9.39,
+  "command": "DEER_FLOW_CONFIG_PATH=config.yaml DEER_FLOW_RUN_LIVE_TESTS=1 RAGFLOW_GATE7_DATASET_ID=<isolated dataset, redacted> UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run --project backend pytest backend/tests/test_knowledge_gate7_live.py -q -s",
+  "observed_steps": [
+    "Uploaded a unique synthetic marker document to the isolated Gate 7 provider dataset.",
+    "Parsed the document and waited until the provider reported it ready and searchable.",
+    "Retrieved it through KnowledgeRuntimeAdapter under a frozen knowledge scope.",
+    "Verified one Run Evidence retrieval receipt, the bound KB/revision/document, the evidence identifier, and exact delivered content.",
+    "Deleted the unique marker document in the test cleanup path."
+  ],
+  "limitations": [
+    "The artifact-dependent 16-row matrix test was skipped because no current-candidate matrix and source-chain artifact were supplied.",
+    "This probe is not a Gate 7 matrix pass and does not replace the real Agent, Workflow/Sub-Agent, permission, failure-state, or browser scenarios."
+  ]
+}

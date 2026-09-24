@@ -1,0 +1,66 @@
+{
+  "candidate_head": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "worktree_dirty": true,
+  "recorded_at": "2026-09-24T11:06:07.131944+00:00",
+  "command": "UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh core-full",
+  "preflight": "ready",
+  "runtime_boundary_check": "passed",
+  "sub_lanes": {
+    "local-runtime": {
+      "passed": 192,
+      "skipped": 4,
+      "warnings": 1,
+      "seconds": 12,
+      "status": 0
+    },
+    "backend-full": {
+      "standard": {
+        "passed": 26087,
+        "skipped": 145,
+        "warnings": 820,
+        "pytest_seconds": 1053.37
+      },
+      "serial": {
+        "passed": 54,
+        "skipped": 10,
+        "deselected": 26394,
+        "warnings": 2,
+        "pytest_seconds": 23.25
+      },
+      "seconds": 1163,
+      "status": 0
+    },
+    "frontend-core": {
+      "rstest": {
+        "passed": 759,
+        "files": 121
+      },
+      "vitest": {
+        "passed": 10222,
+        "files": 369
+      },
+      "eslint": "passed",
+      "typescript": "passed",
+      "seconds": 576,
+      "status": 0
+    },
+    "frontend-mock-e2e": {
+      "playwright_passed": 326,
+      "playwright_failed": 0,
+      "seconds": 510,
+      "status": 0
+    }
+  },
+  "parent": {
+    "seconds": 2262,
+    "status": 0
+  },
+  "nonblocking_log_observation": "Playwright web-server log emitted ECONNREFUSED for loopback port 8001 while the mocked browser suite still finished 326/326 passed.",
+  "raw_log": {
+    "temporary_path": "/tmp/agentplatform-core-full-20260924.log",
+    "sha256": "829a5a5ee3d52e9d86261dd1a7508f22c46cc588c8b4f27c54f220c0784082bc",
+    "bytes": 7686347,
+    "persisted_in_repository": false
+  },
+  "scope_note": "core-full excludes live-provider, real-browser, backend-blocking-io, and the three user-excluded fault-zeroing Case runs."
+}

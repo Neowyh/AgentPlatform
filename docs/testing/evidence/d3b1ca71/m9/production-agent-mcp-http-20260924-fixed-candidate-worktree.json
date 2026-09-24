@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "recorded_at": "2026-09-23T19:35:41.031318+00:00",
+  "scenario": "production Gateway Agent Run to HTTP Local Runtime MCP through broker and persisted Run Evidence",
+  "transport": "http",
+  "real_execution": true,
+  "status": "passed",
+  "observed_steps": [
+    "reused the isolated, seeded candidate Gateway after confirming its live health endpoint",
+    "paired signed device websocket and observed local.mcp.fs.read_file capability",
+    "queried the Gateway terminal run, its persisted Run Evidence metadata, messages, and archived retrieval evidence",
+    "verified same-run MCP and retrieval receipts linked to successful tool calls"
+  ],
+  "assertions": [
+    "Agent Run terminated as success",
+    "persisted MCP receipt is linked to a model tool call: True",
+    "successful archived retrieval receipt is linked to a model tool call: True",
+    "local fixture marker was returned by the MCP tool: True",
+    "Gate 7 source marker was archived: True",
+    "same production Agent Run persisted both retrieval and MCP receipts"
+  ],
+  "limitations": [],
+  "thread_id": "ccabc15a-b42c-4d67-b74b-bdbca03d21b6",
+  "run_id": "d538c80c-94ee-45c4-94a7-ea62387d9166",
+  "run_status": "success",
+  "run_state_keys": [
+    "assistant_id",
+    "created_at",
+    "first_user_message",
+    "kwargs",
+    "last_assistant_message",
+    "lead_agent_tokens",
+    "llm_call_count",
+    "message_count",
+    "metadata",
+    "middleware_tokens",
+    "multitask_strategy",
+    "run_id",
+    "status",
+    "subagent_tokens",
+    "thread_id",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "updated_at"
+  ],
+  "run_evidence_keys": [
+    "has_more",
+    "receipts",
+    "run_id",
+    "thread_id"
+  ],
+  "receipt_count": 1,
+  "receipt_summaries": [
+    {
+      "receipt_id": "rr_0116231be5bc67e1578c44e5",
+      "receipt_kind": "retrieval",
+      "result_status": "success"
+    }
+  ],
+  "tool_receipt_count": 2,
+  "tool_receipt_summaries": [
+    {
+      "tool_name": "local.mcp.fs.read_file",
+      "receipt_kind": "tool",
+      "tool_call_id": "call_648cc5f98c344b7d87fb23ed",
+      "status": "completed"
+    },
+    {
+      "tool_name": "knowledge_search",
+      "receipt_kind": null,
+      "tool_call_id": "call_b9d982aca9f04b58bc636e3b",
+      "status": null
+    }
+  ],
+  "mcp_tool_calls": 1,
+  "knowledge_tool_calls": 1,
+  "mcp_marker_in_tool_result": true,
+  "knowledge_marker_in_archived_receipt": true,
+  "mcp_receipt_persisted": true,
+  "knowledge_receipt_persisted": true,
+  "candidate_worktree_dirty": true,
+  "command": "python3 /tmp/run_m9_http_gateway.py",
+  "gateway": "isolated Gateway on loopback port 8004",
+  "run_created_at": "2026-09-23T19:35:41.957450+00:00",
+  "run_updated_at": "2026-09-23T19:36:03.956522+00:00",
+  "run_elapsed_seconds": 21.999
+}

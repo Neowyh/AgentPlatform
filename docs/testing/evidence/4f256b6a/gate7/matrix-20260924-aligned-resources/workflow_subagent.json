@@ -1,0 +1,25 @@
+{
+  "workflow_id": "b3a96474-1605-4cb5-ba93-64fbc1cda9dc",
+  "run_id": "3c9d7582-0fae-42a5-8a70-772d8aced37e",
+  "status": "completed",
+  "receipts": [],
+  "frozen_knowledge_revision": {
+    "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+    "revision_no": 2,
+    "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+    "retrieval_profile": {},
+    "embedding_profile": {}
+  },
+  "knowledge_tool_event_count": 1,
+  "node_result": "**knowledge_search result** — cited from receipt [r1 knowledge_search]:\n\nExact returned source sentence:\n\n> \"G7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.\"\n\nCitation: **[1] ideer-kb-33430047-rev2-2ba88915 / gate7-matrix-marker.txt**\n\nThis is the chunk whose marker string matches the queried token `G7D3B1CA71-BROWSER-CITATION-6F8C` verbatim. No further tool calls were made.",
+  "receipt_chain_persisted": false,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "workflow_subagent",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real Workflow resource",
+    "published an Agent action and ran it",
+    "verified terminal completion"
+  ]
+}

@@ -50,7 +50,7 @@ describe("streams", () => {
 
   test("keeps supported stream modes unchanged", () => {
     const scalar = { streamMode: "updates" };
-    const list = { streamMode: ["values", "messages", "custom"] };
+    const list = { streamMode: ["values", "messages-tuple", "custom"] };
 
     expect(sanitizeRunStreamOptions(scalar)).toBe(scalar);
     expect(sanitizeRunStreamOptions(list)).toBe(list);
@@ -67,7 +67,7 @@ describe("streams", () => {
         streamMode: ["values", "tools", "events", "unknown"],
         recursionLimit: 10,
       }),
-    ).toThrow(/tools, unknown/);
+    ).toThrow(/tools, events, unknown/);
 
     expect(warn).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenNthCalledWith(
@@ -76,7 +76,7 @@ describe("streams", () => {
     );
     expect(warn).toHaveBeenNthCalledWith(
       2,
-      "[ideer] Dropped unsupported LangGraph stream mode(s): unknown",
+      "[ideer] Dropped unsupported LangGraph stream mode(s): events, unknown",
     );
     warn.mockRestore();
   });

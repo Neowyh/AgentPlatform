@@ -1,0 +1,34 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "trial_retrieval",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:02.791272+00:00",
+  "observed_steps": [
+    "executed and archived a marker query through the configured RAGFlow provider",
+    "executed an independent random unrelated query",
+    "read back the frozen profile parameters and revision manifest trace"
+  ],
+  "observations": {
+    "profile_parameters": {
+      "page_size": 5,
+      "similarity_threshold": 0.45,
+      "vector_similarity_weight": 0.3,
+      "top_k": 256,
+      "timeout": 30.0
+    },
+    "revision_trace": {
+      "revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+      "manifest_hash": "ed9e585dc67195c544e06fe1d214c32e6678f7efcba381c2e37c752de18e8504"
+    },
+    "zero_hit": {
+      "query_marker_absent": true,
+      "returned_count": 0,
+      "result_status": "empty_hit"
+    }
+  },
+  "assertions": [
+    "canonical marker was returned by the real provider",
+    "canonical marker was absent from the unrelated query",
+    "both retrieval attempts were archived against the same ready revision"
+  ]
+}

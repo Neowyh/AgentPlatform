@@ -1,0 +1,95 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "profile_ab_comparison",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:09.768900+00:00",
+  "observed_steps": [
+    "ran frozen Profile A and configured Profile B against the same candidate revision and case set",
+    "waited for both real-provider evaluation branches",
+    "read the archived eligible comparison and metric deltas"
+  ],
+  "observations": {
+    "profile_a": "frozen",
+    "profile_b": "configured",
+    "metrics": {
+      "eligible": true,
+      "reason": null,
+      "delta": {
+        "expected_hit_rate": 0.0,
+        "recall_at_k": 0.0,
+        "mrr_at_k": 0.0
+      },
+      "cases": [
+        {
+          "case_id": "19fee834-8633-496d-abf1-125065209362",
+          "outcome": "unchanged",
+          "left": {
+            "id": "2e105926-15cc-4f31-bac7-eda00f05dc9c",
+            "run_id": "943e2f61-8fec-4233-ad17-d72eeaaec08f",
+            "case_id": "19fee834-8633-496d-abf1-125065209362",
+            "case_version_no": 3,
+            "case_content_hash": "28e0e9eb2a9b8563158bb1ae7035a6a125a12d56b41b02182c12b0c432044ce9",
+            "query": "G8MARKERc774bd117d014a62ab1c2c9d547e2685",
+            "expected_document_ids": [
+              "481a3514-6667-40f9-a3cc-76fa0a543118"
+            ],
+            "status": "success",
+            "error_code": null,
+            "ranked_items": [
+              {
+                "document_id": "481a3514-6667-40f9-a3cc-76fa0a543118",
+                "display_name": "g8.txt",
+                "content_hash": "64e343068b6bc873d9ba812b6576d1797d48014bf9b9fd1ee90d694016af22c1",
+                "chunk_ref": null,
+                "content": "\nGate 8 acceptance canonical retrieval marker G8MARKERc774bd117d014a62ab1c2c9d547e2685.",
+                "score": 0.6766680404285714,
+                "position": {},
+                "chunk_rank": 1,
+                "rank": 1
+              }
+            ],
+            "expected_hit": true,
+            "recall_at_k": 1.0,
+            "mrr_at_k": 1.0,
+            "created_at": "2026-09-24T03:24:07.289348"
+          },
+          "right": {
+            "id": "73a233f2-1c88-44f8-88c2-7006b7425abb",
+            "run_id": "022f166d-3f03-44f8-956e-5c9f90947fa3",
+            "case_id": "19fee834-8633-496d-abf1-125065209362",
+            "case_version_no": 3,
+            "case_content_hash": "28e0e9eb2a9b8563158bb1ae7035a6a125a12d56b41b02182c12b0c432044ce9",
+            "query": "G8MARKERc774bd117d014a62ab1c2c9d547e2685",
+            "expected_document_ids": [
+              "481a3514-6667-40f9-a3cc-76fa0a543118"
+            ],
+            "status": "success",
+            "error_code": null,
+            "ranked_items": [
+              {
+                "document_id": "481a3514-6667-40f9-a3cc-76fa0a543118",
+                "display_name": "g8.txt",
+                "content_hash": "64e343068b6bc873d9ba812b6576d1797d48014bf9b9fd1ee90d694016af22c1",
+                "chunk_ref": null,
+                "content": "\nGate 8 acceptance canonical retrieval marker G8MARKERc774bd117d014a62ab1c2c9d547e2685.",
+                "score": 0.6766680404285714,
+                "position": {},
+                "chunk_rank": 1,
+                "rank": 1
+              }
+            ],
+            "expected_hit": true,
+            "recall_at_k": 1.0,
+            "mrr_at_k": 1.0,
+            "created_at": "2026-09-24T03:24:09.362481"
+          }
+        }
+      ]
+    }
+  },
+  "assertions": [
+    "comparison is eligible",
+    "both profiles completed against identical cases",
+    "metric deltas are present and recomputable from stored branch metrics"
+  ]
+}

@@ -39,9 +39,12 @@ test.describe("real Knowledge Center Gate 8", () => {
     await page.getByRole("button", { name: knowledgeBaseSlug! }).click();
 
     await page.getByRole("tab", { name: /Retrieval|检索/i }).click();
-    await page
+    const matchingRecord = page
+      .getByRole("listitem")
+      .filter({ hasText: expectedSnippet! })
+      .first();
+    await matchingRecord
       .getByRole("button", { name: /View record|查看记录/i })
-      .first()
       .click();
     await expect(page.locator("body")).toContainText(expectedSnippet!);
     await expect(page.locator("body")).toContainText(expectedEvidence!);

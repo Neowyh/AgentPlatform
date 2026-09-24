@@ -1,0 +1,25 @@
+{
+  "candidate_commit": "d3b1ca71f56fa259c20299fefda3ce362a9b6dac",
+  "scenario": "revoked_access",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "created a real local user and private Knowledge Base",
+    "verified the user's existing authenticated session could read its KB",
+    "disabled the user through the isolated admin API",
+    "verified the same session no longer had access"
+  ],
+  "observations": {
+    "observed_steps": [
+      "created a real local user and private Knowledge Base",
+      "verified the user's existing authenticated session could read its KB",
+      "disabled the user through the isolated admin API",
+      "verified the same session no longer had access"
+    ],
+    "http_statuses": {
+      "before_disable": 200,
+      "after_disable": 403
+    }
+  },
+  "recorded_at": "2026-09-23T16:33:59.554033+00:00"
+}

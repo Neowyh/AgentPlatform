@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,7 +77,7 @@ test.describe("real backend render (replay, no API key)", () => {
 
   test("renders the local auto-title + replayed suggestions from a real backend", async ({
     page,
-  }) => {
+  }, testInfo) => {
     // ultra mode so the context the frontend sends (is_plan_mode + subagent_enabled)
     // matches the recorded fixture; otherwise the replay input hash would miss.
     await page.addInitScript(() => {
@@ -120,12 +120,19 @@ test.describe("real backend render (replay, no API key)", () => {
     // baseline. The DOM assertions above are the CI gate.
     if (process.env.CI) {
       await page.screenshot({
-        path: "test-results/real-backend-render.png",
+        path: testInfo.outputPath("real-backend-render.png"),
+        fullPage: true,
+      });
+    } else if (existsSync(testInfo.snapshotPath("real-backend-render.png"))) {
+      await expect(page).toHaveScreenshot("real-backend-render.png", {
+        maxDiffPixelRatio: 0.02,
         fullPage: true,
       });
     } else {
-      await expect(page).toHaveScreenshot("real-backend-render.png", {
-        maxDiffPixelRatio: 0.02,
+      // OS-specific snapshots are ignored by git, so a clean checkout has no
+      // comparison baseline. Keep the rendered page as a review artifact.
+      await page.screenshot({
+        path: testInfo.outputPath("real-backend-render.png"),
         fullPage: true,
       });
     }

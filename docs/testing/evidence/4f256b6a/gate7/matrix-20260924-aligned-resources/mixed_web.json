@@ -1,0 +1,86 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "mixed_web",
+  "real_execution": true,
+  "result": "passed",
+  "observed_steps": [
+    "published a real Agent with knowledge and web tool groups",
+    "observed both tool calls in persisted thread history",
+    "verified archived KB receipt and web URL attribution in assistant response"
+  ],
+  "pinned_revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+  "run": {
+    "thread_id": "042d1e69-9058-465d-9415-cc812067d077",
+    "run_id": "993d453b-6135-4ea3-bf7b-e03baac21a40",
+    "status": "success",
+    "tool_names": [
+      "knowledge_search",
+      "web_search"
+    ],
+    "retrieval_receipts": [
+      {
+        "receipt_id": "rr_bb330624ccffdf1ec7fc594b",
+        "receipt_kind": "retrieval",
+        "logical_knowledge_base": "33430047-0300-4728-bac8-651543d28886",
+        "knowledge_base_id": "33430047-0300-4728-bac8-651543d28886",
+        "revision_id": "2ba88915-d153-4b36-b739-7de3d14412ac",
+        "revision_no": 2,
+        "manifest_hash": "d9e95a310e44e8d94496aa4d14f31a0eb11247ea8adc324250df325e95b5947f",
+        "configuration_source": "frozen_run_revision",
+        "tool_call_id": "call_BpJeMHO8OL0RySKIOP7P2X5I",
+        "parent_tool_receipt_id": null,
+        "run_id": "993d453b-6135-4ea3-bf7b-e03baac21a40",
+        "caller_user_id": "6f1f2b4a-6a75-48e0-b430-48aa587f8d89",
+        "effective_agent_id": "bee43d6f-b1d4-4dfb-967f-49e34864d4af",
+        "child_task_id": null,
+        "child_agent_id": null,
+        "created_at": "2026-09-23T21:46:01.402829+00:00",
+        "query_sha256": "3b6fda494b31cbb8f7a435f5d7d8fe46c3c324f8962e8273251ce1a47d64b581",
+        "result_status": "success",
+        "budget": {
+          "max_items": 20,
+          "max_chars_per_item": 4000
+        },
+        "provider_count": 2,
+        "returned_count": 2,
+        "delivered_count": 2,
+        "truncation": {
+          "items": false,
+          "characters": false
+        },
+        "truncated": false,
+        "items": [
+          {
+            "document_id": "fddb03ae-3903-40d8-82d6-620a2137b378",
+            "display_name": "gate7-history-marker.txt",
+            "content_hash": "de47f20861682d31f22051d599d19517f3beada45715ab6f1bfa21ccce5840cc",
+            "chunk_ref": null,
+            "content": "\nGate 7 isolated matrix citation marker 8d7d6179.",
+            "score": 0.47876975507487846,
+            "position": {},
+            "evidence_id": "rr_bb330624ccffdf1ec7fc594b_i1",
+            "citation_label": "gate7-history-marker.txt"
+          },
+          {
+            "document_id": "cc415715-85b1-4ad4-9d93-3c2ec8e6a5e1",
+            "display_name": "gate7-matrix-marker.txt",
+            "content_hash": "3667bb107478fb2ce51af4a9fe3102b40fc3619c4acf588a555030c2f01e4cc2",
+            "chunk_ref": null,
+            "content": "\nG7D3B1CA71-BROWSER-CITATION-6F8C exact isolated browser citation sentence.",
+            "score": 0.4060716551908215,
+            "position": {},
+            "evidence_id": "rr_bb330624ccffdf1ec7fc594b_i2",
+            "citation_label": "gate7-matrix-marker.txt"
+          }
+        ],
+        "archive_status": "archived",
+        "cited_item_ids": [
+          "rr_bb330624ccffdf1ec7fc594b_i1"
+        ]
+      }
+    ],
+    "assistant_text": "\nThe exact Gate 7 marker I found in the specified KB is: `Gate 7 isolated matrix citation marker 8d7d6179.` [citation:gate7-history-marker.txt](evidence://rr_bb330624ccffdf1ec7fc594b_i1)\n\nFor Python official documentation, the official documentation hub is Python.org’s documentation page, which provides Python documentation, tutorials, and guides. [citation:Our Documentation | Python.org](https://www.python.org/doc/)\n\n## Sources\n\n- [gate7-history-marker.txt](evidence://rr_bb330624ccffdf1ec7fc594b_i1) - KB evidence for the exact Gate 7 marker\n- [Our Documentation | Python.org](https://www.python.org/doc/) - Official Python documentation hub"
+  },
+  "recorded_at": "2026-09-23T21:46:17.133113+00:00",
+  "runner_duration_seconds": 33.714
+}

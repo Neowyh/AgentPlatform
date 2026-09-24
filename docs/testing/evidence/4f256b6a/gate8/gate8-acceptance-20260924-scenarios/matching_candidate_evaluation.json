@@ -1,0 +1,31 @@
+{
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "scenario": "matching_candidate_evaluation",
+  "real_execution": true,
+  "recorded_at": "2026-09-24T03:24:12.648186+00:00",
+  "observed_steps": [
+    "saved explicit policy thresholds and frozen case membership",
+    "evaluated the current candidate revision through real RAGFlow retrieval",
+    "read the completed run and recomputed aggregate metrics"
+  ],
+  "observations": {
+    "candidate_revision_id": "ccac06f0-6598-46bc-973c-526e56d3ec4d",
+    "run_id": "405fb30d-209d-4cc0-b953-99d12126cc0d",
+    "qualification": {
+      "status": "passed",
+      "aggregate": {
+        "denominator": 1,
+        "expected_hit_rate": 1.0,
+        "recall_at_k": 1.0,
+        "mrr_at_k": 1.0,
+        "top_k": 5,
+        "metrics_version": "retrieval-metrics-v1"
+      },
+      "policy_version": 3
+    }
+  },
+  "assertions": [
+    "evaluation matches current revision, manifest, profile, case set, and policy version",
+    "qualification passed all configured thresholds"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "recorded_at": "2026-09-23T22:14:26.807446+00:00",
+  "scenario": "production HTTP Local Runtime MCP with persisted failure and successful retry",
+  "real_execution": true,
+  "status": "passed",
+  "run_id": "73962c5d-af13-490a-9a9e-8daf25318f0d",
+  "thread_id": "0530d335-1ad3-4afa-84aa-31bf437c6b16",
+  "run_status": "success",
+  "transport": "http",
+  "candidate_source_evidence": "docs/testing/evidence/4f256b6a/m9/production-agent-mcp-http-20260924.json",
+  "attempts": [
+    {
+      "tool_call_id": "call_0cea429ecc0d48498cc1af95",
+      "receipt_status": "failed",
+      "tool_result_status": "error"
+    },
+    {
+      "tool_call_id": "call_5e0c055124bd426695318ad0",
+      "receipt_status": "completed",
+      "tool_result_status": "success"
+    }
+  ],
+  "knowledge_tool_calls": 1,
+  "successful_retrieval_receipt_count": 1,
+  "same_run_receipts": true,
+  "fixture_marker_returned": true,
+  "reconciliation_basis": "Direct current-candidate Gateway message, Run Evidence metadata, and Evidence API reads; first MCP call failed, second completed, Agent Run completed successfully. Acceptance requires the production HTTP path and durable receipt binding, not an exactly-once model request.",
+  "assertions": [
+    "each HTTP MCP attempt is linked to its tool call ID in persisted Run Evidence",
+    "the initial failed attempt and completed retry both have persisted receipts",
+    "the successful Agent Run also contains a successful archived retrieval receipt bound to the knowledge_search call",
+    "the synthetic local marker was returned by the successful MCP call"
+  ]
+}
