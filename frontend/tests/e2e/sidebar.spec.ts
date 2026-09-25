@@ -2,79 +2,111 @@ import { expect, test } from "@playwright/test";
 
 import { mockLangGraphAPI } from "./utils/mock-api";
 
+// The pre-merge workbench order: Chats → Experts·Skills·Connectors →
+// Workflows → Library, followed by the standalone Scheduled tasks entry.
+const WORKBENCH_NAV_HREFS = [
+  "/workspace/chats",
+  "/workspace/capabilities/experts",
+  "/workspace/workflows",
+  "/workspace/library",
+  "/workspace/scheduled-tasks",
+];
+
 test.describe("Sidebar navigation", () => {
-  test("sidebar contains Chats and Agents nav links", async ({ page }) => {
+  test("sidebar keeps the pre-merge entries and appends Scheduled tasks", async ({
+    page,
+  }) => {
     mockLangGraphAPI(page);
 
     await page.goto("/workspace/chats/new");
 
     // Sidebar uses data-sidebar="menu-button" with asChild rendering on <Link>
     const sidebar = page.locator("[data-sidebar='sidebar']");
-    await expect(sidebar.locator("a[href='/workspace/chats']")).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(sidebar.locator("a[href='/workspace/agents']")).toBeVisible();
+    for (const href of WORKBENCH_NAV_HREFS) {
+      await expect(sidebar.locator(`a[href='${href}']`)).toBeVisible({
+        timeout: 15_000,
+      });
+    }
+    // The merged Agents management has no sidebar entry of its own next to
+    // the original capability center.
+    await expect(sidebar.locator("a[href='/workspace/agents']")).toHaveCount(0);
   });
 
-  test("Agents link navigates to agents page", async ({ page }) => {
-    mockLangGraphAPI(page);
-
-    await page.goto("/workspace/chats/new");
-
-    const sidebar = page.locator("[data-sidebar='sidebar']");
-    const agentsLink = sidebar.locator("a[href='/workspace/agents']");
-    await expect(agentsLink).toBeVisible({ timeout: 15_000 });
-    await agentsLink.click();
-
-    await page.waitForURL("**/workspace/agents");
-    await expect(page).toHaveURL(/\/workspace\/agents/);
-  });
-
-  test("Agents button is disabled with a hover tooltip when agents_api is off", async ({
+  test("Scheduled tasks follows Library and opens its existing page", async ({
     page,
   }) => {
     mockLangGraphAPI(page);
-    await page.route("**/api/features", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ agents_api: { enabled: false } }),
-      }),
-    );
 
     await page.goto("/workspace/chats/new");
 
     const sidebar = page.locator("[data-sidebar='sidebar']");
-    // Chats remains a real link; Agents is no longer a navigable link.
-    await expect(sidebar.locator("a[href='/workspace/chats']")).toBeVisible({
+    const libraryLink = sidebar.locator("a[href='/workspace/library']");
+    const scheduledTasksLink = sidebar.locator(
+      "a[href='/workspace/scheduled-tasks']",
+    );
+    await expect(libraryLink).toBeVisible({ timeout: 15_000 });
+    await expect(scheduledTasksLink).toBeVisible();
+
+    // DOM order: Scheduled tasks comes after the last original entry.
+    const scheduledAfterLibrary = await sidebar.evaluate((root) => {
+      const library = root.querySelector("a[href='/workspace/library']");
+      const scheduled = root.querySelector(
+        "a[href='/workspace/scheduled-tasks']",
+      );
+      return !!(
+        library &&
+        scheduled &&
+        library.compareDocumentPosition(scheduled) & 4
+      ); // 4 = FOLLOWING
+    });
+    expect(scheduledAfterLibrary).toBe(true);
+
+    await scheduledTasksLink.click();
+    // toHaveURL polls without requiring the load event; give it room for the
+    // dev server's on-demand compilation of the destination route.
+    await expect(page).toHaveURL(/\/workspace\/scheduled-tasks/, {
       timeout: 15_000,
     });
-    await expect(sidebar.locator("a[href='/workspace/agents']")).toHaveCount(0);
-
-    // The disabled Agents button is rendered and announces its disabled state.
-    const agentsButton = sidebar.getByRole("button", { name: "Experts" });
-    await expect(agentsButton).toHaveAttribute("aria-disabled", "true");
-
-    // The button itself has pointer-events suppressed; force the hover so the
-    // event reaches the wrapping tooltip-trigger span that surfaces the tooltip.
-    await agentsButton.hover({ force: true });
-    await expect(page.getByText("Feature not enabled").first()).toBeVisible({
-      timeout: 5_000,
-    });
-
-    // Keyboard/screen-reader users get the reason too: the disabled entry
-    // stays in the tab order (focusable) and is wired to a visually-hidden
-    // description rather than relying on the hover-only tooltip.
-    const describedById = await agentsButton.getAttribute("aria-describedby");
-    expect(describedById).toBeTruthy();
-    await expect(page.locator(`#${describedById}`)).toHaveText(
-      "Feature not enabled",
-    );
-    await agentsButton.focus();
-    await expect(agentsButton).toBeFocused();
   });
 
-  test("mobile welcome layout stays within viewport and opens sidebar", async ({
+  test("narrow screens expose the same entries through the sidebar drawer", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    await page.setViewportSize({ width: 390, height: 664 });
+
+    // The chats list renders a top-bar trigger below md width that opens the
+    // same navigation as a drawer. Scope to the page header: the sidebar's
+    // own (sheet-mounted) trigger would make the locator ambiguous. The dev
+    // server keeps the load event pending past the test timeout, so settle
+    // on domcontentloaded and let the assertions below wait for hydration.
+    await page.goto("/workspace/chats", { waitUntil: "domcontentloaded" });
+
+    const trigger = page.locator("header [data-sidebar='trigger']");
+    await expect(trigger).toBeVisible({ timeout: 15_000 });
+
+    // Below md the sidebar renders as a Sheet with data-mobile="true"; the
+    // desktop container stays in the DOM but hidden, so scope to the mobile
+    // instance for the drawer assertions.
+    const sidebar = page.locator(
+      "[data-sidebar='sidebar'][data-mobile='true']",
+    );
+
+    // The trigger needs React hydration before it responds; retry the click
+    // until the drawer actually opens (a plain anchor click would navigate
+    // without hydration, a button does not).
+    await expect(async () => {
+      await trigger.click();
+      await expect(sidebar).toBeVisible();
+    }).toPass({ timeout: 20_000 });
+
+    for (const href of WORKBENCH_NAV_HREFS) {
+      await expect(sidebar.locator(`a[href='${href}']`)).toBeVisible();
+    }
+    await expect(sidebar.locator("a[href='/workspace/agents']")).toHaveCount(0);
+  });
+
+  test("mobile welcome layout stays within viewport and desktop sidebar shows the entries", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 664 });
@@ -124,11 +156,11 @@ test.describe("Sidebar navigation", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const desktopSidebar = page.locator("[data-sidebar='sidebar']");
     await expect(desktopSidebar).toBeVisible({ timeout: 15_000 });
-    await expect(
-      desktopSidebar.locator("a[href='/workspace/chats']"),
-    ).toBeVisible();
+    for (const href of WORKBENCH_NAV_HREFS) {
+      await expect(desktopSidebar.locator(`a[href='${href}']`)).toBeVisible();
+    }
     await expect(
       desktopSidebar.locator("a[href='/workspace/agents']"),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 });

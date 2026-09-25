@@ -238,9 +238,7 @@ export interface Translations {
     newChat: string;
     chats: string;
     demoChats: string;
-    agents: string;
     scheduledTasks: string;
-    agentsDisabledTooltip: string;
     channels: string;
     capabilities: string;
     resources: string;

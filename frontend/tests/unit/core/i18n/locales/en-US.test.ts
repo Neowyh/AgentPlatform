@@ -147,7 +147,7 @@ describe("en-US translations", () => {
       expect(enUS.sidebar.chats).toBeTruthy();
       expect(enUS.sidebar.recentChats).toBeTruthy();
       expect(enUS.sidebar.demoChats).toBeTruthy();
-      expect(enUS.sidebar.agents).toBeTruthy();
+      expect(enUS.sidebar.scheduledTasks).toBeTruthy();
       expect(enUS.sidebar.workflows).toBeTruthy();
     });
   });

@@ -1,26 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as renderBase, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({
-    user: { id: "u1", email: "user@test.com", system_role: "user" },
-  }),
-}));
-
-const render = (ui: React.ReactElement, options?: any) =>
-  renderBase(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      {ui}
-    </QueryClientProvider>,
-    options,
-  );
-
 // ── Mocks ────────────────────────────────────────────────────────────────────
+
+const render = (ui: React.ReactElement) => renderBase(ui);
 
 let mockPathname = "/workspace/chats";
 
@@ -44,11 +27,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-let mockAgentsEnabled = true;
-vi.mock("@/core/agents", () => ({
-  useAgentsApiEnabled: () => ({ enabled: mockAgentsEnabled }),
-}));
-
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
@@ -56,10 +34,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         chats: "Chats",
         capabilities: "Experts · Skills · Connectors",
         library: "Library",
-        agents: "Agents",
         scheduledTasks: "Scheduled tasks",
         workflows: "Workflows",
-        agentsDisabledTooltip: "Agents are not enabled",
       },
     },
   }),
@@ -115,27 +91,66 @@ afterEach(() => {
   cleanup();
 });
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const renderedLabels = () =>
+  screen
+    .getAllByTestId("sidebar-menu-item")
+    .map(
+      (item) =>
+        item.querySelector("[data-testid='sidebar-menu-button']")
+          ?.textContent ?? "",
+    );
+
+const renderedHrefs = () =>
+  screen
+    .getAllByTestId("sidebar-menu-button")
+    .map((button) => button.querySelector("a")?.getAttribute("href"));
+
+const buttonActiveStates = () =>
+  screen
+    .getAllByTestId("sidebar-menu-button")
+    .map((button) => button.getAttribute("data-is-active"));
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders six navigation items including the restored iDeer entries", () => {
+  test("keeps the pre-merge order and appends Scheduled tasks last", () => {
     render(<WorkspaceNavChatList />);
-    const items = screen.getAllByTestId("sidebar-menu-item");
-    expect(items).toHaveLength(6);
-    expect(screen.getByText("Chats")).toBeInTheDocument();
-    expect(screen.getByText("Experts · Skills · Connectors")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
-    expect(screen.getByText("Workflows")).toBeInTheDocument();
-    expect(screen.getByText("Library")).toBeInTheDocument();
+    expect(renderedLabels()).toEqual([
+      "Chats",
+      "Experts · Skills · Connectors",
+      "Workflows",
+      "Library",
+      "Scheduled tasks",
+    ]);
+  });
+
+  test("does not render a second expert management entry next to the capability center", () => {
+    render(<WorkspaceNavChatList />);
+    // The merged DeerFlow Agents management must not appear as its own
+    // sidebar entry alongside the original Experts·Skills·Connectors page.
+    expect(screen.queryByText("Agents")).not.toBeInTheDocument();
+    expect(screen.queryByText("Experts")).not.toBeInTheDocument();
+  });
+
+  test("links each entry to its pre-merge destination and Scheduled tasks to its own page", () => {
+    render(<WorkspaceNavChatList />);
+    expect(renderedHrefs()).toEqual([
+      "/workspace/chats",
+      "/workspace/capabilities/experts",
+      "/workspace/workflows",
+      "/workspace/library",
+      "/workspace/scheduled-tasks",
+    ]);
   });
 
   test("marks Chats as active when on chats path", () => {
     mockPathname = "/workspace/chats";
     render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[0]!.getAttribute("data-is-active")).toBe("true");
-    expect(buttons[1]!.getAttribute("data-is-active")).toBe("false");
+    const states = buttonActiveStates();
+    expect(states[0]).toBe("true");
+    expect(states[1]).toBe("false");
   });
 
   test("marks Capabilities active across its routes", () => {
@@ -145,51 +160,35 @@ describe("WorkspaceNavChatList", () => {
     ]) {
       mockPathname = path;
       render(<WorkspaceNavChatList />);
-      const buttons = screen.getAllByTestId("sidebar-menu-button");
-      expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
+      expect(buttonActiveStates()[1]).toBe("true");
       cleanup();
     }
   });
 
-  test("marks Agents as active on the agents path", () => {
-    mockPathname = "/workspace/agents";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
+  test("marks Workflows active on workflow and automation routes", () => {
+    for (const path of ["/workspace/workflows", "/workspace/automations"]) {
+      mockPathname = path;
+      render(<WorkspaceNavChatList />);
+      expect(buttonActiveStates()[2]).toBe("true");
+      cleanup();
+    }
   });
 
-  test("marks Scheduled tasks as active on its path", () => {
+  test("marks Library as active on its path", () => {
+    mockPathname = "/workspace/library";
+    render(<WorkspaceNavChatList />);
+    expect(buttonActiveStates()[3]).toBe("true");
+  });
+
+  test("marks Scheduled tasks as active on its path while original entries stay inactive", () => {
     mockPathname = "/workspace/scheduled-tasks";
     render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("renders Agents as a plain link when the agents API is enabled", () => {
-    mockAgentsEnabled = true;
-    render(<WorkspaceNavChatList />);
-    const link = screen.getByText("Agents").closest("a");
-    expect(link).toHaveAttribute("href", "/workspace/agents");
-  });
-
-  test("renders a disabled, tooltip-explained Agents entry when the API is off", () => {
-    mockAgentsEnabled = false;
-    render(<WorkspaceNavChatList />);
-    const button = screen
-      .getByText("Agents")
-      .closest("div[data-testid='sidebar-menu-button']");
-    expect(button).toBeInTheDocument();
-    expect(button!.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText("Agents are not enabled")).toBeInTheDocument();
-  });
-
-  test("marks Chats as inactive on other paths", () => {
-    mockPathname = "/workspace/automations";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    // Chats and Scheduled tasks stay inactive; the disabled Agents entry has
-    // no active state at all.
-    expect(buttons[0]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("false");
+    expect(buttonActiveStates()).toEqual([
+      "false",
+      "false",
+      "false",
+      "false",
+      "true",
+    ]);
   });
 });

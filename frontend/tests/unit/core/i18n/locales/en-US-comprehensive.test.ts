@@ -303,7 +303,7 @@ describe("enUS locale comprehensive", () => {
       capabilities: "Experts · Skills · Connectors",
       recentChats: "Recent chats",
       demoChats: "Demo chats",
-      agents: "Experts",
+      scheduledTasks: "Scheduled tasks",
       workflows: "Workflows",
     };
 
@@ -313,8 +313,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 13 keys", () => {
-      expect(Object.keys(enUS.sidebar)).toHaveLength(13);
+    it("has 11 keys", () => {
+      expect(Object.keys(enUS.sidebar)).toHaveLength(11);
     });
   });
 

@@ -253,7 +253,7 @@ describe("zhCN locale", () => {
       capabilities: "专家 · 技能 · 连接器",
       recentChats: "最近的对话",
       demoChats: "演示对话",
-      agents: "专家",
+      scheduledTasks: "定时任务",
       workflows: "工作流",
     };
 
@@ -263,8 +263,8 @@ describe("zhCN locale", () => {
       });
     }
 
-    it("has 13 keys", () => {
-      expect(Object.keys(zhCN.sidebar)).toHaveLength(13);
+    it("has 11 keys", () => {
+      expect(Object.keys(zhCN.sidebar)).toHaveLength(11);
     });
   });
 
