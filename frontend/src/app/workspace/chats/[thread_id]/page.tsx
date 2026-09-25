@@ -39,7 +39,6 @@ import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { useActiveGoal } from "@/components/workspace/use-active-goal";
 import { Welcome } from "@/components/workspace/welcome";
-import { RecentChatsCard } from "@/components/workspace/workbench/recent-chats-card";
 import { useAgent, useAgents } from "@/core/agents/hooks";
 import { getAPIClient } from "@/core/api";
 import { useBrowserControlEnabled } from "@/core/features";
@@ -515,7 +514,7 @@ export default function ChatPage() {
             <main
               className={cn(
                 "workbench-conversation-main flex min-h-0 max-w-full grow flex-col",
-                isWelcomeMode && "justify-center",
+                isWelcomeMode && "overflow-y-auto",
               )}
             >
               {!isWelcomeMode && (
@@ -546,7 +545,7 @@ export default function ChatPage() {
               <div
                 className={cn(
                   "relative z-30 flex shrink-0 justify-center px-4",
-                  isWelcomeMode ? "pb-0" : "pb-4",
+                  isWelcomeMode ? "my-auto pb-0" : "pb-4",
                 )}
               >
                 <div className="relative w-full max-w-(--container-width-md)">
@@ -556,7 +555,6 @@ export default function ChatPage() {
                       data-testid="workbench-home"
                     >
                       <Welcome mode={settings.context.mode} />
-                      <RecentChatsCard />
                       <div
                         className="workbench-quick-entry-module"
                         data-testid="workbench-quick-entry-module"

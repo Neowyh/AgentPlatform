@@ -118,20 +118,12 @@ describe("zhCN locale", () => {
       expect(zhCN.welcome.greeting).toBe("iDeer，落地你的idea");
     });
 
-    it("welcome.description contains iDeer brand", () => {
-      expect(zhCN.welcome.description).toContain("iDeer");
-    });
-
     it("welcome.createYourOwnSkill", () => {
       expect(zhCN.welcome.createYourOwnSkill).toBe("创建你自己的 Agent SKill");
     });
 
-    it("welcome.createYourOwnSkillDescription contains iDeer", () => {
-      expect(zhCN.welcome.createYourOwnSkillDescription).toContain("iDeer");
-    });
-
-    it("has 4 keys", () => {
-      expect(Object.keys(zhCN.welcome)).toHaveLength(4);
+    it("has 2 keys", () => {
+      expect(Object.keys(zhCN.welcome)).toHaveLength(2);
     });
   });
 
@@ -1157,8 +1149,8 @@ describe("zhCN locale", () => {
       expect(zhCN.pages.appName).toBe("iDeer");
     });
 
-    it("welcome.description mentions iDeer", () => {
-      expect(zhCN.welcome.description).toContain("iDeer");
+    it("welcome.greeting mentions iDeer", () => {
+      expect(zhCN.welcome.greeting).toContain("iDeer");
     });
 
     it("settings.description mentions iDeer", () => {

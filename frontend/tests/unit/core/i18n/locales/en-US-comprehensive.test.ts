@@ -157,20 +157,12 @@ describe("enUS locale comprehensive", () => {
       expect(enUS.welcome.greeting).toBe("iDeer, realize your idea");
     });
 
-    it("welcome.description contains iDeer brand", () => {
-      expect(enUS.welcome.description).toContain("iDeer");
-    });
-
     it("welcome.createYourOwnSkill", () => {
       expect(enUS.welcome.createYourOwnSkill).toBe("Create Your Own Skill");
     });
 
-    it("welcome.createYourOwnSkillDescription contains iDeer", () => {
-      expect(enUS.welcome.createYourOwnSkillDescription).toContain("iDeer");
-    });
-
-    it("has 4 keys", () => {
-      expect(Object.keys(enUS.welcome)).toHaveLength(4);
+    it("has 2 keys", () => {
+      expect(Object.keys(enUS.welcome)).toHaveLength(2);
     });
   });
 
@@ -1269,8 +1261,8 @@ describe("enUS locale comprehensive", () => {
       expect(enUS.pages.appName).toBe("iDeer");
     });
 
-    it("welcome.description mentions iDeer", () => {
-      expect(enUS.welcome.description).toContain("iDeer");
+    it("welcome.greeting mentions iDeer", () => {
+      expect(enUS.welcome.greeting).toContain("iDeer");
     });
 
     it("settings.description mentions iDeer", () => {

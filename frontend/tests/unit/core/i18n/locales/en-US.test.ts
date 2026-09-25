@@ -61,15 +61,12 @@ describe("en-US translations", () => {
   });
 
   describe("welcome section", () => {
-    it("has greeting and description", () => {
+    it("has greeting", () => {
       expect(typeof enUS.welcome.greeting).toBe("string");
-      expect(typeof enUS.welcome.description).toBe("string");
-      expect(enUS.welcome.description).toContain("iDeer");
     });
 
-    it("has createYourOwnSkill fields", () => {
+    it("has createYourOwnSkill field", () => {
       expect(typeof enUS.welcome.createYourOwnSkill).toBe("string");
-      expect(typeof enUS.welcome.createYourOwnSkillDescription).toBe("string");
     });
   });
 

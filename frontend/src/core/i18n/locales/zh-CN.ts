@@ -90,11 +90,7 @@ export const zhCN: Translations = {
   // Welcome
   welcome: {
     greeting: "iDeer，落地你的idea",
-    description:
-      "欢迎使用 🦌 iDeer，一个完全开源的超级智能体。通过内置和自定义的 Skills，\niDeer 可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n图片、视频、播客及网页等，几乎可以做任何事情。",
     createYourOwnSkill: "创建你自己的 Agent SKill",
-    createYourOwnSkillDescription:
-      "创建你的 Agent Skill 来释放 iDeer 的潜力。通过自定义技能，iDeer\n可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n网页等作品，几乎可以做任何事情。",
   },
 
   // Clipboard

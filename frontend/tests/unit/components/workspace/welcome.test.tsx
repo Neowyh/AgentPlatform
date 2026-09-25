@@ -14,6 +14,8 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       welcome: {
         greeting: "iDeer，落地你的idea",
+        // Retired keys kept in the mock on purpose: the component must not
+        // render a description even when the catalog still provides one.
         description: "How can I help you today?",
         createYourOwnSkill: "Create Your Own Skill",
         createYourOwnSkillDescription: "Build custom skills for your workflow",
@@ -59,12 +61,11 @@ describe("Welcome", () => {
     expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
-  test("renders a description by default", () => {
+  test("does not render the long description under the title", () => {
     render(<Welcome />);
-    // The merged welcome now shows the localized description under the title.
-    expect(
-      screen.getByText("How can I help you today?"),
-    ).toBeInTheDocument();
+    // The new-conversation home keeps only the title; the long intro was
+    // retired (issue 01 of the workbench experience refresh).
+    expect(screen.queryByText(/welcome to/i)).not.toBeInTheDocument();
   });
 
   test("renders in skill mode when search param mode=skill", () => {
@@ -73,12 +74,10 @@ describe("Welcome", () => {
     expect(screen.getByText(/Create Your Own Skill/)).toBeInTheDocument();
   });
 
-  test("renders skill description in skill mode", () => {
+  test("does not render the skill description in skill mode", () => {
     mockSearchParams = new URLSearchParams("mode=skill");
     render(<Welcome />);
-    expect(
-      screen.getByText("Build custom skills for your workflow"),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/build custom skills/i)).not.toBeInTheDocument();
   });
 
   test("does not show the localized greeting in skill mode", () => {

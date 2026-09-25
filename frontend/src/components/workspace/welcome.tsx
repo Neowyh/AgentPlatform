@@ -10,14 +10,6 @@ import { AuroraText } from "../ui/aurora-text";
 
 let waved = false;
 
-function WelcomeDescription({ children }: { children: string }) {
-  return (
-    <p className="max-w-full text-wrap break-words whitespace-pre-line">
-      {children}
-    </p>
-  );
-}
-
 export function Welcome({
   className,
   mode,
@@ -44,7 +36,7 @@ export function Welcome({
         className,
       )}
     >
-      <div className="max-w-full type-page-title font-bold">
+      <div className="type-page-title max-w-full font-bold">
         {searchParams.get("mode") === "skill" ? (
           `✨ ${t.welcome.createYourOwnSkill} ✨`
         ) : (
@@ -56,17 +48,6 @@ export function Welcome({
           </div>
         )}
       </div>
-      {searchParams.get("mode") === "skill" ? (
-        <div className="text-muted-foreground max-w-full type-supporting">
-          <WelcomeDescription>
-            {t.welcome.createYourOwnSkillDescription}
-          </WelcomeDescription>
-        </div>
-      ) : (
-        <div className="text-muted-foreground max-w-full type-supporting">
-          <WelcomeDescription>{t.welcome.description}</WelcomeDescription>
-        </div>
-      )}
     </div>
   );
 }

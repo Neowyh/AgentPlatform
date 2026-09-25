@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { mockLangGraphAPI } from "../utils/mock-api";
 
@@ -8,8 +8,30 @@ async function selectAgent(page: Page, scenario: RegExp, agent: RegExp) {
   await page.getByRole("tab", { name: agent }).click();
 }
 
+// The fixed conversation header overlays the top 48px of the viewport (h-12).
+const HEADER_BAND_PX = 48;
+
+function mockRecentThreads(page: Page, count: number) {
+  mockLangGraphAPI(page, {
+    threads: Array.from({ length: count }, (_, index) => ({
+      thread_id: `recent-thread-${index + 1}`,
+      title: `Recent work ${index + 1}`,
+      updated_at: "2026-09-01T00:00:00Z",
+    })),
+  });
+}
+
+async function expectWithinViewport(locator: Locator, viewportHeight: number) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
+}
+
 test.describe("@smoke WorkBuddy cascade bar", () => {
   test("shows three scenario tabs in welcome mode", async ({ page }) => {
+    // No seeded history: the retirements must hold on a blank account too.
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
     await expect(page.getByTestId("scenario-tabs")).toBeVisible({
@@ -22,26 +44,86 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
     await expect(
       page.getByRole("tab", { name: /Professional Tasks/ }),
     ).toBeVisible();
+    await expect(page.getByText(/open source super agent/i)).toHaveCount(0);
+    await expect(page.getByTestId("workbench-recent-chats")).toHaveCount(0);
   });
 
   test("shows the task-first welcome hierarchy", async ({ page }) => {
-    mockLangGraphAPI(page, {
-      threads: [
-        {
-          thread_id: "recent-thread",
-          title: "Recent work",
-          updated_at: "2026-09-01T00:00:00Z",
-        },
-      ],
-    });
+    mockRecentThreads(page, 1);
     await page.goto("/workspace/chats/new");
     await expect(page.getByTestId("workbench-home")).toBeVisible();
     await expect(
       page.getByText("iDeer, realize your idea").first(),
     ).toBeVisible();
-    await expect(page.getByTestId("workbench-recent-chats")).toBeVisible();
+    // History still lands in the left sidebar (this also proves the threads
+    // query resolved, so the absence assertions below are not racing it).
+    const sidebarThread = page
+      .getByTestId("thread-list")
+      .getByText("Recent work");
+    await expect(sidebarThread.first()).toBeVisible();
+    // The long intro and the in-page recent-chats card are retired from the
+    // new-conversation home (issue 01); history stays in the left sidebar.
+    await expect(page.getByText(/open source super agent/i)).toHaveCount(0);
+    await expect(page.getByTestId("workbench-recent-chats")).toHaveCount(0);
     await expect(page.getByText("方向不明？")).toBeVisible();
     await expect(page.getByText("目标明确？")).toBeVisible();
+  });
+
+  test("fits the welcome home in the desktop acceptance viewport", async ({
+    page,
+  }) => {
+    const viewport = { width: 1280, height: 720 };
+    await page.setViewportSize(viewport);
+    // Seed enough history to render the full recent-task strip — the tallest
+    // realistic welcome home.
+    mockRecentThreads(page, 3);
+    await page.goto("/workspace/chats/new");
+    const home = page.getByTestId("workbench-home");
+    await expect(home).toBeVisible({ timeout: 15_000 });
+    const input = page.getByTestId("chat-input");
+    await expect(input).toBeVisible();
+
+    // Title, quick entry, and input all sit fully inside the first screen.
+    await expectWithinViewport(home, viewport.height);
+    await expectWithinViewport(input, viewport.height);
+
+    // Nothing overlaps: the home block ends above the input's guide row.
+    const homeBox = (await home.boundingBox())!;
+    const inputBox = (await input.boundingBox())!;
+    expect(homeBox.y + homeBox.height).toBeLessThanOrEqual(inputBox.y);
+  });
+
+  test("keeps every welcome entry reachable on short and narrow viewports", async ({
+    page,
+  }) => {
+    mockRecentThreads(page, 3);
+    // The welcome home scrolls naturally instead of being clipped: each
+    // entry and the input can be brought fully below the fixed header band
+    // and inside the viewport, on a short desktop window and a phone.
+    for (const viewport of [
+      { width: 1280, height: 420 },
+      { width: 375, height: 812 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/workspace/chats/new");
+      const input = page.getByTestId("chat-input");
+      await expect(input).toBeVisible({ timeout: 15_000 });
+
+      for (const locator of [
+        input,
+        page.getByTestId("scenario-tabs"),
+        page.getByRole("tab", { name: /Daily Office/ }),
+      ]) {
+        await locator.evaluate((element) => {
+          element.scrollIntoView({ block: "center" });
+        });
+        await expect(locator).toBeVisible();
+        const box = await locator.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.y).toBeGreaterThanOrEqual(HEADER_BAND_PX);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+      }
+    }
   });
 
   test("shows pills when scenario tab is selected", async ({ page }) => {

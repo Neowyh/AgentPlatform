@@ -91,11 +91,7 @@ export const enUS: Translations = {
   // Welcome
   welcome: {
     greeting: "iDeer, realize your idea",
-    description:
-      "Welcome to 🦌 iDeer, an open source super agent. With built-in and custom skills, iDeer helps you search on the web, analyze data, and generate artifacts like slides, web pages and do almost anything.",
     createYourOwnSkill: "Create Your Own Skill",
-    createYourOwnSkillDescription:
-      "Create your own skill to release the power of iDeer. With customized skills,\niDeer can help you search on the web, analyze data, and generate\n artifacts like slides, web pages and do almost anything.",
   },
 
   // Clipboard
