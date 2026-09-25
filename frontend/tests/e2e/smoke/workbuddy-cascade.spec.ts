@@ -8,9 +8,6 @@ async function selectAgent(page: Page, scenario: RegExp, agent: RegExp) {
   await page.getByRole("tab", { name: agent }).click();
 }
 
-// The fixed conversation header overlays the top 48px of the viewport (h-12).
-const HEADER_BAND_PX = 48;
-
 function mockRecentThreads(page: Page, count: number) {
   mockLangGraphAPI(page, {
     threads: Array.from({ length: count }, (_, index) => ({
@@ -21,11 +18,25 @@ function mockRecentThreads(page: Page, count: number) {
   });
 }
 
-async function expectWithinViewport(locator: Locator, viewportHeight: number) {
+// Height of the fixed conversation header, read from the rendered header
+// element so the tests track the CSS instead of a hardcoded pixel value.
+async function fixedHeaderBand(page: Page): Promise<number> {
+  const header = page.locator("header.workbench-conversation-header");
+  await expect(header).toBeAttached();
+  const box = await header.boundingBox();
+  expect(box).not.toBeNull();
+  return box!.height;
+}
+
+async function expectWithinViewport(
+  locator: Locator,
+  viewportHeight: number,
+  minY = 0,
+) {
   await expect(locator).toBeVisible();
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
-  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(minY);
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
 }
 
@@ -78,14 +89,16 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
     // realistic welcome home.
     mockRecentThreads(page, 3);
     await page.goto("/workspace/chats/new");
+    const headerBand = await fixedHeaderBand(page);
     const home = page.getByTestId("workbench-home");
     await expect(home).toBeVisible({ timeout: 15_000 });
     const input = page.getByTestId("chat-input");
     await expect(input).toBeVisible();
 
-    // Title, quick entry, and input all sit fully inside the first screen.
-    await expectWithinViewport(home, viewport.height);
-    await expectWithinViewport(input, viewport.height);
+    // Title, quick entry, and input all sit fully inside the first screen,
+    // below the fixed header band — nothing hides under it.
+    await expectWithinViewport(home, viewport.height, headerBand);
+    await expectWithinViewport(input, viewport.height, headerBand);
 
     // Nothing overlaps: the home block ends above the input's guide row.
     const homeBox = (await home.boundingBox())!;
@@ -106,6 +119,7 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
     ]) {
       await page.setViewportSize(viewport);
       await page.goto("/workspace/chats/new");
+      const headerBand = await fixedHeaderBand(page);
       const input = page.getByTestId("chat-input");
       await expect(input).toBeVisible({ timeout: 15_000 });
 
@@ -117,12 +131,20 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
         await locator.evaluate((element) => {
           element.scrollIntoView({ block: "center" });
         });
-        await expect(locator).toBeVisible();
-        const box = await locator.boundingBox();
-        expect(box).not.toBeNull();
-        expect(box!.y).toBeGreaterThanOrEqual(HEADER_BAND_PX);
-        expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+        await expectWithinViewport(locator, viewport.height, headerBand);
       }
+    }
+  });
+
+  test("keeps the full conversation list working", async ({ page }) => {
+    // Criterion 4: besides the sidebar, the full list page must keep
+    // rendering history after the welcome-home retirements.
+    mockRecentThreads(page, 3);
+    await page.goto("/workspace/chats");
+    const listMain = page.locator("main.workbench-body");
+    await expect(listMain).toBeVisible({ timeout: 15_000 });
+    for (const title of ["Recent work 1", "Recent work 2", "Recent work 3"]) {
+      await expect(listMain.getByText(title)).toBeVisible();
     }
   });
 

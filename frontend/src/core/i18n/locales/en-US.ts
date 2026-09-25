@@ -1492,10 +1492,6 @@ export const enUS: Translations = {
     },
   },
 
-  workbench: {
-    recentChatsTitle: "Recent chats",
-  },
-
   // Scenario cascade bar
   scenarios: {
     daily: "Daily Office",

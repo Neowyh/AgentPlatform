@@ -1206,10 +1206,6 @@ export interface Translations {
     };
   };
 
-  workbench: {
-    recentChatsTitle: string;
-  };
-
   // Scenario cascade bar
   scenarios: {
     daily: string;

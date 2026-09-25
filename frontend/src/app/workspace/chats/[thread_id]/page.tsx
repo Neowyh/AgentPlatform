@@ -545,7 +545,10 @@ export default function ChatPage() {
               <div
                 className={cn(
                   "relative z-30 flex shrink-0 justify-center px-4",
-                  isWelcomeMode ? "my-auto pb-0" : "pb-4",
+                  // pt-12 keeps the welcome content clear of the fixed
+                  // h-12 header when the auto margins collapse to zero on
+                  // tall homes (history strip included).
+                  isWelcomeMode ? "my-auto pt-12 pb-0" : "pb-4",
                 )}
               >
                 <div className="relative w-full max-w-(--container-width-md)">

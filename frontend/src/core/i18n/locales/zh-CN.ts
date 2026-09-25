@@ -1415,10 +1415,6 @@ export const zhCN: Translations = {
     },
   },
 
-  workbench: {
-    recentChatsTitle: "最近的对话",
-  },
-
   // Scenario cascade bar
   scenarios: {
     daily: "日常办公",
