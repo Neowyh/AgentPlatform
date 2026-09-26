@@ -12,6 +12,12 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { KnowledgeDependencySelector } from "@/components/workspace/capabilities/knowledge-dependency-selector";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAuth } from "@/core/auth/AuthProvider";
@@ -57,6 +63,7 @@ export default function WorkflowEditPage() {
   const [knowledgeDependencies, setKnowledgeDependencies] = useState<
     NonNullable<WorkflowDetail["knowledge_dependencies"]>
   >([]);
+  const [knowledgeDialogOpen, setKnowledgeDialogOpen] = useState(false);
 
   useEffect(() => {
     if (workflow) {
@@ -176,6 +183,14 @@ export default function WorkflowEditPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {knowledgeBases.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setKnowledgeDialogOpen(true)}
+            >
+              {t.library.knowledgeBases}
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => router.push(`/workspace/workflows/${workflow_name}`)}
@@ -206,18 +221,21 @@ export default function WorkflowEditPage() {
         </div>
       )}
 
-      {knowledgeBases.length > 0 && (
-        <div className="border-b px-6 py-3">
-          <div className="mx-auto max-w-2xl space-y-2">
-            <div className="type-body font-medium">KnowledgeBases</div>
-            <KnowledgeDependencySelector
-              knowledgeBases={knowledgeBases}
-              dependencies={knowledgeDependencies}
-              onChange={setKnowledgeDependencies}
-            />
-          </div>
-        </div>
-      )}
+      <Dialog open={knowledgeDialogOpen} onOpenChange={setKnowledgeDialogOpen}>
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-h-[80vh] overflow-y-auto sm:max-w-2xl"
+        >
+          <DialogHeader>
+            <DialogTitle>{t.library.knowledgeBases}</DialogTitle>
+          </DialogHeader>
+          <KnowledgeDependencySelector
+            knowledgeBases={knowledgeBases}
+            dependencies={knowledgeDependencies}
+            onChange={setKnowledgeDependencies}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Editor */}
       <div className="flex min-h-0 flex-1">

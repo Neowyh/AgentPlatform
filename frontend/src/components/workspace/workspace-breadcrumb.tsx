@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Fragment } from "react";
 
 import {
   Breadcrumb,
@@ -203,16 +204,18 @@ export function WorkspaceBreadcrumb({
     <Breadcrumb className="px-6 py-2">
       <BreadcrumbList>
         {segments.map((segment, index) => (
-          <BreadcrumbItem key={index}>
+          <Fragment key={index}>
             {index > 0 && <BreadcrumbSeparator />}
-            {segment.href ? (
-              <BreadcrumbLink asChild>
-                <Link href={segment.href}>{segment.label}</Link>
-              </BreadcrumbLink>
-            ) : (
-              <BreadcrumbPage>{segment.label}</BreadcrumbPage>
-            )}
-          </BreadcrumbItem>
+            <BreadcrumbItem>
+              {segment.href ? (
+                <BreadcrumbLink asChild>
+                  <Link href={segment.href}>{segment.label}</Link>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{segment.label}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
         ))}
       </BreadcrumbList>
     </Breadcrumb>

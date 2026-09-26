@@ -18,8 +18,77 @@ const MOCK_WORKFLOWS = [
   },
 ];
 
+const UPDATED_WORKFLOW_YAML = `schema_version: 2
+name: test-workflow
+description: "Updated workflow"
+inputs:
+  query:
+    type: string
+    required: true
+state: {}
+entrypoint: step1
+nodes:
+  - id: step1
+    type: action
+    action:
+      kind: agent
+      name: test-agent
+      params:
+        prompt: "{{inputs.query}}"
+edges: []`;
+
 test.describe("Workflow management", () => {
   test.describe("Gallery", () => {
+    test("existing workflow can be opened, edited, saved, and prepared to run", async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      mockLangGraphAPI(page, { workflows: MOCK_WORKFLOWS });
+      await page.route(/\/api\/resources\?type=knowledge_base/, (route) =>
+        route.fulfill({ json: { items: [], total: 0 } }),
+      );
+      await page.route(
+        /\/api\/resources\/test-workflow\/workflow-runs$/,
+        (route) =>
+          route.fulfill({
+            json: { run_id: "run-1", workflow: "test-workflow" },
+          }),
+      );
+      await page.goto("/workspace/workflows");
+      await expect(page.getByTestId("workflow-card")).toBeVisible();
+      await page.getByTestId("workflow-card").click();
+      await expect(page).toHaveURL(/\/workspace\/workflows\/test-workflow$/);
+      await expect(page.getByRole("link", { name: /edit/i })).toBeVisible();
+      await page.getByRole("link", { name: /edit/i }).click();
+      await expect(page.locator(".cm-editor")).toBeVisible();
+      await page.locator(".cm-content").fill(UPDATED_WORKFLOW_YAML);
+      const saveRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "PUT" &&
+          request.url().includes("/workflow-draft"),
+      );
+      await page.getByRole("button", { name: /save changes/i }).click();
+      expect((await saveRequest).postDataJSON()).toMatchObject({
+        content: UPDATED_WORKFLOW_YAML,
+      });
+      await expect(page).toHaveURL(/\/workspace\/workflows\/[^/]+$/);
+      await expect(page.getByRole("button", { name: /run/i })).toBeVisible();
+      await page.getByRole("button", { name: /run/i }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("textbox").first().fill("Research");
+      const runRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "POST" &&
+          request.url().includes("/workflow-runs"),
+      );
+      await dialog.getByRole("button", { name: /run/i }).click();
+      expect((await runRequest).postDataJSON()).toMatchObject({
+        inputs: { query: "Research" },
+      });
+      await expect(page).toHaveURL(/\/runs\/[^/]+$/);
+    });
+
     test("gallery page loads and shows workflow cards", async ({ page }) => {
       mockLangGraphAPI(page, { workflows: MOCK_WORKFLOWS });
       await page.goto("/workspace/workflows");

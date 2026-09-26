@@ -88,7 +88,7 @@ vi.mock("@/components/ui/breadcrumb", () => ({
   BreadcrumbPage: ({ children }: { children: React.ReactNode }) => (
     <span data-testid="breadcrumb-page">{children}</span>
   ),
-  BreadcrumbSeparator: () => <span data-testid="breadcrumb-separator">/</span>,
+  BreadcrumbSeparator: () => <li data-testid="breadcrumb-separator">/</li>,
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -240,6 +240,13 @@ describe("WorkspaceBreadcrumb", () => {
     render(<WorkspaceBreadcrumb />);
     const separators = screen.getAllByTestId("breadcrumb-separator");
     expect(separators.length).toBeGreaterThan(0);
+    const list = screen.getByTestId("breadcrumb-list");
+    expect(list.children).toHaveLength(3);
+    expect(Array.from(list.children).map((child) => child.tagName)).toEqual([
+      "LI",
+      "LI",
+      "LI",
+    ]);
   });
 
   test("returns null for non-workspace paths", () => {

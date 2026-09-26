@@ -71,6 +71,7 @@ vi.mock("@/core/i18n/hooks", () => ({
       },
       common: { loading: "Loading...", cancel: "Cancel" },
       library: {
+        knowledgeBases: "Knowledge bases",
         dependencySelector: {
           loadError:
             "Knowledge dependencies could not be loaded. Reload before saving.",
@@ -287,6 +288,15 @@ describe("WorkflowEditPage", () => {
     });
 
     render(<WorkflowEditPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Knowledge bases" }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("checkbox", { name: /Docs/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Knowledge bases" }));
     const checkbox = await waitFor(() =>
       screen.getByRole("checkbox", { name: /Docs/ }),
     );
