@@ -46,6 +46,7 @@ import {
 } from "@/core/agents/api";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
+import { createHumanInputSubmitter } from "@/core/messages/human-input";
 import { useThreadStream } from "@/core/threads/hooks";
 import { uuid } from "@/core/utils/uuid";
 import { isIMEComposing } from "@/lib/ime";
@@ -177,6 +178,16 @@ export default function NewAgentPage() {
         err.reason === "backend_unreachable"
       ) {
         setNameError(t.agents.nameStepNetworkError);
+      } else if (
+        err instanceof AgentNameCheckError &&
+        err.reason === "request_failed" &&
+        err.detail
+      ) {
+        // Surface the backend-provided detail so a validation failure is
+        // actionable instead of a generic check error.
+        setNameError(
+          t.agents.nameStepCheckErrorWithDetail.replace("{detail}", err.detail),
+        );
       } else {
         setNameError(t.agents.nameStepCheckError);
       }
@@ -202,6 +213,7 @@ export default function NewAgentPage() {
     t.agents.nameStepNetworkError,
     t.agents.nameStepBootstrapMessage,
     t.agents.nameStepCheckError,
+    t.agents.nameStepCheckErrorWithDetail,
     t.agents.nameStepInvalidError,
     threadId,
   ]);
@@ -224,6 +236,18 @@ export default function NewAgentPage() {
       );
     },
     [agentName, sendMessage, thread.isLoading, threadId],
+  );
+
+  // The setup assistant may answer with an ask-clarification card; without a
+  // submit handler the card renders permanently disabled and creation stalls.
+  const handleSubmitHumanInput = useMemo(
+    () =>
+      createHumanInputSubmitter({
+        sendMessage,
+        threadId,
+        agentName,
+      }),
+    [agentName, sendMessage, threadId],
   );
 
   const handleSaveAgent = useCallback(async () => {
@@ -404,6 +428,9 @@ export default function NewAgentPage() {
                 className={cn("size-full", showSaveHint ? "pt-4" : "pt-10")}
                 threadId={threadId}
                 thread={thread}
+                onSubmitHumanInput={
+                  agentName ? handleSubmitHumanInput : undefined
+                }
               />
             </div>
 

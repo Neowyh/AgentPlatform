@@ -1,5 +1,7 @@
-import { AgentGallery } from "@/components/workspace/agents/agent-gallery";
+import { redirect } from "next/navigation";
 
+// The standalone Agents management page was merged into the capability
+// center's expert tab (issue 03); old URLs keep working through this redirect.
 export default function AgentsPage() {
-  return <AgentGallery />;
+  redirect("/workspace/capabilities/experts");
 }

@@ -2,7 +2,7 @@
 
 import { ArrowLeftIcon, SaveIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,23 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  allowedSubagentsToSelection,
+  INHERIT_VALUE,
+  MAX_AGENT_OUTPUT_TOKENS,
+  parseAgentModelSettingsDraft,
+  selectionToAllowedSubagents,
+  selectionToThinkingEnabled,
+  thinkingEnabledToSelection,
+  type SubagentAccessSelection,
+  type ThinkingSelection,
+} from "@/components/workspace/agents/agent-settings-dialog-helpers";
+import {
   KnowledgeDependencySelector,
   type KnowledgeDependencyOption,
 } from "@/components/workspace/capabilities/knowledge-dependency-selector";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent, useUpdateAgent } from "@/core/agents";
-import type { UpdateAgentRequest } from "@/core/agents";
+import type { ReasoningEffort, UpdateAgentRequest } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import {
@@ -38,6 +49,7 @@ import {
   listKnowledgeBases,
 } from "@/core/resources/api";
 import { useSkills } from "@/core/skills/hooks";
+import { useSubagents } from "@/core/subagents";
 
 const TOOL_GROUPS = [
   { id: "file:read", label: "File Read" },
@@ -47,6 +59,12 @@ const TOOL_GROUPS = [
   { id: "enterprise", label: "Enterprise" },
 ];
 
+const REASONING_EFFORTS: ReasoningEffort[] = ["low", "medium", "high"];
+
+// Shared by the native selects on this form (model + behavior settings).
+const SELECT_CLASS =
+  "border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring type-body flex h-10 w-full rounded-md border px-3 py-2 file:border-0 file:bg-transparent file:font-medium focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+
 export default function AgentEditPage() {
   const { t } = useI18n();
   const router = useRouter();
@@ -54,6 +72,7 @@ export default function AgentEditPage() {
   const { agent, isLoading: isLoadingAgent } = useAgent(agent_name);
   const { models } = useModels();
   const { skills } = useSkills();
+  const { subagents } = useSubagents();
   const updateAgent = useUpdateAgent();
 
   const [formData, setFormData] = useState<UpdateAgentRequest>({
@@ -63,6 +82,18 @@ export default function AgentEditPage() {
     skills: [],
     soul: "",
   });
+  // Model-behavior overrides (merged from the DeerFlow expert settings
+  // dialog): temperature / max tokens / thinking / reasoning effort /
+  // subagent access.
+  const [temperature, setTemperature] = useState("");
+  const [maxTokens, setMaxTokens] = useState("");
+  const [thinking, setThinking] = useState<ThinkingSelection>(INHERIT_VALUE);
+  const [reasoningEffort, setReasoningEffort] = useState<
+    ReasoningEffort | typeof INHERIT_VALUE
+  >(INHERIT_VALUE);
+  const [subagentAccess, setSubagentAccess] =
+    useState<SubagentAccessSelection>("all");
+  const [selectedSubagents, setSelectedSubagents] = useState<string[]>([]);
   const [originalVisibility, setOriginalVisibility] = useState("private");
   const [visibilityChangeDialogOpen, setVisibilityChangeDialogOpen] =
     useState(false);
@@ -89,6 +120,20 @@ export default function AgentEditPage() {
         draft_revision: agent.draft_revision,
       });
       setOriginalVisibility(agent.visibility ?? "private");
+      setTemperature(
+        agent.model_settings?.temperature != null
+          ? String(agent.model_settings.temperature)
+          : "",
+      );
+      setMaxTokens(
+        agent.model_settings?.max_tokens != null
+          ? String(agent.model_settings.max_tokens)
+          : "",
+      );
+      setThinking(thinkingEnabledToSelection(agent.thinking_enabled));
+      setReasoningEffort(agent.reasoning_effort ?? INHERIT_VALUE);
+      setSubagentAccess(allowedSubagentsToSelection(agent.allowed_subagents));
+      setSelectedSubagents(agent.allowed_subagents ?? []);
     }
   }, [agent]);
 
@@ -122,6 +167,37 @@ export default function AgentEditPage() {
       });
   }, [agent?.resource_id]);
 
+  // The resolved model gates which behavior controls are meaningful. When the
+  // agent inherits the global default, fall back to models[0] so the controls
+  // stay visible. Both identifiers are accepted because older drafts stored
+  // the provider id while the settings surface stored the unique name.
+  const selectedModel = formData.model
+    ? models.find(
+        (model) =>
+          model.name === formData.model || model.model === formData.model,
+      )
+    : models[0];
+  const supportsThinking = selectedModel?.supports_thinking ?? false;
+  const supportsReasoningEffort =
+    selectedModel?.supports_reasoning_effort ?? false;
+  const selectableSubagents = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          subagents
+            .filter((item) => item.enabled && !item.conflict)
+            .map((item) => [item.name, item]),
+        ).values(),
+      ),
+    [subagents],
+  );
+  const missingSubagents = useMemo(() => {
+    const selectableNames = new Set(
+      selectableSubagents.map((item) => item.name),
+    );
+    return selectedSubagents.filter((name) => !selectableNames.has(name));
+  }, [selectableSubagents, selectedSubagents]);
+
   const handleSave = useCallback(async () => {
     if (
       formData.visibility !== undefined &&
@@ -139,7 +215,19 @@ export default function AgentEditPage() {
         );
         return;
       }
-      const request = agent?.resource_id
+      const parsedSettings = parseAgentModelSettingsDraft({
+        temperature,
+        maxTokens,
+      });
+      if (!parsedSettings.ok) {
+        toast.error(
+          parsedSettings.error === "temperature"
+            ? t.agents.settingsInvalidTemperature
+            : t.agents.settingsInvalidMaxTokens,
+        );
+        return;
+      }
+      const baseRequest = agent?.resource_id
         ? {
             ...formData,
             ...(knowledgeDependenciesLoaded
@@ -147,6 +235,21 @@ export default function AgentEditPage() {
               : {}),
           }
         : formData;
+      const request = {
+        ...baseRequest,
+        model_settings: parsedSettings.modelSettings,
+        thinking_enabled: supportsThinking
+          ? selectionToThinkingEnabled(thinking)
+          : null,
+        reasoning_effort:
+          supportsReasoningEffort && reasoningEffort !== INHERIT_VALUE
+            ? reasoningEffort
+            : null,
+        allowed_subagents: selectionToAllowedSubagents(
+          subagentAccess,
+          selectedSubagents,
+        ),
+      };
       await updateAgent.mutateAsync({ name: agent_name, request });
       toast.success("Agent updated successfully");
       router.push(`/workspace/capabilities/experts/${agent_name}`);
@@ -160,7 +263,18 @@ export default function AgentEditPage() {
     knowledgeDependencies,
     knowledgeDependenciesLoaded,
     knowledgeDependenciesLoadError,
+    maxTokens,
+    reasoningEffort,
     revisionsLoadError,
+    selectedModel,
+    selectedSubagents,
+    subagentAccess,
+    supportsReasoningEffort,
+    supportsThinking,
+    t.agents.settingsInvalidMaxTokens,
+    t.agents.settingsInvalidTemperature,
+    temperature,
+    thinking,
     originalVisibility,
     router,
     updateAgent,
@@ -303,7 +417,7 @@ export default function AgentEditPage() {
             <Label htmlFor="model">Model</Label>
             <select
               id="model"
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring type-body flex h-10 w-full rounded-md border px-3 py-2 file:border-0 file:bg-transparent file:font-medium focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              className={SELECT_CLASS}
               value={formData.model ?? ""}
               onChange={(e) =>
                 setFormData((prev) => ({
@@ -319,6 +433,166 @@ export default function AgentEditPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Temperature */}
+          <div className="space-y-2">
+            <Label htmlFor="temperature">{t.agents.settingsTemperature}</Label>
+            <Input
+              id="temperature"
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={temperature}
+              placeholder={t.agents.settingsInherit}
+              onChange={(e) => setTemperature(e.target.value)}
+            />
+            <p className="text-muted-foreground type-body">
+              {t.agents.settingsTemperatureHint}
+            </p>
+          </div>
+
+          {/* Max output tokens */}
+          <div className="space-y-2">
+            <Label htmlFor="max-tokens">{t.agents.settingsMaxTokens}</Label>
+            <Input
+              id="max-tokens"
+              type="number"
+              min={1}
+              max={MAX_AGENT_OUTPUT_TOKENS}
+              step={1}
+              value={maxTokens}
+              placeholder={t.agents.settingsInherit}
+              onChange={(e) => setMaxTokens(e.target.value)}
+            />
+          </div>
+
+          {/* Thinking mode (only when the selected model supports it) */}
+          {supportsThinking && (
+            <div className="space-y-2">
+              <Label htmlFor="thinking-select">
+                {t.agents.settingsThinking}
+              </Label>
+              <select
+                id="thinking-select"
+                className={SELECT_CLASS}
+                value={thinking}
+                onChange={(e) =>
+                  setThinking(e.target.value as ThinkingSelection)
+                }
+              >
+                <option value={INHERIT_VALUE}>
+                  {t.agents.settingsInherit}
+                </option>
+                <option value="on">{t.agents.settingsThinkingOn}</option>
+                <option value="off">{t.agents.settingsThinkingOff}</option>
+              </select>
+            </div>
+          )}
+
+          {/* Reasoning effort (only when supported) */}
+          {supportsReasoningEffort && (
+            <div className="space-y-2">
+              <Label htmlFor="reasoning-effort-select">
+                {t.agents.settingsReasoningEffort}
+              </Label>
+              <select
+                id="reasoning-effort-select"
+                className={SELECT_CLASS}
+                value={reasoningEffort}
+                onChange={(e) =>
+                  setReasoningEffort(
+                    e.target.value as ReasoningEffort | typeof INHERIT_VALUE,
+                  )
+                }
+              >
+                <option value={INHERIT_VALUE}>
+                  {t.agents.settingsInherit}
+                </option>
+                {REASONING_EFFORTS.map((effort) => (
+                  <option key={effort} value={effort}>
+                    {effort}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Subagent access */}
+          <div className="space-y-2">
+            <Label htmlFor="subagent-access-select">
+              {t.settings.subagents.bindingTitle}
+            </Label>
+            <select
+              id="subagent-access-select"
+              className={SELECT_CLASS}
+              value={subagentAccess}
+              onChange={(e) =>
+                setSubagentAccess(e.target.value as SubagentAccessSelection)
+              }
+            >
+              <option value="all">{t.settings.subagents.allAllowed}</option>
+              <option value="none">{t.settings.subagents.noneAllowed}</option>
+              <option value="selected">
+                {t.settings.subagents.selectedAllowed}
+              </option>
+            </select>
+            {subagentAccess === "selected" && (
+              <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                {selectableSubagents.map((item) => (
+                  <label
+                    key={item.name}
+                    className="hover:bg-accent type-body flex cursor-pointer items-start gap-2 rounded-md p-2"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4"
+                      checked={selectedSubagents.includes(item.name)}
+                      onChange={(event) =>
+                        setSelectedSubagents((current) =>
+                          event.target.checked
+                            ? [...current, item.name]
+                            : current.filter((name) => name !== item.name),
+                        )
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">
+                        {item.display_name ?? item.name}
+                      </span>{" "}
+                      <span className="text-muted-foreground block">
+                        {item.description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+                {missingSubagents.map((name) => (
+                  <label
+                    key={name}
+                    className="text-muted-foreground type-body flex items-start gap-2"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4"
+                      checked
+                      disabled
+                      onChange={() =>
+                        setSelectedSubagents((current) =>
+                          current.filter((item) => item !== name),
+                        )
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">{name}</span>
+                      <span className="block">
+                        {t.settings.subagents.missing}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Visibility */}

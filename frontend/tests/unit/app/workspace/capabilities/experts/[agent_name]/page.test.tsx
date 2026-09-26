@@ -119,7 +119,7 @@ describe("AgentDetailPage unified resource detail", () => {
     expect(screen.queryByText("--")).not.toBeInTheDocument();
   });
 
-  test("hides modification actions for read-only experts", () => {
+  test("hides modification actions for read-only experts but keeps export", () => {
     mocks.useAgent.mockReturnValue({
       agent: { ...agent, read_only: true },
       isLoading: false,
@@ -129,9 +129,8 @@ describe("AgentDetailPage unified resource detail", () => {
     expect(
       screen.queryByRole("link", { name: "Edit" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Export" }),
-    ).not.toBeInTheDocument();
+    // Export only needs read access, so it remains available.
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });
 
   test("uses the canonical resource id for export", async () => {

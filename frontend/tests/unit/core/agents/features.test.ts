@@ -8,9 +8,9 @@ rs.mock("@/core/config", () => ({
   getBackendBaseURL: () => "",
 }));
 
-import { fetchAgentsApiEnabled } from "@/core/agents/api";
 import { fetch as fetcher } from "@/core/api/fetcher";
 import {
+  fetchAgentsApiEnabled,
   fetchBrowserControlEnabled,
   fetchMcpTasksEnabled,
 } from "@/core/features/api";

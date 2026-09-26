@@ -11,6 +11,7 @@ const mockSendMessage = vi.fn();
 let threadIsLoading = false;
 let toolEndCallback: ((args: { name: string }) => void) | undefined;
 let finishCallback: (() => void) | undefined;
+let messageListProps: Record<string, unknown> | undefined;
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
@@ -33,6 +34,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         nameStepAlreadyExistsError: "Already exists",
         nameStepNetworkError: "Network error",
         nameStepCheckError: "Check error",
+        nameStepCheckErrorWithDetail: "Check failed: {detail}",
         nameStepBootstrapMessage: "Hello {name}",
         visibility: "可见性",
         visibilityPrivate: "私有",
@@ -61,9 +63,11 @@ vi.mock("@/core/agents/api", () => ({
   getAgent: vi.fn(),
   AgentNameCheckError: class extends Error {
     reason: string;
-    constructor(msg: string, reason: string) {
+    detail: string | null;
+    constructor(msg: string, reason: string, detail: string | null = null) {
       super(msg);
       this.reason = reason;
+      this.detail = detail;
     }
   },
 }));
@@ -181,11 +185,14 @@ vi.mock("@/components/workspace/artifacts", () => ({
 }));
 
 vi.mock("@/components/workspace/messages", () => ({
-  MessageList: ({ threadId }: any) => (
-    <div data-testid="message-list" data-thread-id={threadId}>
-      Messages
-    </div>
-  ),
+  MessageList: (props: any) => {
+    messageListProps = props;
+    return (
+      <div data-testid="message-list" data-thread-id={props.threadId}>
+        Messages
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/components/workspace/messages/context", () => ({
@@ -268,6 +275,7 @@ describe("NewAgentPage", () => {
     threadIsLoading = false;
     toolEndCallback = undefined;
     finishCallback = undefined;
+    messageListProps = undefined;
     window.localStorage.clear();
   });
 
@@ -1453,6 +1461,76 @@ describe("NewAgentPage", () => {
 
       const saveItem = screen.getByText("Save").closest("[data-disabled]");
       expect(saveItem).toHaveAttribute("data-disabled", "false");
+    });
+  });
+
+  // =========================================================================
+  // Human input (clarification) during the creation chat
+  // =========================================================================
+
+  describe("Human input during creation chat", () => {
+    test("chat step passes a clarification submit handler to the message list", async () => {
+      await goToChatStep("clarify-agent");
+
+      expect(messageListProps).toBeDefined();
+      expect(typeof messageListProps!.onSubmitHumanInput).toBe("function");
+    });
+
+    test("submitting a clarification sends the response with hidden kwargs", async () => {
+      // The real stream hook flips `sent` through the `onSent` callback.
+      mockSendMessage.mockImplementation(async (...args: unknown[]) => {
+        (args[3] as { onSent?: () => void } | undefined)?.onSent?.();
+      });
+      await goToChatStep("clarify-send-agent");
+
+      const handler = messageListProps!.onSubmitHumanInput as (
+        request: unknown,
+        response: unknown,
+      ) => Promise<boolean>;
+      const sent = await handler(
+        { question: "Which model should I use?" },
+        { value: "GLM, please" },
+      );
+
+      expect(sent).toBe(true);
+      // First call is the creation bootstrap message; the clarification reply
+      // is the second.
+      expect(mockSendMessage).toHaveBeenCalledTimes(2);
+      const [, message, context, options] = mockSendMessage.mock.calls.at(-1)!;
+      expect(message).toEqual({
+        text: 'For your clarification "Which model should I use?", my answer is: GLM, please',
+        files: [],
+      });
+      expect(context).toEqual({ agent_name: "clarify-send-agent" });
+      expect(options.additionalKwargs).toMatchObject({
+        hide_from_ui: true,
+        human_input_response: { value: "GLM, please" },
+      });
+    });
+  });
+
+  // =========================================================================
+  // Name check errors surface backend detail
+  // =========================================================================
+
+  describe("Name check error detail", () => {
+    test("request_failed error with backend detail surfaces the detail text", async () => {
+      mockedCheckAgentName.mockRejectedValue(
+        new (await import("@/core/agents/api")).AgentNameCheckError(
+          "Failed to check agent name",
+          "request_failed",
+          "alias length must be <= 64",
+        ),
+      );
+
+      renderPage();
+      fireEvent.change(getNameInput(), { target: { value: "detail-agent" } });
+      fireEvent.click(getContinueButton());
+      await act(async () => {});
+
+      expect(
+        screen.getByText("Check failed: alias length must be <= 64"),
+      ).toBeInTheDocument();
     });
   });
 });

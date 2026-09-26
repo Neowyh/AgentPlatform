@@ -544,9 +544,6 @@ export const enUS: Translations = {
     emptyTitle: "No custom Experts yet",
     emptyDescription:
       "Create your first custom Expert with a specialized system prompt.",
-    featureDisabledTitle: "Agents feature is not enabled",
-    featureDisabledDescription:
-      "This feature is not enabled on this server. Please contact your administrator.",
     chat: "Chat",
     delete: "Delete",
     deleteConfirm:
@@ -568,8 +565,6 @@ export const enUS: Translations = {
       "Network request failed — check your network or backend connection",
     nameStepCheckError: "Could not verify name availability — please try again",
     nameStepCheckErrorWithDetail: "Name check failed: {detail}",
-    nameStepApiDisabledError:
-      "Custom agent management is not enabled on this server. Please contact your administrator.",
     nameStepBootstrapMessage:
       "The new custom Expert name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
     save: "Save Expert",

@@ -445,8 +445,6 @@ export interface Translations {
     newAgent: string;
     emptyTitle: string;
     emptyDescription: string;
-    featureDisabledTitle: string;
-    featureDisabledDescription: string;
     chat: string;
     delete: string;
     deleteConfirm: string;
@@ -463,7 +461,6 @@ export interface Translations {
     nameStepNetworkError: string;
     nameStepCheckError: string;
     nameStepCheckErrorWithDetail: string;
-    nameStepApiDisabledError: string;
     nameStepBootstrapMessage: string;
     save: string;
     saving: string;

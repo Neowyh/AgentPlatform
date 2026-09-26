@@ -521,8 +521,6 @@ export const zhCN: Translations = {
     newAgent: "新建专家",
     emptyTitle: "还没有自定义专家",
     emptyDescription: "创建你的第一个自定义专家，设置专属系统提示词。",
-    featureDisabledTitle: "智能体功能未启用",
-    featureDisabledDescription: "该功能未在此服务器上启用，请联系管理员。",
     chat: "对话",
     delete: "删除",
     deleteConfirm: "确定要归档该专家吗？",
@@ -540,8 +538,6 @@ export const zhCN: Translations = {
     nameStepNetworkError: "网络请求失败，请检查网络或后端连接",
     nameStepCheckError: "无法验证名称可用性，请稍后重试",
     nameStepCheckErrorWithDetail: "名称校验失败：{detail}",
-    nameStepApiDisabledError:
-      "服务器未开启自定义智能体管理功能，请联系管理员。",
     nameStepBootstrapMessage:
       "新专家的名称是 {name}。请先帮我设计它的用途、行为方式和 SOUL.md，再保存它。",
     save: "保存专家",

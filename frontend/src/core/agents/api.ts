@@ -2,7 +2,6 @@ import { extractError, parseErrorDetail } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
-export { fetchAgentsApiEnabled } from "@/core/features/api";
 import type { Agent, CreateAgentRequest, UpdateAgentRequest } from "./types";
 
 const BACKEND_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
@@ -14,12 +13,6 @@ export class AgentNameCheckError extends Error {
   ) {
     super(message);
     this.name = "AgentNameCheckError";
-  }
-}
-export class AgentsApiDisabledError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentsApiDisabledError";
   }
 }
 type Resource = {

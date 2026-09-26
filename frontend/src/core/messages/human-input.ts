@@ -586,3 +586,59 @@ export function buildHumanInputResponseText(
 ) {
   return `For your clarification "${request.question}", my answer is: ${response.value}`;
 }
+
+type HumanInputSendMessage = (
+  threadId: string,
+  message: { text: string; files: never[] },
+  extraContext?: Record<string, unknown>,
+  options?: {
+    additionalKwargs?: Record<string, unknown>;
+    onSent?: () => void;
+  },
+) => Promise<unknown>;
+
+/**
+ * Build the `onSubmitHumanInput` handler shared by every chat surface that
+ * renders answerable clarification cards (main chat, expert chat, expert
+ * creation): the reply text is synthesized from the request, the raw response
+ * rides along in hidden kwargs, and the promise resolves to whether the send
+ * was actually dispatched.
+ */
+export function createHumanInputSubmitter({
+  sendMessage,
+  threadId,
+  agentName,
+}: {
+  sendMessage: HumanInputSendMessage;
+  threadId: string;
+  agentName: string | null | undefined;
+}): (
+  request: HumanInputRequest,
+  response: HumanInputResponse,
+) => Promise<boolean> {
+  return async (request, response) => {
+    if (!agentName) {
+      return false;
+    }
+
+    let sent = false;
+    await sendMessage(
+      threadId,
+      {
+        text: buildHumanInputResponseText(request, response),
+        files: [],
+      },
+      { agent_name: agentName },
+      {
+        additionalKwargs: {
+          hide_from_ui: true,
+          human_input_response: response,
+        },
+        onSent: () => {
+          sent = true;
+        },
+      },
+    );
+    return sent;
+  };
+}

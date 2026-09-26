@@ -422,8 +422,11 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("has the correct number of keys", () => {
-      // 72 enterprise keys restored + 21 upstream agent-settings keys = 93
-      expect(Object.keys(enUS.agents)).toHaveLength(93);
+      // 72 enterprise keys restored + 21 upstream agent-settings keys, minus
+      // 3 keys orphaned when the /workspace/agents surface was merged into
+      // the capability center (featureDisabledTitle/Description,
+      // nameStepApiDisabledError) = 90
+      expect(Object.keys(enUS.agents)).toHaveLength(90);
     });
 
     it("nameStepBootstrapMessage contains {name} placeholder", () => {

@@ -173,12 +173,12 @@ export default function AgentDetailPage() {
                 </Link>
               </Button>
             )}
-            {!agent.read_only && (
-              <Button variant="outline" onClick={() => void download()}>
-                <DownloadIcon className="mr-1.5 h-4 w-4" />
-                {t.agents.export}
-              </Button>
-            )}
+            {/* Export only needs read access, so it stays available for
+                read-only (system template) experts too. */}
+            <Button variant="outline" onClick={() => void download()}>
+              <DownloadIcon className="mr-1.5 h-4 w-4" />
+              {t.agents.export}
+            </Button>
           </>
         }
       >

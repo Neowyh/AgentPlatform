@@ -33,7 +33,30 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     locale: "en-US",
     t: {
-      agents: { backToGallery: "Back to Gallery" },
+      agents: {
+        backToGallery: "Back to Gallery",
+        settingsTemperature: "Temperature",
+        settingsTemperatureHint:
+          "0 = deterministic, higher = more varied (0-2).",
+        settingsMaxTokens: "Max output tokens",
+        settingsInherit: "Inherit",
+        settingsThinking: "Thinking mode",
+        settingsThinkingOn: "On",
+        settingsThinkingOff: "Off",
+        settingsReasoningEffort: "Reasoning effort",
+        settingsInvalidTemperature: "Temperature must be between 0 and 2",
+        settingsInvalidMaxTokens:
+          "Max output tokens must be a positive integer not exceeding 200,000",
+      },
+      settings: {
+        subagents: {
+          bindingTitle: "Subagent access",
+          allAllowed: "All enabled subagents",
+          noneAllowed: "No subagents",
+          selectedAllowed: "Selected subagents",
+          missing: "Missing or unavailable; deselect to remove",
+        },
+      },
       common: { loading: "Loading..." },
       library: {
         dependencySelector: {
@@ -81,7 +104,14 @@ vi.mock("@/core/agents", () => ({
 vi.mock("@/core/models/hooks", () => ({
   useModels: vi.fn(() => ({
     models: [
-      { id: "m1", model: "gpt-4", name: "GPT-4", display_name: "GPT-4" },
+      {
+        id: "m1",
+        model: "gpt-4",
+        name: "GPT-4",
+        display_name: "GPT-4",
+        supports_thinking: true,
+        supports_reasoning_effort: true,
+      },
       {
         id: "m2",
         model: "claude-3",
@@ -93,6 +123,29 @@ vi.mock("@/core/models/hooks", () => ({
     isLoading: false,
     error: null,
   })),
+}));
+
+const subagentsMocks = vi.hoisted(() => ({
+  subagents: [
+    {
+      name: "reviewer",
+      display_name: "Reviewer",
+      description: "Reviews code",
+      enabled: true,
+      conflict: false,
+    },
+    {
+      name: "disabled-agent",
+      display_name: "Disabled agent",
+      description: "Not selectable",
+      enabled: false,
+      conflict: false,
+    },
+  ] as any[],
+}));
+
+vi.mock("@/core/subagents", () => ({
+  useSubagents: vi.fn(() => ({ subagents: subagentsMocks.subagents })),
 }));
 
 vi.mock("@/core/skills/hooks", () => ({
@@ -241,7 +294,12 @@ function getSkillCheckbox(skillName: string): HTMLInputElement {
 
 /** Get the model select element. */
 function getModelSelect(): HTMLSelectElement {
-  return screen.getByRole("combobox");
+  return screen.getByRole("combobox", { name: "Model" });
+}
+
+/** Get one of the additional behavior selects by its label text. */
+function getSelectByLabel(label: string): HTMLSelectElement {
+  return screen.getByRole("combobox", { name: label });
 }
 
 // ---------------------------------------------------------------------------
@@ -540,6 +598,119 @@ describe("AgentEditPage", () => {
   });
 
   // =========================================================================
+  // Form fields - Model behavior settings (merged from the DeerFlow
+  // expert settings dialog; issue 03)
+  // =========================================================================
+  describe("model behavior settings", () => {
+    test("renders temperature and max tokens inputs", () => {
+      render(<AgentEditPage />);
+      expect(
+        screen.getByRole("spinbutton", { name: "Temperature" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("spinbutton", { name: "Max output tokens" }),
+      ).toBeInTheDocument();
+    });
+
+    test("seeds temperature and max tokens from agent model settings", () => {
+      agentState.agent = {
+        ...DEFAULT_AGENT,
+        model_settings: { temperature: 0.5, max_tokens: 1024 },
+      };
+      render(<AgentEditPage />);
+      expect(
+        screen.getByRole("spinbutton", { name: "Temperature" }),
+      ).toHaveValue(0.5);
+      expect(
+        screen.getByRole("spinbutton", { name: "Max output tokens" }),
+      ).toHaveValue(1024);
+    });
+
+    test("renders thinking mode with the inherited value by default", () => {
+      render(<AgentEditPage />);
+      expect(getSelectByLabel("Thinking mode").value).toBe("__inherit__");
+    });
+
+    test("renders subagent access with the allowed list seeded", () => {
+      agentState.agent = {
+        ...DEFAULT_AGENT,
+        allowed_subagents: ["reviewer"],
+      };
+      render(<AgentEditPage />);
+      expect(getSelectByLabel("Subagent access").value).toBe("selected");
+      const reviewer = getCheckboxByLabel("Reviewer Reviews code");
+      expect(reviewer.checked).toBe(true);
+    });
+
+    test("hides the thinking mode select when the model does not support it", async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      expect(
+        screen.getByRole("combobox", { name: "Thinking mode" }),
+      ).toBeInTheDocument();
+      await user.selectOptions(getModelSelect(), "claude-3");
+      expect(
+        screen.queryByRole("combobox", { name: "Thinking mode" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("combobox", { name: "Reasoning effort" }),
+      ).not.toBeInTheDocument();
+    });
+
+    test("saves temperature, max tokens, thinking, effort, and subagents", async () => {
+      const user = userEvent.setup();
+      agentState.agent = {
+        ...DEFAULT_AGENT,
+        allowed_subagents: null,
+      };
+      render(<AgentEditPage />);
+
+      await user.type(
+        screen.getByRole("spinbutton", { name: "Temperature" }),
+        "0.7",
+      );
+      await user.clear(
+        screen.getByRole("spinbutton", { name: "Max output tokens" }),
+      );
+      await user.type(
+        screen.getByRole("spinbutton", { name: "Max output tokens" }),
+        "2048",
+      );
+      await user.selectOptions(getSelectByLabel("Thinking mode"), "off");
+      await user.selectOptions(getSelectByLabel("Reasoning effort"), "high");
+      await user.selectOptions(getSelectByLabel("Subagent access"), "none");
+      await user.click(screen.getByText("Save Changes"));
+
+      await waitFor(() => {
+        expect(mocks.mutateAsync).toHaveBeenCalled();
+      });
+      const request = mocks.mutateAsync.mock.calls[0]![0].request;
+      expect(request.model_settings).toEqual({
+        temperature: 0.7,
+        max_tokens: 2048,
+      });
+      expect(request.thinking_enabled).toBe(false);
+      expect(request.reasoning_effort).toBe("high");
+      expect(request.allowed_subagents).toEqual([]);
+    });
+
+    test("rejects an out-of-range temperature without saving", async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.type(
+        screen.getByRole("spinbutton", { name: "Temperature" }),
+        "5",
+      );
+      await user.click(screen.getByText("Save Changes"));
+
+      expect(mocks.toastError).toHaveBeenCalled();
+      expect(mocks.mutateAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
   // Form fields - Visibility
   // =========================================================================
   describe("visibility field", () => {
@@ -831,6 +1002,11 @@ describe("AgentEditPage", () => {
           tool_groups: ["bash", "web"],
           skills: ["web-search", "code-review"],
           soul: "Be helpful",
+          // Model-behavior settings default to inheriting the runtime config.
+          model_settings: null,
+          thinking_enabled: null,
+          reasoning_effort: null,
+          allowed_subagents: null,
         },
       });
     });
@@ -1213,6 +1389,10 @@ describe("AgentEditPage", () => {
             tool_groups: [],
             skills: [],
             soul: "",
+            model_settings: null,
+            thinking_enabled: null,
+            reasoning_effort: null,
+            allowed_subagents: null,
           },
         });
       });

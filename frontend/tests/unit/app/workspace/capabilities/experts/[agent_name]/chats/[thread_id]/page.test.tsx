@@ -10,6 +10,7 @@ const mockSetLocalSettings = vi.fn();
 const mockSetSettings = vi.fn();
 const mockTextOfMessage = vi.fn().mockReturnValue("");
 const mockRouterPush = vi.fn();
+const mockRouterReplace = vi.fn();
 
 const { mockUseAgent, mockUseThreadChat, mockUseThreadStream } = vi.hoisted(
   () => ({
@@ -21,10 +22,12 @@ const { mockUseAgent, mockUseThreadChat, mockUseThreadStream } = vi.hoisted(
 
 const mockStreamCallbacks: Record<string, any> = {};
 let lastInputBoxProps: any = {};
+let lastMessageListProps: any = {};
+let tokenUsageEnabledFlag = false;
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ agent_name: "test-agent" }),
-  useRouter: () => ({ push: mockRouterPush }),
+  useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace }),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -76,7 +79,10 @@ vi.mock("@/components/workspace/input-box", () => ({
 }));
 
 vi.mock("@/components/workspace/messages", () => ({
-  MessageList: () => <div data-testid="message-list">Messages</div>,
+  MessageList: (props: any) => {
+    lastMessageListProps = props;
+    return <div data-testid="message-list">Messages</div>;
+  },
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM: 24,
 }));
 
@@ -100,10 +106,6 @@ vi.mock("@/components/workspace/token-usage-indicator", () => ({
   },
 }));
 
-vi.mock("@/components/workspace/agent-welcome", () => ({
-  AgentWelcome: () => <div data-testid="agent-welcome" />,
-}));
-
 vi.mock("@/components/workspace/tooltip", () => ({
   Tooltip: ({ children }: any) => <div>{children}</div>,
 }));
@@ -115,7 +117,7 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/core/models/hooks", () => ({
-  useModels: () => ({ tokenUsageEnabled: false }),
+  useModels: () => ({ tokenUsageEnabled: tokenUsageEnabledFlag }),
 }));
 
 vi.mock("@/core/notification/hooks", () => ({
@@ -133,14 +135,59 @@ vi.mock("@/core/settings", () => ({
 vi.mock("@/core/threads/hooks", () => ({
   useThreadStream: (...args: any[]) => mockUseThreadStream(...args),
   useThreadTokenUsage: () => ({ data: null }),
+  useThreadMetadata: () => ({
+    data: null,
+    isLoading: false,
+    isFetching: false,
+  }),
 }));
 
 vi.mock("@/core/threads/token-usage", () => ({
   threadTokenUsageToTokenUsage: () => ({}),
+  selectContextUsage: () => null,
 }));
 
 vi.mock("@/core/threads/utils", () => ({
   textOfMessage: (...args: any[]) => mockTextOfMessage(...args),
+}));
+
+vi.mock("@/core/features", () => ({
+  useBrowserControlEnabled: () => ({ enabled: false }),
+}));
+
+vi.mock("@/components/workspace/sidecar", () => ({
+  SidecarProvider: ({ children }: any) => (
+    <div data-testid="sidecar-provider">{children}</div>
+  ),
+  SidecarTrigger: () => <div data-testid="sidecar-trigger" />,
+}));
+
+vi.mock("@/components/workspace/thread-background-tasks", () => ({
+  ThreadBackgroundTasks: () => <div data-testid="thread-background-tasks" />,
+}));
+
+vi.mock("@/components/workspace/thread-subagent-batches", () => ({
+  ThreadSubagentBatches: () => <div data-testid="thread-subagent-batches" />,
+}));
+
+vi.mock("@/components/workspace/goal-status", () => ({
+  GoalStatus: () => <div data-testid="goal-status" />,
+}));
+
+vi.mock("@/components/workspace/use-active-goal", () => ({
+  useActiveGoal: () => ({
+    activeGoal: null,
+    hasGoal: false,
+    setLocalGoal: vi.fn(),
+  }),
+}));
+
+vi.mock("@/components/workspace/context-usage-badge", () => ({
+  ContextUsageBadge: () => <div data-testid="context-usage-badge" />,
+}));
+
+vi.mock("@/components/ui/sidebar", () => ({
+  SidebarTrigger: () => <div data-testid="sidebar-trigger" />,
 }));
 
 vi.mock("@/env", () => ({
@@ -174,6 +221,8 @@ describe("AgentChatPage", () => {
     );
     lastInputBoxProps = {};
     lastTokenUsageProps = {};
+    lastMessageListProps = {};
+    tokenUsageEnabledFlag = false;
     mockStopFn.mockReset();
     mockSendMessage.mockReset().mockReturnValue(Promise.resolve());
     mockSetThreadId.mockReset();
@@ -181,6 +230,7 @@ describe("AgentChatPage", () => {
     mockShowNotification.mockReset();
     mockTextOfMessage.mockReset().mockReturnValue("");
     mockRouterPush.mockReset();
+    mockRouterReplace.mockReset();
 
     mockUseAgent.mockReturnValue({
       agent: { name: "test-agent", description: "A test agent" },
@@ -244,9 +294,16 @@ describe("AgentChatPage", () => {
     expect(screen.getByTestId("thread-title")).toBeInTheDocument();
   });
 
-  test("renders token usage indicator", () => {
+  test("renders token usage indicator when token usage is enabled", () => {
+    tokenUsageEnabledFlag = true;
     render(<AgentChatPage />);
     expect(screen.getByTestId("token-usage")).toBeInTheDocument();
+  });
+
+  test("renders the context usage badge when token usage is disabled", () => {
+    render(<AgentChatPage />);
+    expect(screen.getByTestId("context-usage-badge")).toBeInTheDocument();
+    expect(screen.queryByTestId("token-usage")).not.toBeInTheDocument();
   });
 
   test("renders export trigger", () => {
@@ -541,6 +598,7 @@ describe("AgentChatPage", () => {
       "test-thread",
       { text: "hello", files: [expect.any(File)] },
       { agent_name: "test-agent" },
+      undefined,
     );
     expect(result).toBeInstanceOf(Promise);
   });
@@ -553,6 +611,7 @@ describe("AgentChatPage", () => {
       "test-thread",
       { text: "hello", files: [] },
       { agent_name: "test-agent" },
+      undefined,
     );
     expect(result).toBeUndefined();
   });
@@ -608,9 +667,13 @@ describe("AgentChatPage", () => {
   // tested separately above.
 
   // --- tokenUsageInlineMode when tokenUsageEnabled is false (line 123-125) ---
-  test("token usage inline mode defaults to 'off' when tokenUsageEnabled is false", () => {
+  test("token usage indicator receives inline mode preference", () => {
+    tokenUsageEnabledFlag = true;
     render(<AgentChatPage />);
     expect(screen.getByTestId("token-usage")).toBeInTheDocument();
+    expect(lastTokenUsageProps.preferences).toEqual({
+      inlineMode: "off",
+    });
   });
 
   // --- isMock conditional in useThreadTokenUsage (line 54-55) ---
@@ -725,8 +788,35 @@ describe("AgentChatPage", () => {
     expect(mockSetSettings).toHaveBeenCalledWith("context", { mode: "deep" });
   });
 
+  // --- clarification cards stay answerable in expert chats ---
+  test("passes a clarification submit handler that sends a hidden reply", async () => {
+    mockSendMessage.mockImplementation(async (...args: unknown[]) => {
+      (args[3] as { onSent?: () => void } | undefined)?.onSent?.();
+    });
+    render(<AgentChatPage />);
+
+    expect(typeof lastMessageListProps.onSubmitHumanInput).toBe("function");
+    const sent = await lastMessageListProps.onSubmitHumanInput(
+      { question: "Which files?" },
+      { value: "All reports" },
+    );
+
+    expect(sent).toBe(true);
+    const [, message, context, options] = mockSendMessage.mock.calls.at(-1)!;
+    expect(message).toEqual({
+      text: 'For your clarification "Which files?", my answer is: All reports',
+      files: [],
+    });
+    expect(context).toEqual({ agent_name: "test-agent" });
+    expect(options.additionalKwargs).toMatchObject({
+      hide_from_ui: true,
+      human_input_response: { value: "All reports" },
+    });
+  });
+
   // --- onPreferencesChange handler (line 170-172) ---
   test("onPreferencesChange updates local settings for token usage", () => {
+    tokenUsageEnabledFlag = true;
     render(<AgentChatPage />);
     lastTokenUsageProps.onPreferencesChange({ inlineMode: "compact" });
     expect(mockSetLocalSettings).toHaveBeenCalledWith("tokenUsage", {
