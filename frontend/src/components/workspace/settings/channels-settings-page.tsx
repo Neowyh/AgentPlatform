@@ -33,6 +33,7 @@ import {
   prepareConnectWindow,
 } from "@/core/channels/open-connect-url";
 import {
+  isUsableChannelProvider,
   providerCanConnect,
   providerCanEditRuntimeConfig,
   providerNeedsRuntimeConfig,
@@ -336,7 +337,9 @@ export function ChannelsSettingsPage() {
   } = useChannelConnections();
   const isLoading = providersLoading || connectionsLoading;
   const error = providersError ?? connectionsError;
-  const visibleProviders = providers.filter((provider) => provider.enabled);
+  // Only providers the deployment can actually use are listed here; an
+  // unconfigured or not-running entry must not present itself as actionable.
+  const visibleProviders = providers.filter(isUsableChannelProvider);
 
   const connectionByProvider = new Map<string, ChannelConnection>();
   for (const connection of connections) {
@@ -352,9 +355,13 @@ export function ChannelsSettingsPage() {
       description={t.settings.channels.description}
     >
       {isLoading ? (
-        <div className="text-muted-foreground type-supporting">{t.common.loading}</div>
+        <div className="text-muted-foreground type-supporting">
+          {t.common.loading}
+        </div>
       ) : error ? (
-        <div className="text-destructive type-supporting">{t.channels.unavailable}</div>
+        <div className="text-destructive type-supporting">
+          {t.channels.unavailable}
+        </div>
       ) : !enabled ? (
         <div className="text-muted-foreground type-supporting">
           {t.settings.channels.disabled}

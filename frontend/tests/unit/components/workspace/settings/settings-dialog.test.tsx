@@ -6,6 +6,55 @@ const push = vi.fn();
 const router = { push };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
+// Capability probes behind the Channels/Integrations entries. State objects
+// are hoisted so the mock factories can read them and tests can flip them.
+const channelProvidersState = vi.hoisted(() => ({
+  enabled: true,
+  providers: [] as Array<{
+    provider: string;
+    enabled: boolean;
+    configured: boolean;
+    unavailable_reason?: string | null;
+  }>,
+  isLoading: false,
+  error: null as unknown,
+}));
+const larkStatusState = vi.hoisted(() => ({
+  data: null as { cli: { available: boolean } } | null,
+  isLoading: false,
+  error: null as unknown,
+}));
+
+vi.mock("@/core/channels/hooks", () => ({
+  useChannelProviders: () => ({
+    enabled: channelProvidersState.enabled,
+    providers: channelProvidersState.providers,
+    isLoading: channelProvidersState.isLoading,
+    error: channelProvidersState.error,
+  }),
+}));
+vi.mock("@/core/integrations/lark", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useLarkIntegrationStatus: () => ({
+    data: larkStatusState.data,
+    isLoading: larkStatusState.isLoading,
+    error: larkStatusState.error,
+  }),
+}));
+
+function usableChannelProvider() {
+  return {
+    provider: "slack",
+    enabled: true,
+    configured: true,
+    unavailable_reason: null,
+  };
+}
+
+function capableLarkStatus() {
+  return { cli: { available: true } };
+}
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 // Dialog – pass through data-testid from the component (data-testid="settings-dialog")
@@ -138,6 +187,15 @@ let SettingsDialog: typeof import("@/components/workspace/settings/settings-dial
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  // Default to a deployment whose channel and Lark capabilities are present;
+  // individual tests flip these to exercise availability variants.
+  channelProvidersState.enabled = true;
+  channelProvidersState.providers = [usableChannelProvider()];
+  channelProvidersState.isLoading = false;
+  channelProvidersState.error = null;
+  larkStatusState.data = capableLarkStatus();
+  larkStatusState.isLoading = false;
+  larkStatusState.error = null;
   const mod = await import("@/components/workspace/settings/settings-dialog");
   SettingsDialog = mod.SettingsDialog;
 });
@@ -423,5 +481,108 @@ describe("SettingsDialog", () => {
     );
     const accountTab = screen.getByTestId("settings-tab-account");
     expect(accountTab.className).toContain("text-muted-foreground");
+  });
+
+  // ── Capability-gated entries ─────────────────────────────────────────────
+
+  test("hides channels and integrations entries when the deployment lacks both capabilities", () => {
+    channelProvidersState.providers = [];
+    larkStatusState.data = { cli: { available: false } };
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.queryByTestId("settings-tab-channels"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("settings-tab-integrations"),
+    ).not.toBeInTheDocument();
+    // The familiar sections stay put.
+    expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-notification")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-memory")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
+  });
+
+  test("hides the channels entry when providers exist but none is usable", () => {
+    channelProvidersState.providers = [
+      {
+        provider: "telegram",
+        enabled: true,
+        configured: false,
+        unavailable_reason:
+          "Enter the required Telegram credentials to connect this channel.",
+      },
+    ];
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.queryByTestId("settings-tab-channels"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
+  });
+
+  test("hides the channels entry when channel connections are disabled for the deployment", () => {
+    channelProvidersState.enabled = false;
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.queryByTestId("settings-tab-channels"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
+  });
+
+  test("keeps capability entries hidden while their availability probes resolve", () => {
+    channelProvidersState.isLoading = true;
+    larkStatusState.isLoading = true;
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.queryByTestId("settings-tab-channels"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("settings-tab-integrations"),
+    ).not.toBeInTheDocument();
+  });
+
+  test("hides capability entries when their probe fails", () => {
+    channelProvidersState.error = new Error("providers unavailable");
+    larkStatusState.error = new Error("status unavailable");
+    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.queryByTestId("settings-tab-channels"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("settings-tab-integrations"),
+    ).not.toBeInTheDocument();
+  });
+
+  test("falls back to appearance when a deep-linked capability section is unavailable", () => {
+    larkStatusState.data = { cli: { available: false } };
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        defaultSection="integrations"
+      />,
+    );
+
+    expect(screen.getByTestId("appearance-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("integrations-page")).not.toBeInTheDocument();
+  });
+
+  test("still opens a deep-linked capability section when the capability is available", () => {
+    channelProvidersState.providers = [usableChannelProvider()];
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        defaultSection="channels"
+      />,
+    );
+
+    expect(screen.getByTestId("channels-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("appearance-page")).not.toBeInTheDocument();
   });
 });

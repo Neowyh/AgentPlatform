@@ -446,7 +446,9 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([]),
+        // A deployment without channel capability: nothing enabled, so the
+        // settings Channels entry stays hidden.
+        body: JSON.stringify({ enabled: false, providers: [] }),
       });
     }
     return route.fallback();
@@ -1217,14 +1219,14 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     enabled_skills: [] as string[],
     install_path: "/tmp/deer-flow/integrations/skills/lark-cli",
     cli: {
-      available: false,
-      path: null as string | null,
-      version: null as string | null,
-      error: "lark-cli is not on PATH" as string | null,
+      available: true,
+      path: "/usr/bin/lark-cli" as string | null,
+      version: "lark-cli version v1.0.65" as string | null,
+      error: null as string | null,
     },
     auth: {
-      status: "unavailable",
-      message: "lark-cli is not installed on the Gateway" as string | null,
+      status: "not_authorized",
+      message: "Lark user authorization is not configured" as string | null,
       user: null as string | null,
       verified: false,
     },

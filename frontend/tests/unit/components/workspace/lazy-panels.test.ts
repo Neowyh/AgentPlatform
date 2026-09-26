@@ -25,7 +25,8 @@ describe("interaction-only bundle boundaries", () => {
     );
     // The dialog module is itself behind the host's dynamic() boundary, so its
     // statically imported pages still load only when the dialog opens; each
-    // page must additionally render only for its active section.
+    // page must additionally render only for its effective (capability-
+    // resolved) section.
     const sectionsAndPages = [
       ["account", "AccountSettingsPage"],
       ["appearance", "AppearanceSettingsPage"],
@@ -34,7 +35,7 @@ describe("interaction-only bundle boundaries", () => {
       ["about", "AboutSettingsPage"],
     ] as const;
     for (const [section, page] of sectionsAndPages) {
-      expect(dialog).toContain(`activeSection === "${section}"`);
+      expect(dialog).toContain(`effectiveSection === "${section}"`);
       expect(dialog).toContain(page);
     }
     // The heavy MCP/skill/subagent management pages moved to their own

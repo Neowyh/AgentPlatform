@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@rstest/core";
 
 import {
+  hasUsableChannelProvider,
+  isUsableChannelProvider,
   providerCanConnect,
   providerCanEditRuntimeConfig,
   providerNeedsRuntimeConfig,
@@ -85,5 +87,66 @@ describe("providerCanEditRuntimeConfig", () => {
     expect(
       providerCanEditRuntimeConfig(makeProvider({ credential_fields: [] })),
     ).toBe(false);
+  });
+});
+
+describe("isUsableChannelProvider", () => {
+  it("accepts a configured provider with no availability problem", () => {
+    expect(isUsableChannelProvider(makeProvider({}))).toBe(true);
+  });
+
+  it("accepts a connected provider", () => {
+    expect(
+      isUsableChannelProvider(makeProvider({ connection_status: "connected" })),
+    ).toBe(true);
+  });
+
+  it("rejects an unconfigured provider", () => {
+    expect(isUsableChannelProvider(makeProvider({ configured: false }))).toBe(
+      false,
+    );
+  });
+
+  it("rejects a provider with an availability problem", () => {
+    expect(
+      isUsableChannelProvider(
+        makeProvider({
+          unavailable_reason:
+            "Feishu channel is configured but is not running.",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a disabled provider", () => {
+    expect(isUsableChannelProvider(makeProvider({ enabled: false }))).toBe(
+      false,
+    );
+  });
+});
+
+describe("hasUsableChannelProvider", () => {
+  it("is false for an empty provider list", () => {
+    expect(hasUsableChannelProvider([])).toBe(false);
+  });
+
+  it("is false when every provider is unusable", () => {
+    expect(
+      hasUsableChannelProvider([
+        makeProvider({ configured: false }),
+        makeProvider({
+          unavailable_reason: "Slack channel is configured but is not running.",
+        }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("is true when at least one provider is usable", () => {
+    expect(
+      hasUsableChannelProvider([
+        makeProvider({ configured: false }),
+        makeProvider({ provider: "buzz", display_name: "Buzz" }),
+      ]),
+    ).toBe(true);
   });
 });

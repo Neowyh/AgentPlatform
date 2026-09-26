@@ -93,6 +93,37 @@ function mockChannelsAPI(
 }
 
 test.describe("IM channels", () => {
+  test("hides the settings channels entry when no channel is usable", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    // Channels are enabled but nothing is configured, so nothing can be
+    // used: the deployment must not offer a Channels entry.
+    mockChannelsAPI(page, [
+      {
+        provider: "telegram",
+        display_name: "Telegram",
+        enabled: true,
+        configured: false,
+        connectable: false,
+        auth_mode: "deep_link",
+        connection_status: "not_connected",
+        unavailable_reason:
+          "Enter the required Telegram credentials to connect this channel.",
+      },
+    ]);
+
+    await page.goto("/workspace/chats/new?settings=channels");
+
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Theme")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Channels" })).toHaveCount(
+      0,
+    );
+    await expect(dialog.getByText("Telegram")).toHaveCount(0);
+  });
+
   test("sidebar and settings expose channel connections", async ({ page }) => {
     mockLangGraphAPI(page);
     mockChannelsAPI(page);

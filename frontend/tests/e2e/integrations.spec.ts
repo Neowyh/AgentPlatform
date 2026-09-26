@@ -48,6 +48,39 @@ test.describe("Integrations settings", () => {
     await expect(dialog.getByText("Lark / Feishu CLI")).toBeVisible();
   });
 
+  test("hides the integrations entry in a deployment without the Lark CLI", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    // Offline deployment: the Gateway has no lark-cli, so the Feishu
+    // integration cannot work and must not offer an actionable entry.
+    await page.route("**/api/integrations/lark/status", (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...configuredLarkStatus(),
+          cli: {
+            available: false,
+            path: null,
+            version: null,
+            error: "lark-cli is not on PATH",
+          },
+        }),
+      });
+    });
+
+    await page.goto("/workspace/chats/new?settings=integrations");
+
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Theme")).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Integrations" }),
+    ).toHaveCount(0);
+    await expect(dialog.getByText("Lark / Feishu CLI")).toHaveCount(0);
+  });
+
   test("falls back when copying a Lark authorization link without the Clipboard API", async ({
     page,
   }) => {

@@ -28,7 +28,13 @@ import { ChannelsSettingsPage } from "@/components/workspace/settings/channels-s
 import { IntegrationsSettingsPage } from "@/components/workspace/settings/integrations-settings-page";
 import { MemorySettingsPage } from "@/components/workspace/settings/memory-settings-page";
 import { NotificationSettingsPage } from "@/components/workspace/settings/notification-settings-page";
+import { useChannelProviders } from "@/core/channels/hooks";
+import { hasUsableChannelProvider } from "@/core/channels/provider-state";
 import { useI18n } from "@/core/i18n/hooks";
+import {
+  isLarkIntegrationUsable,
+  useLarkIntegrationStatus,
+} from "@/core/integrations/lark";
 import { cn } from "@/lib/utils";
 
 import { legacySettingsDestination } from "./legacy-settings-destination";
@@ -60,6 +66,48 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
 
+  // Channels/Integrations are deployment capabilities, not universal
+  // settings: only surface them when the backend reports something actually
+  // usable — a configured, running channel provider, or a Gateway with
+  // lark-cli available. Failed or still-loading probes hide the entries too,
+  // so an unknown capability never renders as an actionable one; visibility
+  // here stays a UI concern and never replaces server-side permission checks.
+  const {
+    enabled: channelsEnabled,
+    providers,
+    isLoading: channelsLoading,
+    error: channelsError,
+  } = useChannelProviders();
+  const {
+    data: larkStatus,
+    isLoading: larkLoading,
+    error: larkError,
+  } = useLarkIntegrationStatus();
+  const channelsAvailable =
+    !channelsLoading &&
+    !channelsError &&
+    channelsEnabled &&
+    hasUsableChannelProvider(providers);
+  const integrationsAvailable =
+    !larkLoading && !larkError && isLarkIntegrationUsable(larkStatus);
+
+  // One availability map serves both the nav list and the fallback below, so
+  // a section can never be listed while its page is unreachable.
+  const sectionAvailability: Partial<Record<SettingsSection, boolean>> =
+    useMemo(
+      () => ({
+        channels: channelsAvailable,
+        integrations: integrationsAvailable,
+      }),
+      [channelsAvailable, integrationsAvailable],
+    );
+
+  // A deep link (or stale trigger) onto a capability section that the
+  // deployment lacks falls back to the familiar default instead of rendering
+  // a page for a capability that does not exist.
+  const effectiveSection: SettingsSection =
+    sectionAvailability[activeSection] === false ? "appearance" : activeSection;
+
   useEffect(() => {
     // When opening the dialog, ensure the active section follows the caller's intent.
     // This allows triggers like "About" to open the dialog directly on that page.
@@ -75,41 +123,44 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [defaultSection, dialogProps.open, onOpenChange, router]);
 
   const sections = useMemo(
-    () => [
-      {
-        id: "account",
-        label: t.settings.sections.account,
-        icon: UserIcon,
-      },
-      {
-        id: "appearance",
-        label: t.settings.sections.appearance,
-        icon: PaletteIcon,
-      },
-      {
-        id: "notification",
-        label: t.settings.sections.notification,
-        icon: BellIcon,
-      },
-      {
-        id: "channels",
-        label: t.settings.sections.channels,
-        icon: CableIcon,
-      },
-      {
-        id: "integrations",
-        label: t.settings.sections.integrations,
-        icon: PlugZapIcon,
-      },
-      {
-        id: "memory",
-        label: t.settings.sections.memory,
-        icon: BrainIcon,
-      },
-      { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
-      { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
-      { id: "about", label: t.settings.sections.about, icon: InfoIcon },
-    ],
+    () =>
+      [
+        {
+          id: "account",
+          label: t.settings.sections.account,
+          icon: UserIcon,
+        },
+        {
+          id: "appearance",
+          label: t.settings.sections.appearance,
+          icon: PaletteIcon,
+        },
+        {
+          id: "notification",
+          label: t.settings.sections.notification,
+          icon: BellIcon,
+        },
+        {
+          id: "channels",
+          label: t.settings.sections.channels,
+          icon: CableIcon,
+        },
+        {
+          id: "integrations",
+          label: t.settings.sections.integrations,
+          icon: PlugZapIcon,
+        },
+        {
+          id: "memory",
+          label: t.settings.sections.memory,
+          icon: BrainIcon,
+        },
+        { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
+        { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
+        { id: "about", label: t.settings.sections.about, icon: InfoIcon },
+      ].filter(
+        (section) => sectionAvailability[section.id as SettingsSection] ?? true,
+      ),
     [
       t.settings.sections.account,
       t.settings.sections.appearance,
@@ -120,6 +171,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       t.settings.sections.tools,
       t.settings.sections.skills,
       t.settings.sections.about,
+      sectionAvailability,
     ],
   );
   return (
@@ -143,7 +195,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
           <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
             <ul className="space-y-1 pr-1">
               {sections.map(({ id, label, icon: Icon }) => {
-                const active = activeSection === id;
+                const active = effectiveSection === id;
                 return (
                   <li key={id}>
                     <button
@@ -175,13 +227,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </nav>
           <ScrollArea className="h-full min-h-0 rounded-lg border">
             <div className="space-y-8 p-6">
-              {activeSection === "account" && <AccountSettingsPage />}
-              {activeSection === "appearance" && <AppearanceSettingsPage />}
-              {activeSection === "memory" && <MemorySettingsPage />}
-              {activeSection === "notification" && <NotificationSettingsPage />}
-              {activeSection === "channels" && <ChannelsSettingsPage />}
-              {activeSection === "integrations" && <IntegrationsSettingsPage />}
-              {activeSection === "about" && <AboutSettingsPage />}
+              {effectiveSection === "account" && <AccountSettingsPage />}
+              {effectiveSection === "appearance" && <AppearanceSettingsPage />}
+              {effectiveSection === "memory" && <MemorySettingsPage />}
+              {effectiveSection === "notification" && (
+                <NotificationSettingsPage />
+              )}
+              {effectiveSection === "channels" && <ChannelsSettingsPage />}
+              {effectiveSection === "integrations" && (
+                <IntegrationsSettingsPage />
+              )}
+              {effectiveSection === "about" && <AboutSettingsPage />}
             </div>
           </ScrollArea>
         </div>
