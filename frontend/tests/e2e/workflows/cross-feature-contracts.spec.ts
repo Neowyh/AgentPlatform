@@ -94,6 +94,7 @@ test("shared mock fixture preserves agent workflow memory and skill contracts", 
   });
 
   await page.getByTestId("settings-tab-skills").click();
+  await expect(page).toHaveURL(/\/workspace\/capabilities\/skills$/);
   await expect(page.getByText("contract-skill").first()).toBeVisible({
     timeout: 15_000,
   });

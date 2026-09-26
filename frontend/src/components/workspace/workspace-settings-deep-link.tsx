@@ -8,6 +8,7 @@ import {
   type SettingsSection,
   useSettingsDialog,
 } from "./settings";
+import { legacySettingsDestination } from "./settings/legacy-settings-destination";
 
 const SETTINGS_SECTIONS = new Set<SettingsSection>([
   "account",
@@ -45,10 +46,15 @@ export function WorkspaceSettingsDeepLink() {
   useEffect(() => {
     const nextSection = asSettingsSection(searchParams.get("settings"));
     if (nextSection) {
+      const destination = legacySettingsDestination(nextSection);
+      if (destination) {
+        router.replace(destination);
+        return;
+      }
       openedFromDeepLinkRef.current = true;
       openSettingsDialog(nextSection);
     }
-  }, [searchParams]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (open || !openedFromDeepLinkRef.current) {

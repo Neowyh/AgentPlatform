@@ -55,10 +55,9 @@ test.describe("MCP server settings", () => {
     });
 
     await page.goto("/workspace/chats/new?settings=tools");
-
-    const settingsDialog = page.getByRole("dialog", { name: "Settings" });
-    await expect(settingsDialog).toBeVisible();
-    await settingsDialog.getByRole("button", { name: "Edit remote" }).click();
+    await expect(page).toHaveURL(/\/workspace\/capabilities\/connectors$/);
+    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit remote" }).click();
 
     const editor = page.getByRole("dialog", { name: "Edit Server" });
     const definitionBox = editor.getByRole("textbox");
@@ -70,9 +69,7 @@ test.describe("MCP server settings", () => {
     await editor.getByRole("button", { name: "Save" }).click();
 
     await expect(editor).toBeHidden();
-    await expect(
-      settingsDialog.getByText("Updated remote tools"),
-    ).toBeVisible();
+    await expect(page.getByText("Updated remote tools").first()).toBeVisible();
     expect(submittedUpdate).toEqual({
       server_name: "remote",
       server: {

@@ -11,7 +11,7 @@ import {
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
-import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -31,21 +31,7 @@ import { NotificationSettingsPage } from "@/components/workspace/settings/notifi
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
-// The skill/tool management pages are heavy (Markdown editors, MCP clients);
-// keep them out of the dialog bundle while the restored sections stay
-// reachable — the boundary guard in lazy-panels.test.ts pins this.
-const SkillSettingsPage = dynamic(
-  () =>
-    import("@/components/workspace/settings/skill-settings-page").then(
-      (module) => module.SkillSettingsPage,
-    ),
-);
-const ToolSettingsPage = dynamic(
-  () =>
-    import("@/components/workspace/settings/tool-settings-page").then(
-      (module) => module.ToolSettingsPage,
-    ),
-);
+import { legacySettingsDestination } from "./legacy-settings-destination";
 
 export type SettingsSection =
   | "account"
@@ -59,13 +45,18 @@ export type SettingsSection =
   | "skills"
   | "about";
 
-type SettingsDialogProps = React.ComponentProps<typeof Dialog> & {
+type SettingsDialogProps = Omit<
+  React.ComponentProps<typeof Dialog>,
+  "onOpenChange"
+> & {
   defaultSection?: SettingsSection;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function SettingsDialog(props: SettingsDialogProps) {
-  const { defaultSection = "appearance", ...dialogProps } = props;
+  const { defaultSection = "appearance", onOpenChange, ...dialogProps } = props;
   const { t } = useI18n();
+  const router = useRouter();
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
 
@@ -73,9 +64,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
     // When opening the dialog, ensure the active section follows the caller's intent.
     // This allows triggers like "About" to open the dialog directly on that page.
     if (dialogProps.open) {
+      const destination = legacySettingsDestination(defaultSection);
+      if (destination) {
+        onOpenChange?.(false);
+        router.push(destination);
+        return;
+      }
       setActiveSection(defaultSection);
     }
-  }, [defaultSection, dialogProps.open]);
+  }, [defaultSection, dialogProps.open, onOpenChange, router]);
 
   const sections = useMemo(
     () => [
@@ -121,13 +118,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
       t.settings.sections.memory,
       t.settings.sections.notification,
       t.settings.sections.tools,
+      t.settings.sections.skills,
       t.settings.sections.about,
     ],
   );
   return (
     <Dialog
       {...dialogProps}
-      onOpenChange={(open) => props.onOpenChange?.(open)}
+      onOpenChange={(open) => onOpenChange?.(open)}
       data-testid="settings-dialog"
     >
       <DialogContent
@@ -150,7 +148,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   <li key={id}>
                     <button
                       type="button"
-                      onClick={() => setActiveSection(id as SettingsSection)}
+                      onClick={() => {
+                        const destination = legacySettingsDestination(id);
+                        if (destination) {
+                          onOpenChange?.(false);
+                          router.push(destination);
+                        } else {
+                          setActiveSection(id as SettingsSection);
+                        }
+                      }}
                       data-testid={`settings-tab-${id}`}
                       className={cn(
                         "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
@@ -175,8 +181,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {activeSection === "notification" && <NotificationSettingsPage />}
               {activeSection === "channels" && <ChannelsSettingsPage />}
               {activeSection === "integrations" && <IntegrationsSettingsPage />}
-              {activeSection === "skills" && <SkillSettingsPage />}
-              {activeSection === "tools" && <ToolSettingsPage />}
               {activeSection === "about" && <AboutSettingsPage />}
             </div>
           </ScrollArea>

@@ -1,6 +1,8 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+const { auth } = vi.hoisted(() => ({ auth: { role: "user" } }));
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const mockConfig = {
@@ -18,7 +20,7 @@ vi.mock("@/core/mcp/hooks", () => ({
 }));
 
 vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: { system_role: auth.role } }),
 }));
 
 vi.mock("@/components/workspace/settings/tool-settings-page", () => ({
@@ -31,6 +33,7 @@ let ConnectorList: typeof import("@/components/workspace/resources/connector-lis
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  auth.role = "user";
   const mod = await import("@/components/workspace/resources/connector-list");
   ConnectorList = mod.ConnectorList;
 });
@@ -64,5 +67,15 @@ describe("ConnectorList", () => {
       "href",
       "/workspace/chats/new?connector=server-1",
     );
+  });
+
+  test("only super administrators see MCP configuration controls", () => {
+    auth.role = "department_admin";
+    const { rerender } = render(<ConnectorList />);
+    expect(screen.queryByTestId("tool-settings-page")).not.toBeInTheDocument();
+
+    auth.role = "super_admin";
+    rerender(<ConnectorList />);
+    expect(screen.getByTestId("tool-settings-page")).toBeInTheDocument();
   });
 });

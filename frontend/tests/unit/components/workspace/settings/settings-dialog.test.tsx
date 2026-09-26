@@ -2,6 +2,10 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+const push = vi.fn();
+const router = { push };
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 // Dialog – pass through data-testid from the component (data-testid="settings-dialog")
@@ -270,16 +274,33 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("integrations-page")).toBeInTheDocument();
   });
 
-  test("opens to tools section when specified", async () => {
+  test("settings skill and tool entries open capability pages", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(<SettingsDialog open={true} onOpenChange={onOpenChange} />);
+
+    await user.click(screen.getByTestId("settings-tab-skills"));
+    expect(push).toHaveBeenCalledWith("/workspace/capabilities/skills");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("settings-tab-tools"));
+    expect(push).toHaveBeenCalledWith("/workspace/capabilities/connectors");
+    expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
+  });
+
+  test("legacy default tools section opens connectors", () => {
+    const onOpenChange = vi.fn();
     render(
       <SettingsDialog
         open={true}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         defaultSection="tools"
       />,
     );
-    // The tools page loads behind a dynamic() bundle boundary.
-    expect(await screen.findByTestId("tools-page")).toBeInTheDocument();
+    expect(push).toHaveBeenCalledWith("/workspace/capabilities/connectors");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
   });
 
   // ── Section switching ────────────────────────────────────────────────────

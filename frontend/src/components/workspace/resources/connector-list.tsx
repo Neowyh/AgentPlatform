@@ -10,9 +10,7 @@ import { ToolSettingsPage } from "../settings/tool-settings-page";
 export function ConnectorList() {
   const { config, isLoading } = useMCPConfig();
   const { user } = useAuth();
-  const isAdmin =
-    user?.system_role === "super_admin" ||
-    user?.system_role === "department_admin";
+  const isAdmin = user?.system_role === "super_admin";
 
   if (isLoading) {
     return <div className="text-muted-foreground">Loading...</div>;
@@ -24,7 +22,9 @@ export function ConnectorList() {
     <div className="space-y-6">
       {isAdmin && <ToolSettingsPage />}
       {servers.length === 0 ? (
-        <div className="text-muted-foreground">No connectors found</div>
+        !isAdmin && (
+          <div className="text-muted-foreground">No connectors found</div>
+        )
       ) : (
         <div className="workbench-resource-grid grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {servers.map(([name, server]) => (

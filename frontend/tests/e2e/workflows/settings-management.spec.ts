@@ -58,6 +58,18 @@ test.describe("Settings management", () => {
       }
     });
 
+    test("skills entry opens the capability center", async ({ page }) => {
+      mockLangGraphAPI(page);
+      await page.goto("/workspace/chats/new");
+      await openSettings(page);
+      await page.getByTestId("settings-tab-skills").click();
+
+      await expect(page).toHaveURL(/\/workspace\/capabilities\/skills$/);
+      await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(
+        0,
+      );
+    });
+
     test("clicking a tab switches the settings page content", async ({
       page,
     }) => {
@@ -199,7 +211,8 @@ test.describe("Settings management", () => {
       await page.getByTestId("settings-tab-tools").click();
 
       // Should show the MCP server name
-      await expect(page.getByText("github-mcp")).toBeVisible({
+      await expect(page).toHaveURL(/\/workspace\/capabilities\/connectors$/);
+      await expect(page.getByText("github-mcp").first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -236,9 +249,9 @@ test.describe("Settings management", () => {
       await page.getByTestId("settings-tab-tools").click();
 
       // Should show empty state message
-      await expect(
-        page.getByText(/no.*server|empty|没有/i).first(),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText("No MCP tools configured.")).toBeVisible({
+        timeout: 15_000,
+      });
     });
   });
 
