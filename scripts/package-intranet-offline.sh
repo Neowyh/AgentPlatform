@@ -503,6 +503,7 @@ tar \
     --exclude='dist' \
     --exclude='backend/.venv' \
     --exclude='backend/.ideer' \
+    --exclude='backend/.deer-flow' \
     --exclude='backend/.pytest_cache' \
     --exclude='backend/.ruff_cache' \
     --exclude='backend/__pycache__' \

@@ -181,7 +181,7 @@ stop:
 # Clean up
 clean: stop
 	@echo "Cleaning up..."
-	@-rm -rf backend/.deer-flow 2>/dev/null || true
+	@echo "Preserving runtime data in backend/.deer-flow."
 	@-rm -rf logs/*.log 2>/dev/null || true
 	@echo "✓ Cleanup complete"
 

@@ -74,7 +74,7 @@ def _same_file_content(first: Path, second: Path) -> bool:
 def resolve_owner_id(args: argparse.Namespace) -> Tuple[Optional[str], str]:
     """Return ``(owner_id, install_style)`` with style ``super-admin``/``user``/``shared``."""
     if args.owner == "super-admin":
-        db_path = default_base_dir() / "data" / "ideer.db"
+        db_path = default_base_dir() / "data" / "deerflow.db"
         try:
             return _find_super_admin_id(db_path), "super-admin"
         except RuntimeError as exc:

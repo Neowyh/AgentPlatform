@@ -17,7 +17,7 @@ dev:
 		--reload-exclude="$(DEER_FLOW_HOME)"
 
 gateway:
-	PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001
+	PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 DEER_FLOW_HOME="$(DEER_FLOW_HOME)" uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001
 
 test:
 	@bash ../scripts/run-test-lane.sh backend-standard

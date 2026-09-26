@@ -150,6 +150,7 @@ def test_install_agent_keeps_user_id_compatibility(tmp_path: Path) -> None:
 
 def test_default_base_dir_uses_ideer_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime_home = tmp_path / "runtime-home"
+    monkeypatch.delenv("DEER_FLOW_HOME", raising=False)
     monkeypatch.setenv("IDEER_HOME", str(runtime_home))
 
     assert install_script.default_base_dir() == runtime_home.resolve()
@@ -171,7 +172,7 @@ def test_main_installs_named_agent_and_upserts_metadata(
     source_dir = tmp_path / "source"
     make_agent_source(source_dir, "srs-writing")
     runtime_dir = tmp_path / "runtime"
-    db_path = runtime_dir / "data" / "ideer.db"
+    db_path = runtime_dir / "data" / "deerflow.db"
     db_path.parent.mkdir(parents=True)
     with sqlite3.connect(db_path) as connection:
         connection.executescript(
@@ -194,6 +195,7 @@ def test_main_installs_named_agent_and_upserts_metadata(
             """
         )
     monkeypatch.setattr(install_script, "default_source_dir", lambda agent_name: source_dir)
+    monkeypatch.delenv("DEER_FLOW_HOME", raising=False)
     monkeypatch.setenv("IDEER_HOME", str(runtime_dir))
 
     exit_code = install_script.main(["--agent", "srs-writing", "--owner", "super-admin"])

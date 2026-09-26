@@ -198,6 +198,7 @@ def test_main_installs_agent_and_wires_config(monkeypatch: pytest.MonkeyPatch, t
     import install_agent
 
     monkeypatch.setattr(install_agent, "default_source_dir", lambda agent_name: source)
+    monkeypatch.delenv("DEER_FLOW_HOME", raising=False)
     monkeypatch.setenv("IDEER_HOME", str(runtime))
     monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
 
@@ -216,6 +217,7 @@ def test_main_installs_agent_and_wires_config(monkeypatch: pytest.MonkeyPatch, t
 
 def test_main_verify_only_reports_current_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = write_sample_config(tmp_path / "config.yaml")
+    monkeypatch.delenv("DEER_FLOW_HOME", raising=False)
     monkeypatch.setenv("IDEER_HOME", str(tmp_path / "runtime"))
     monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
 
@@ -229,6 +231,7 @@ def test_main_verify_only_reports_current_state(monkeypatch: pytest.MonkeyPatch,
 def test_main_dry_run_writes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = write_sample_config(tmp_path / "config.yaml")
     before = config_path.read_text(encoding="utf-8")
+    monkeypatch.delenv("DEER_FLOW_HOME", raising=False)
     monkeypatch.setenv("IDEER_HOME", str(tmp_path / "runtime"))
     monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
 

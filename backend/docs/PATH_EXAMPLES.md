@@ -7,7 +7,7 @@ iDeer 的文件上传系统返回三种不同的路径，每种路径用于不�
 ### 1. 实际文件系统路径 (path)
 
 ```
-.ideer/threads/{thread_id}/user-data/uploads/document.pdf
+.deer-flow/threads/{thread_id}/user-data/uploads/document.pdf
 ```
 
 **用途：**
@@ -19,7 +19,7 @@ iDeer 的文件上传系统返回三种不同的路径，每种路径用于不�
 ```python
 # Python 代码中直接访问
 from pathlib import Path
-file_path = Path("backend/.ideer/threads/abc123/user-data/uploads/document.pdf")
+file_path = Path("backend/.deer-flow/threads/abc123/user-data/uploads/document.pdf")
 content = file_path.read_bytes()
 ```
 
@@ -99,11 +99,11 @@ async function uploadAndProcess(threadId: string, file: File) {
   console.log('文件信息：', fileInfo);
   // {
   //   filename: "report.pdf",
-  //   path: ".ideer/threads/abc123/user-data/uploads/report.pdf",
+  //   path: ".deer-flow/threads/abc123/user-data/uploads/report.pdf",
   //   virtual_path: "/mnt/user-data/uploads/report.pdf",
   //   artifact_url: "/api/threads/abc123/artifacts/mnt/user-data/uploads/report.pdf",
   //   markdown_file: "report.md",
-  //   markdown_path: ".ideer/threads/abc123/user-data/uploads/report.md",
+  //   markdown_path: ".deer-flow/threads/abc123/user-data/uploads/report.md",
   //   markdown_virtual_path: "/mnt/user-data/uploads/report.md",
   //   markdown_artifact_url: "/api/threads/abc123/artifacts/mnt/user-data/uploads/report.md"
   // }
@@ -132,11 +132,11 @@ async function uploadAndProcess(threadId: string, file: File) {
 
 | 场景 | 使用的路径类型 | 示例 |
 |------|---------------|------|
-| 服务器后端代码直接访问 | `path` | `.ideer/threads/abc123/user-data/uploads/file.pdf` |
+| 服务器后端代码直接访问 | `path` | `.deer-flow/threads/abc123/user-data/uploads/file.pdf` |
 | Agent 工具调用 | `virtual_path` | `/mnt/user-data/uploads/file.pdf` |
 | 前端下载/预览 | `artifact_url` | `/api/threads/abc123/artifacts/mnt/user-data/uploads/file.pdf` |
-| 备份脚本 | `path` | `.ideer/threads/abc123/user-data/uploads/file.pdf` |
-| 日志记录 | `path` | `.ideer/threads/abc123/user-data/uploads/file.pdf` |
+| 备份脚本 | `path` | `.deer-flow/threads/abc123/user-data/uploads/file.pdf` |
+| 日志记录 | `path` | `.deer-flow/threads/abc123/user-data/uploads/file.pdf` |
 
 ## 代码示例集合
 

@@ -182,9 +182,9 @@ class ThreadState(AgentState):
 
 | 虚拟路径 | 物理路径 |
 |---------|---------|
-| `/mnt/user-data/workspace` | `backend/.ideer/threads/{thread_id}/user-data/workspace` |
-| `/mnt/user-data/uploads` | `backend/.ideer/threads/{thread_id}/user-data/uploads` |
-| `/mnt/user-data/outputs` | `backend/.ideer/threads/{thread_id}/user-data/outputs` |
+| `/mnt/user-data/workspace` | `backend/.deer-flow/threads/{thread_id}/user-data/workspace` |
+| `/mnt/user-data/uploads` | `backend/.deer-flow/threads/{thread_id}/user-data/uploads` |
+| `/mnt/user-data/outputs` | `backend/.deer-flow/threads/{thread_id}/user-data/outputs` |
 | `/mnt/skills` | `ideer/skills/` |
 
 ### 工具系统
@@ -389,14 +389,14 @@ SKILL.md 格式:
 
 2. Gateway 接收文件
    - 验证文件
-   - 存储到 .ideer/threads/{thread_id}/user-data/uploads/
+   - 存储到 .deer-flow/threads/{thread_id}/user-data/uploads/
    - 如果是文档：通过 markitdown 转换为 Markdown
 
 3. 返回响应
    {
      "files": [{
        "filename": "doc.pdf",
-       "path": ".ideer/.../uploads/doc.pdf",
+       "path": ".deer-flow/.../uploads/doc.pdf",
        "virtual_path": "/mnt/user-data/uploads/doc.pdf",
        "artifact_url": "/api/threads/.../artifacts/mnt/.../doc.pdf"
      }]
@@ -418,7 +418,7 @@ SKILL.md 格式:
    DELETE /api/threads/{thread_id}
 
 3. Gateway 删除本地 iDeer 管理文件
-   - 递归删除 .ideer/threads/{thread_id}/
+   - 递归删除 .deer-flow/threads/{thread_id}/
    - 目录不存在时视为无操作
    - 无效的线程 ID 在访问文件系统前被拒绝
 ```

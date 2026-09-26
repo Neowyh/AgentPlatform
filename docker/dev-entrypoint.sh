@@ -127,18 +127,11 @@ fi
 # Keep runtime-owned files out of uvicorn's reload watcher. Each excluded path
 # must exist before uvicorn starts so watchfiles treats it as an excluded
 # directory, not as a plain glob pattern — on Python 3.12, globbing an absolute
-# pattern raises NotImplementedError and crashes startup (#3459 / #3454). That
-# means `sandbox` must be created here too, not just `.deer-flow`.
-# Existing pre-convergence installs keep their `.ideer` state directory: when
-# it is present and DEER_FLOW_HOME was not set explicitly, adopt it so memory,
-# agents, threads and skills views stay with the data written by the legacy
-# runtime. Fresh installs default to `.deer-flow`.
-if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d /app/backend/.ideer ]; then
-    DEER_FLOW_HOME=/app/backend/.ideer
-fi
+# pattern raises NotImplementedError and crashes startup (#3459 / #3454). The
+# local development stack shares the mounted `.deer-flow` runtime directory.
 : "${DEER_FLOW_HOME:=/app/backend/.deer-flow}"
 export DEER_FLOW_HOME
-mkdir -p "$DEER_FLOW_HOME" /app/backend/.deer-flow /app/backend/sandbox
+mkdir -p "$DEER_FLOW_HOME" /app/backend/sandbox
 
 # ── Sync dependencies (with self-heal) ──────────────────────────────────────
 
@@ -182,8 +175,7 @@ case "$ROLE" in
             --reload-include='*.yaml' \
             --reload-include='.env' \
             --reload-exclude=/app/backend/sandbox \
-            --reload-exclude="$DEER_FLOW_HOME" \
-            --reload-exclude=/app/backend/.deer-flow
+            --reload-exclude="$DEER_FLOW_HOME"
         ;;
     worker)
         PYTHONPATH=. exec uv run --no-sync python -m app.workflow_worker

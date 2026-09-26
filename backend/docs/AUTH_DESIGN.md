@@ -136,7 +136,7 @@ enum UserScope:
 - 更新密码 hash。
 - `token_version += 1`。
 - 设置 `needs_setup=true`。
-- 写入 `.ideer/admin_initial_credentials.txt`，权限 `0600`。
+- 写入 `.deer-flow/admin_initial_credentials.txt`，权限 `0600`。
 
 命令行只输出凭据文件路径，不输出明文密码。
 
@@ -325,7 +325,7 @@ PYTHONPATH=. python scripts/migrate_user_isolation.py --user-id <target-user-id>
 | `ideer/config/agents_config.py` | per-user custom agents |
 | `app/channels/manager.py` | IM channel 内部认证调用 |
 | `scripts/migrate_user_isolation.py` | legacy 数据迁移到 per-user layout |
-| `.ideer/data/ideer.db` | 统一 SQLite 数据库，包含 users / threads_meta / runs / feedback 等表 |
-| `.ideer/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL |
-| `.ideer/users/{user_id}/agent-memory/{agent_name}/memory.json` | 用户级 agent memory |
-| `.ideer/admin_initial_credentials.txt` | `reset_admin` 生成的新凭据文件（0600，读完应删除） |
+| `.deer-flow/data/deerflow.db` | 统一 SQLite 数据库，包含 users / threads_meta / runs / feedback 等表 |
+| `.deer-flow/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL |
+| `.deer-flow/users/{user_id}/agent-memory/{agent_name}/memory.json` | 用户级 agent memory |
+| `.deer-flow/admin_initial_credentials.txt` | `reset_admin` 生成的新凭据文件（0600，读完应删除） |

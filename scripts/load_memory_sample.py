@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,9 @@ def default_source(repo_root: Path) -> Path:
 
 
 def default_target(repo_root: Path) -> Path:
-    return repo_root / "backend" / ".ideer" / "memory.json"
+    runtime_home = os.environ.get("DEER_FLOW_HOME") or os.environ.get("IDEER_HOME")
+    base_dir = Path(runtime_home) if runtime_home else repo_root / "backend" / ".deer-flow"
+    return base_dir / "memory.json"
 
 
 def parse_args(repo_root: Path) -> argparse.Namespace:

@@ -191,8 +191,9 @@ def delete_from_manifest(
 
 def _runtime_locations() -> tuple[Path, Path]:
     repo_root = Path(__file__).resolve().parents[1]
-    state_root = Path(os.environ.get("IDEER_HOME", repo_root / "backend" / ".ideer")).resolve()
-    database = Path(os.environ.get("IDEER_DATABASE_PATH", state_root / "data" / "ideer.db")).resolve()
+    runtime_home = os.environ.get("DEER_FLOW_HOME") or os.environ.get("IDEER_HOME")
+    state_root = Path(runtime_home or repo_root / "backend" / ".deer-flow").resolve()
+    database = Path(os.environ.get("IDEER_DATABASE_PATH", state_root / "data" / "deerflow.db")).resolve()
     return state_root / "users", database
 
 

@@ -29,10 +29,10 @@ def repo_root() -> Path:
 
 
 def default_base_dir() -> Path:
-    deer_flow_home = os.environ.get("IDEER_HOME")
+    deer_flow_home = os.environ.get("DEER_FLOW_HOME") or os.environ.get("IDEER_HOME")
     if deer_flow_home:
         return Path(deer_flow_home).resolve()
-    return repo_root() / "backend" / ".ideer"
+    return repo_root() / "backend" / ".deer-flow"
 
 
 def default_source_dir(agent_name: str) -> Path:
@@ -204,14 +204,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         owner_id = None
         if args.owner == "super-admin":
-            owner_id = _find_super_admin_id(default_base_dir() / "data" / "ideer.db")
+            owner_id = _find_super_admin_id(default_base_dir() / "data" / "deerflow.db")
         target_dir, file_status = install_agent(
             agent_name=agent_name,
             user_id=owner_id or args.user_id,
         )
         if owner_id:
             _upsert_agent_metadata(
-                default_base_dir() / "data" / "ideer.db", agent_name, owner_id
+                default_base_dir() / "data" / "deerflow.db", agent_name, owner_id
             )
     except (FileExistsError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

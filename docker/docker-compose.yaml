@@ -10,7 +10,7 @@
 #
 # Key environment variables (set via environment/.env or scripts/deploy.sh):
 #   IDEER_PROJECT_ROOT           — project root for relative runtime paths
-#   IDEER_HOME                   — runtime data dir, default .ideer under $IDEER_PROJECT_ROOT (or cwd)
+#   IDEER_HOME                   — runtime data dir, default .deer-flow under $IDEER_PROJECT_ROOT (or cwd)
 #   IDEER_CONFIG_PATH            — path to config.yaml
 #   IDEER_EXTENSIONS_CONFIG_PATH — path to extensions_config.json
 #   IDEER_SKILLS_PATH            — skills dir, default $IDEER_PROJECT_ROOT/skills
@@ -90,7 +90,7 @@ services:
       - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json
       - ../resources/skills:/app/skills:ro
       - ../resources:/app/resources:ro
-      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_HOME}:/app/backend/.deer-flow
       # DooD: AioSandboxProvider starts sandbox containers via host Docker daemon
       - ${IDEER_DOCKER_SOCKET}:/var/run/docker.sock
       # CLI auth directories for auto-auth (Claude Code + Codex CLI)
@@ -110,7 +110,8 @@ services:
     environment:
       - CI=true
       - IDEER_PROJECT_ROOT=/app
-      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
       - IDEER_CONFIG_PATH=/app/backend/config.yaml
       - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - IDEER_CHANNELS_LANGGRAPH_URL=${IDEER_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
@@ -118,6 +119,7 @@ services:
       - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
       # DooD path/network translation
       - IDEER_HOST_BASE_DIR=${IDEER_HOME}
+      - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
       - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
     env_file:
@@ -144,11 +146,13 @@ services:
       - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
       - ../resources/skills:/app/skills:ro
       - ../resources:/app/resources:ro
-      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_HOME}:/app/backend/.deer-flow
     working_dir: /app
     environment:
       - IDEER_PROJECT_ROOT=/app
-      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
       - IDEER_CONFIG_PATH=/app/backend/config.yaml
       - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}

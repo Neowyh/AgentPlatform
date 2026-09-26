@@ -55,13 +55,13 @@ services:
       - ../resources:/app/resources:ro
       - ../docs:/app/docs:ro
       - ../workflows:/app/workflows:ro
-      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_HOME}:/app/backend/.deer-flow
       - ${IDEER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     working_dir: /app
     environment:
       - CI=true
       - IDEER_PROJECT_ROOT=/app
-      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_HOME=/app/backend/.deer-flow
       - IDEER_CONFIG_PATH=/app/backend/config.yaml
       - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - IDEER_CHANNELS_LANGGRAPH_URL=${IDEER_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
@@ -71,10 +71,10 @@ services:
       - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
       # The runtime (deerflow.*) resolves its state through DEER_FLOW_*;
-      # these mirror the IDEER_* values so the mounted .ideer volume keeps
+      # these mirror the IDEER_* values so the mounted .deer-flow volume keeps
       # holding database, memory, skills views and thread data.
       - DEER_FLOW_PROJECT_ROOT=/app
-      - DEER_FLOW_HOME=/app/backend/.ideer
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
       - DEER_FLOW_SKILLS_PATH=/app/skills
       - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
       - DEER_FLOW_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
@@ -103,13 +103,13 @@ services:
       - ../resources:/app/resources:ro
       - ../docs:/app/docs:ro
       - ../workflows:/app/workflows:ro
-      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_HOME}:/app/backend/.deer-flow
       - ${IDEER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     working_dir: /app
     environment:
       - CI=true
       - IDEER_PROJECT_ROOT=/app
-      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_HOME=/app/backend/.deer-flow
       - IDEER_CONFIG_PATH=/app/backend/config.yaml
       - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
@@ -119,7 +119,7 @@ services:
       - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}
       # Runtime state mirrors (see gateway service note above).
       - DEER_FLOW_PROJECT_ROOT=/app
-      - DEER_FLOW_HOME=/app/backend/.ideer
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
       - DEER_FLOW_SKILLS_PATH=/app/skills
       - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
       - DEER_FLOW_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills

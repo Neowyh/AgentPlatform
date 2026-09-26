@@ -56,7 +56,7 @@ NC='\033[0m'
 # ── IDEER_HOME ────────────────────────────────────────────────────────────
 
 if [ -z "$IDEER_HOME" ]; then
-    export IDEER_HOME="$REPO_ROOT/backend/.ideer"
+    export IDEER_HOME="$REPO_ROOT/backend/.deer-flow"
 fi
 echo -e "${BLUE}IDEER_HOME=$IDEER_HOME${NC}"
 mkdir -p "$IDEER_HOME"
@@ -257,7 +257,7 @@ detect_sandbox_mode() {
 if [ "$CMD" = "down" ]; then
     # Set minimal env var defaults so docker compose can parse the file without
     # warning about unset variables that appear in volume specs.
-    export IDEER_HOME="${IDEER_HOME:-$REPO_ROOT/backend/.ideer}"
+    export IDEER_HOME="${IDEER_HOME:-$REPO_ROOT/backend/.deer-flow}"
     export IDEER_CONFIG_PATH="${IDEER_CONFIG_PATH:-$IDEER_HOME/config.yaml}"
     export IDEER_EXTENSIONS_CONFIG_PATH="${IDEER_EXTENSIONS_CONFIG_PATH:-$IDEER_HOME/extensions_config.json}"
     export IDEER_DOCKER_SOCKET="${IDEER_DOCKER_SOCKET:-/var/run/docker.sock}"

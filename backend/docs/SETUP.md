@@ -41,7 +41,7 @@ iDeer uses a YAML configuration file that should be placed in the **project root
 - **Location**: `config.yaml` should be in `ideer/` (project root)
 - **Git**: `config.yaml` is automatically ignored by git (contains secrets)
 - **Runtime root**: Set `IDEER_PROJECT_ROOT` if iDeer may start from outside the project root
-- **Runtime data**: State defaults to `.ideer` under the project root; set `IDEER_HOME` to move it
+- **Runtime data**: State defaults to `.deer-flow` under the project root; set `IDEER_HOME` to move it
 - **Skills**: Skills default to `skills/` under the project root; set `IDEER_SKILLS_PATH` or `skills.path` to move them
 
 ## Configuration File Locations

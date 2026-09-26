@@ -9,7 +9,7 @@ failed and cancelled runs stay readable.
 Usage (inside the backend environment):
 
     PYTHONPATH=. uv run python scripts/deprecate_fault_zeroing_legacy_runs.py \
-        --db backend/.ideer/data/ideer.db
+        --db backend/.deer-flow/data/deerflow.db
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--db",
-        default=str(REPO_ROOT / "backend" / ".ideer" / "data" / "ideer.db"),
-        help="Path to the ideer.sqlite database.",
+        default=str(REPO_ROOT / "backend" / ".deer-flow" / "data" / "deerflow.db"),
+        help="Path to the DeerFlow SQLite database.",
     )
     args = parser.parse_args(argv)
 

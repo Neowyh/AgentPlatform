@@ -178,7 +178,7 @@ verification:
 database:
   backend: sqlite
   checkpoint_channel_mode: full
-  sqlite_dir: .ideer/data
+  sqlite_dir: .deer-flow/data
   pool_recycle: 300
   command_timeout: 30
   checkpoint_delta:

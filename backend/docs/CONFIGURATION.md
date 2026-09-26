@@ -337,7 +337,7 @@ models:
 - `IDEER_PROJECT_ROOT` - Project root for relative runtime paths
 - `IDEER_CONFIG_PATH` - Custom config file path
 - `IDEER_EXTENSIONS_CONFIG_PATH` - Custom extensions config file path
-- `IDEER_HOME` - Runtime state directory (defaults to `.ideer` under the project root)
+- `IDEER_HOME` - Runtime state directory (defaults to `.deer-flow` under the project root)
 - `IDEER_SKILLS_PATH` - Skills directory when `skills.path` is omitted
 - `GATEWAY_ENABLE_DOCS` - Set to `false` to disable Swagger UI (`/docs`), ReDoc (`/redoc`), and OpenAPI schema (`/openapi.json`) endpoints (default: `true`)
 

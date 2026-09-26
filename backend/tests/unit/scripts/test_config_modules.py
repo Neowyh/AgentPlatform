@@ -160,8 +160,7 @@ class TestDatabaseConfig:
     def test_defaults(self):
         cfg = DatabaseConfig()
         assert cfg.backend == "memory"
-        # Enterprise deployments pin sqlite_dir to .ideer/data via config.yaml;
-        # the shared upstream default is .deer-flow/data.
+        # Both enterprise and upstream deployments use the DeerFlow data root.
         assert cfg.sqlite_dir == ".deer-flow/data"
         assert cfg.postgres_url == ""
         assert cfg.echo_sql is False
