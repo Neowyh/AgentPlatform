@@ -42,11 +42,24 @@ test.describe("Core workspace — visual regression", () => {
     await page.route(/\/api\/resources\/kb-1\/knowledge-revisions/, (route) =>
       route.fulfill({ json: { items: [] } }),
     );
+
+    await page.goto("/workspace/workflows/new");
+    const baselineEditor = page.locator(".cm-editor");
+    await expect(baselineEditor).toBeVisible();
+    const baselineEditorBounds = await baselineEditor.boundingBox();
+    if (!baselineEditorBounds) {
+      throw new Error("The baseline workflow editor should be visible");
+    }
+
     await page.goto("/workspace/workflows/research-workflow/edit", {
       waitUntil: "domcontentloaded",
       timeout: 90_000,
     });
-    await expect(page.locator(".cm-editor")).toBeVisible();
+    const existingWorkflowEditor = page.locator(".cm-editor");
+    await expect(existingWorkflowEditor).toBeVisible();
+    expect(await existingWorkflowEditor.boundingBox()).toEqual(
+      baselineEditorBounds,
+    );
     await expect(
       page.getByRole("button", { name: "Knowledge bases" }),
     ).toBeVisible();

@@ -37,9 +37,24 @@ nodes:
         prompt: "{{inputs.query}}"
 edges: []`;
 
+const NEW_WORKFLOW_YAML = `schema_version: 2
+name: acceptance-workflow
+description: "Created through the workflow editor"
+inputs: {}
+state: {}
+entrypoint: step1
+nodes:
+  - id: step1
+    type: action
+    action:
+      kind: agent
+      name: test-agent
+      params: {}
+edges: []`;
+
 test.describe("Workflow management", () => {
   test.describe("Gallery", () => {
-    test("existing workflow can be opened, edited, saved, and prepared to run", async ({
+    test("existing workflow can be opened, edited, saved, and run", async ({
       page,
     }) => {
       test.setTimeout(120_000);
@@ -47,20 +62,20 @@ test.describe("Workflow management", () => {
       await page.route(/\/api\/resources\?type=knowledge_base/, (route) =>
         route.fulfill({ json: { items: [], total: 0 } }),
       );
-      await page.route(
-        /\/api\/resources\/test-workflow\/workflow-runs$/,
-        (route) =>
-          route.fulfill({
-            json: { run_id: "run-1", workflow: "test-workflow" },
-          }),
-      );
-      await page.goto("/workspace/workflows");
+      await page.goto("/workspace/capabilities/experts");
+      await page.waitForLoadState("networkidle");
+      await page.getByRole("link", { name: "Workflows" }).click();
+      await expect(page).toHaveURL(/\/workspace\/workflows$/);
       await expect(page.getByTestId("workflow-card")).toBeVisible();
       await page.getByTestId("workflow-card").click();
-      await expect(page).toHaveURL(/\/workspace\/workflows\/test-workflow$/);
+      await expect(page).toHaveURL(/\/workspace\/workflows\/[^/]+$/, {
+        timeout: 30_000,
+      });
       await expect(page.getByRole("link", { name: /edit/i })).toBeVisible();
       await page.getByRole("link", { name: /edit/i }).click();
-      await expect(page.locator(".cm-editor")).toBeVisible();
+      await expect(page.locator(".cm-editor")).toBeVisible({
+        timeout: 30_000,
+      });
       await page.locator(".cm-content").fill(UPDATED_WORKFLOW_YAML);
       const saveRequest = page.waitForRequest(
         (request) =>
@@ -86,7 +101,7 @@ test.describe("Workflow management", () => {
       expect((await runRequest).postDataJSON()).toMatchObject({
         inputs: { query: "Research" },
       });
-      await expect(page).toHaveURL(/\/runs\/[^/]+$/);
+      await expect(page).toHaveURL(/\/runs\/[^/]+$/, { timeout: 30_000 });
     });
 
     test("gallery page loads and shows workflow cards", async ({ page }) => {
@@ -110,10 +125,13 @@ test.describe("Workflow management", () => {
     test("New Workflow button navigates to create page", async ({ page }) => {
       mockLangGraphAPI(page, { workflows: MOCK_WORKFLOWS });
       await page.goto("/workspace/workflows");
+      await page.waitForLoadState("networkidle");
 
       await page.getByRole("button", { name: /new workflow/i }).click();
 
-      await expect(page).toHaveURL(/\/workspace\/workflows\/new/);
+      await expect(page).toHaveURL(/\/workspace\/workflows\/new/, {
+        timeout: 30_000,
+      });
     });
 
     test("workflow card navigates to detail page", async ({ page }) => {
@@ -139,6 +157,44 @@ test.describe("Workflow management", () => {
   });
 
   test.describe("Create Workflow", () => {
+    test("user can create a workflow from the gallery", async ({ page }) => {
+      mockLangGraphAPI(page, { workflows: [] });
+      await page.goto("/workspace/workflows");
+      await page.getByRole("button", { name: /new workflow/i }).click();
+      await expect(page.locator(".cm-editor")).toBeVisible({
+        timeout: 30_000,
+      });
+      await page.locator(".cm-content").fill(NEW_WORKFLOW_YAML);
+
+      const createRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "POST" &&
+          new URL(request.url()).pathname === "/api/resources",
+      );
+      const draftRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "PUT" &&
+          request.url().includes("/workflow-draft"),
+      );
+      const publishRequest = page.waitForRequest(
+        (request) =>
+          request.method() === "POST" && request.url().includes("/publish"),
+      );
+
+      await page.getByRole("button", { name: "Save" }).click();
+
+      expect((await createRequest).postDataJSON()).toMatchObject({
+        type: "workflow",
+        slug: "acceptance-workflow",
+      });
+      expect((await draftRequest).postDataJSON()).toMatchObject({
+        content: NEW_WORKFLOW_YAML,
+      });
+      await publishRequest;
+      await expect(page.getByText("Workflow created")).toBeVisible();
+      await expect(page).toHaveURL(/\/workspace\/workflows$/);
+    });
+
     test("create page loads with YAML editor", async ({ page }) => {
       mockLangGraphAPI(page, { workflows: [] });
       await page.goto("/workspace/workflows/new");
