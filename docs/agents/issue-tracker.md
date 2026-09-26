@@ -1,10 +1,12 @@
-# Issue tracker: GitHub
+# Local specifications and work tickets
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Specifications for this repo live as Markdown files in `docs/specs/`. Work tickets live as one Markdown file per ticket under `.scratch/<feature-slug>/issues/`, numbered from `01` in dependency order. Each ticket records its blockers and `ready-for-agent` status. `.scratch/` is git-ignored, so local tickets stay in the working directory and are not published to GitHub or included in commits by default. GitHub Issues remain available for separate issue discussions.
 
-> 本仓库 issues 归属 **Neowyh/AgentPlatform**（`git remote agentplatform`），`origin`/`upstream` 仍指向上游 `bytedance/deer-flow`。`gh` 默认按 `origin` 推断仓库，操作本仓库时请显式加 `--repo Neowyh/AgentPlatform`，或在克隆内执行 `gh repo set-default Neowyh/AgentPlatform`。
+Local specifications use a date-prefixed descriptive filename and YAML frontmatter with `triage: ready-for-agent` once they are fully specified. The file itself is the published specification; do not create a GitHub issue merely to publish it. The triage vocabulary is defined in [triage-labels.md](triage-labels.md).
 
-## Conventions
+> 本仓库 GitHub issues 归属 **Neowyh/AgentPlatform**。执行 GitHub issue 操作时显式加 `--repo Neowyh/AgentPlatform`，避免工作树的 remote 配置影响目标仓库。
+
+## GitHub issue conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..." --repo Neowyh/AgentPlatform`. Use a heredoc for multi-line bodies.
 - **Read an issue**: `gh issue view <number> --comments --repo Neowyh/AgentPlatform`, filtering comments by `jq` and also fetching labels.
@@ -29,15 +31,15 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue in `Neowyh/AgentPlatform`.
+Write a specification to `docs/specs/` with the appropriate `triage` frontmatter. Write implementation tickets as separate numbered files under `.scratch/<feature-slug>/issues/`, using the status value from [triage-labels.md](triage-labels.md). Do not create GitHub issues solely to publish a specification or work-ticket breakdown.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --comments --repo Neowyh/AgentPlatform`.
+For a local work ticket, read its numbered file under `.scratch/<feature-slug>/issues/`. For an existing GitHub issue reference, run `gh issue view <number> --comments --repo Neowyh/AgentPlatform`.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+Legacy GitHub workflow used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets; it does not change the local publication rule above for new work-ticket breakdowns.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map --repo Neowyh/AgentPlatform`.
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.

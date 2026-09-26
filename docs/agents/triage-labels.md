@@ -12,4 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+For locally published specifications, record the value in YAML frontmatter as `triage: ready-for-agent`. For local work tickets, record it as `**Status:** ready-for-agent`. Neither requires a GitHub label.
+
 Edit the right-hand column to match whatever vocabulary you actually use.

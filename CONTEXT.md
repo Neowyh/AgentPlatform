@@ -22,6 +22,10 @@ _Avoid_: Forced skill invocation
 
 ## Product Experience
 
+**Frontend experience baseline**:
+The navigation position, visual layout, wording, and common action paths of pages that existed before the DeerFlow merge. Adopted upstream capabilities must have clear entry points without changing this baseline.
+_Avoid_: Route parity as a substitute for experience parity
+
 **Embedded software knowledge brief**:
 A source-cited, human-reviewable digest of a specified chip model and package that contains the information needed to start embedded software development; it is not a replacement for the manufacturer data sheet or a hardware design database.
 _Avoid_: Pin table, complete data sheet, schematic source of truth
@@ -63,7 +67,7 @@ The primary navigation remains present while users move between work areas, with
 _Avoid_: Navigation that disappears by page, device-specific information architecture
 
 **Task-first home**:
-The workbench home keeps the iDeer identity and a welcoming greeting while making task description the primary action, with recent work and capability entry points supporting it.
+The workbench home keeps the iDeer identity and a welcoming greeting while making task description the primary action, with scenario entries supporting it. Recent task cards may support returning to work below the input; conversation history remains available from its separate navigation entry.
 _Avoid_: Resource-first home, equal-weight dashboard
 
 **Current progress**:
@@ -79,8 +83,8 @@ Current progress appears below the page title as the page's contextual summary, 
 _Avoid_: Global status strip, hidden progress, runtime-only status
 
 **Workbench home order**:
-The workbench home presents the fixed iDeer welcome title first, followed by scenario-oriented quick entries, the open task input, and recent tasks. Agent, Skill, and Connector capability entries remain in the persistent left navigation rather than competing with the home task flow.
-_Avoid_: Resource-first hero, task input before all guidance, capability catalogue in the main home sequence
+The workbench home presents the fixed iDeer welcome title first, followed by scenario-oriented quick entries, the open task input, and recent task cards when available. A brief AI-content notice stays at the bottom. Conversation history remains in its separate navigation entry, not in a DeerFlow Recent Chats card on the new-conversation page. Agent, Skill, and Connector capability entries remain in the persistent left navigation rather than competing with the home task flow.
+_Avoid_: Resource-first hero, duplicate static prompt buttons, capability catalogue or DeerFlow Recent Chats card in the main home sequence
 
 **Quick entry**:
 A scenario-oriented starting point for a common user goal, usually expressed as a plain-language task template. It helps a user start without requiring them to understand Agent or Skill structure.
@@ -95,8 +99,16 @@ Agent, Skill, and Connector are browsable and configurable from the persistent l
 _Avoid_: Capability cards as the home hero, configuration-only invocation
 
 **Workbench navigation**:
-The persistent workbench navigation exposes New conversation, Conversation history, Expert-Skill-Connector, Workflow, and Library in that order. Expert-Skill-Connector groups the platform's reusable working capabilities rather than scattering them through Settings.
+The persistent workbench navigation keeps New conversation, Conversation history, Expert-Skill-Connector, Workflow, and Library in that order, then adds Scheduled Tasks as a separate destination. Expert-Skill-Connector groups the platform's reusable working capabilities rather than scattering them through Settings or duplicating Expert management elsewhere.
 _Avoid_: A flat resource catalogue, capability configuration hidden in Settings
+
+**Scheduled Task**:
+A conversation task that starts automatically at a chosen time or recurrence. It has a separate workbench destination from Workflow, which describes multi-step execution.
+_Avoid_: Treating a schedule as a Workflow definition
+
+**Agent-operated browser**:
+A browser session operated by an Agent to visit and interact with websites during a task. Its live view is optional in the chat interface and is distinct from the user's browser displaying iDeer.
+_Avoid_: Calling the ordinary WebUI tab a live Agent browser
 
 **Expert-Skill-Connector**:
 The user-facing capability center grouping Expert, Skill, and Connector. Expert is the user-facing name for an Agent; Connector means MCP connection configuration, not a generic Tool.
