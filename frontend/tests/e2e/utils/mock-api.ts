@@ -1204,6 +1204,10 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   // configuration (config/start + config/complete), and user authorization
   // (auth/start + auth/complete). Generation values round-trip so the UI's
   // generation-chaining assertions observe a realistic handshake.
+  // The default models a deployment WITH the lark-cli capability present
+  // (cli.available: true) so the settings Integrations entry renders; specs
+  // exercising the offline deployment override this route with
+  // cli.available: false (see integrations.spec.ts).
   let larkIntegrationStatus = {
     installed: false,
     version: "v1.0.65",

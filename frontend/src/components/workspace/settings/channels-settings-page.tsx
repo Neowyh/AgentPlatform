@@ -36,7 +36,6 @@ import {
   isUsableChannelProvider,
   providerCanConnect,
   providerCanEditRuntimeConfig,
-  providerNeedsRuntimeConfig,
 } from "@/core/channels/provider-state";
 import type { ChannelConnection, ChannelProvider } from "@/core/channels/types";
 import { useI18n } from "@/core/i18n/hooks";
@@ -63,20 +62,16 @@ function getConnectionLabel(connection: ChannelConnection): string | null {
   return account ?? workspace ?? connection.external_account_id ?? null;
 }
 
+/**
+ * Connection status of a rendered provider. The page lists only usable
+ * providers (enabled, configured, no availability problem), so the label only
+ * needs to distinguish connection states.
+ */
 function getStatusLabel(
   provider: ChannelProvider,
   connection: ChannelConnection | undefined,
   t: ReturnType<typeof useI18n>["t"],
 ): string {
-  if (!provider.enabled) {
-    return t.channels.disabled;
-  }
-  if (!provider.configured) {
-    return t.channels.unconfigured;
-  }
-  if (provider.unavailable_reason) {
-    return t.channels.unavailableShort;
-  }
   const status = connection?.status ?? provider.connection_status;
   if (status === "connected") {
     return t.channels.connected;
@@ -88,22 +83,6 @@ function getStatusLabel(
     return t.channels.revoked;
   }
   return t.channels.notConnected;
-}
-
-function getProviderUnavailableReason(
-  provider: ChannelProvider,
-  t: ReturnType<typeof useI18n>["t"],
-): string | undefined {
-  if (provider.unavailable_reason) {
-    return provider.unavailable_reason;
-  }
-  if (!provider.enabled) {
-    return t.channels.disabled;
-  }
-  if (!provider.configured) {
-    return t.channels.unconfigured;
-  }
-  return provider.unavailable_reason ?? undefined;
 }
 
 function ChannelProviderItem({
@@ -118,15 +97,12 @@ function ChannelProviderItem({
   const configureMutation = useConfigureChannelProvider();
   const disconnectProviderMutation = useDisconnectChannelProvider();
   const [setupOpen, setSetupOpen] = useState(false);
-  const runtimeAvailable = provider.configured && !provider.unavailable_reason;
+  // Rendered providers are usable by construction (see visibleProviders), so
+  // connectedness only depends on the binding status.
   const isConnected =
-    runtimeAvailable &&
-    (connection?.status === "connected" ||
-      provider.connection_status === "connected");
+    connection?.status === "connected" ||
+    provider.connection_status === "connected";
   const canEditRuntimeConfig = providerCanEditRuntimeConfig(provider);
-  const canConnect =
-    (provider.connectable ?? (provider.enabled && provider.configured)) &&
-    !isConnected;
   const isConnecting =
     (connectMutation.isPending &&
       connectMutation.variables === provider.provider) ||
@@ -137,7 +113,6 @@ function ChannelProviderItem({
     disconnectProviderMutation.variables === provider.provider;
   const connectionLabel = connection ? getConnectionLabel(connection) : null;
   const statusLabel = getStatusLabel(provider, connection, t);
-  const unavailableReason = getProviderUnavailableReason(provider, t);
 
   const startConnect = (
     connectProvider: ChannelProvider,
@@ -192,9 +167,6 @@ function ChannelProviderItem({
             {isConnected && connectionLabel
               ? ` ${t.channels.connectedAs(connectionLabel)}`
               : ""}
-            {!isConnected && provider.unavailable_reason
-              ? ` ${provider.unavailable_reason}`
-              : ""}
           </ItemDescription>
         </ItemContent>
         <ItemActions className="ml-auto">
@@ -246,7 +218,7 @@ function ChannelProviderItem({
             </>
           ) : (
             <>
-              {provider.configured && canEditRuntimeConfig ? (
+              {canEditRuntimeConfig ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -261,20 +233,7 @@ function ChannelProviderItem({
                 type="button"
                 size="sm"
                 disabled={isConnecting}
-                title={unavailableReason}
-                onClick={() => {
-                  if (providerNeedsRuntimeConfig(provider)) {
-                    setSetupOpen(true);
-                    return;
-                  }
-
-                  if (!canConnect) {
-                    toast.error(unavailableReason ?? t.channels.unavailable);
-                    return;
-                  }
-
-                  startConnect(provider);
-                }}
+                onClick={() => startConnect(provider)}
               >
                 {isConnecting ? (
                   <LoaderCircleIcon className="animate-spin" />
@@ -337,8 +296,11 @@ export function ChannelsSettingsPage() {
   } = useChannelConnections();
   const isLoading = providersLoading || connectionsLoading;
   const error = providersError ?? connectionsError;
-  // Only providers the deployment can actually use are listed here; an
-  // unconfigured or not-running entry must not present itself as actionable.
+  // Only providers the deployment can actually use are listed here: an
+  // unconfigured or not-running entry must not present itself as actionable
+  // in this surface. Deployments that provision credentials from the UI do so
+  // through the sidebar channel list; server-side permission checks apply to
+  // every mutation regardless of what is shown here.
   const visibleProviders = providers.filter(isUsableChannelProvider);
 
   const connectionByProvider = new Map<string, ChannelConnection>();
