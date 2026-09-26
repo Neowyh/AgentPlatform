@@ -1,0 +1,13 @@
+{
+  "case": "case_02_thermal_vacuum_temp_overshoot",
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "provider": "deepseek-v4-flash",
+  "status": "unexecuted",
+  "exit_status": null,
+  "duration_seconds": 0,
+  "command": "not run: stopped after Case 01 returned HTTP 402 Insufficient Balance from the same DeepSeek account",
+  "sent_attachments": [],
+  "excluded_expected_analysis": true,
+  "blocking_evidence": "docs/testing/evidence/fault-zeroing/4f256b6a/case_01_wind_tunnel_heat_flux_drift-20260924.json",
+  "reason": "The configured provider account had insufficient balance before the first model node completed; further sends to the same unavailable account were stopped."
+}

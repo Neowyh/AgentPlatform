@@ -1,0 +1,122 @@
+{
+  "case": "case_01_wind_tunnel_heat_flux_drift",
+  "candidate_commit": "4f256b6ab7a45134fa3cd5b46a123322e1374a01",
+  "provider": "deepseek-v4-flash",
+  "command": "uv run --project backend python scripts/run_fault_zeroing_acceptance.py --user-id fault-zeroing-acceptance --case case_01_wind_tunnel_heat_flux_drift",
+  "started_at": "2026-09-23T22:01:11.355240+00:00",
+  "finished_at": "2026-09-23T22:01:48.033750+00:00",
+  "duration_seconds": 36.678,
+  "exit_status": 1,
+  "status": "incomplete",
+  "acceptance_record": null,
+  "diagnostic_tail": [
+    "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "  File \"/usr/lib/python3.12/asyncio/base_events.py\", line 687, in run_until_complete",
+    "    return future.result()",
+    "           ^^^^^^^^^^^^^^^",
+    "  File \"/home/neowyh/code/AgentPlatform/scripts/run_fault_zeroing_acceptance.py\", line 295, in _run",
+    "    raise RuntimeError(",
+    "RuntimeError: case_01_wind_tunnel_heat_flux_drift failed: 工作流节点执行失败",
+    ""
+  ],
+  "sent_attachments": [
+    "00_problem_statement.md",
+    "01_design方案.md",
+    "02_test_outline试验大纲.md",
+    "03_test_summary试验总结报告.md",
+    "04_test_data.csv",
+    "05_historical_or_review_notes.md"
+  ],
+  "excluded_expected_analysis": true,
+  "provider_error": {
+    "http_status": 402,
+    "error_class": "Insufficient Balance",
+    "workflow_node": "deductive_tree"
+  },
+  "run_id": "fz-01-20260923T220114Z-1d79ef",
+  "workflow_status": "failed",
+  "model": null,
+  "workflow_created_at": "2026-09-23 22:01:15.501076",
+  "workflow_updated_at": "2026-09-23 22:01:47.362050",
+  "event_count": 11,
+  "events": [
+    {
+      "seq": 1,
+      "event_type": "resumed",
+      "node_id": null,
+      "created_at": "2026-09-23 22:01:15.793404",
+      "error_class": null
+    },
+    {
+      "seq": 2,
+      "event_type": "node_started",
+      "node_id": "fork_start",
+      "created_at": "2026-09-23 22:01:15.802437",
+      "error_class": null
+    },
+    {
+      "seq": 3,
+      "event_type": "node_completed",
+      "node_id": "fork_start",
+      "created_at": "2026-09-23 22:01:15.804946",
+      "error_class": null
+    },
+    {
+      "seq": 4,
+      "event_type": "node_started",
+      "node_id": "deductive_tree",
+      "created_at": "2026-09-23 22:01:15.814164",
+      "error_class": null
+    },
+    {
+      "seq": 5,
+      "event_type": "action_progress",
+      "node_id": "deductive_tree",
+      "created_at": "2026-09-23 22:01:15.819885",
+      "error_class": null
+    },
+    {
+      "seq": 6,
+      "event_type": "node_started",
+      "node_id": "evidence_collection",
+      "created_at": "2026-09-23 22:01:15.828314",
+      "error_class": null
+    },
+    {
+      "seq": 7,
+      "event_type": "action_progress",
+      "node_id": "evidence_collection",
+      "created_at": "2026-09-23 22:01:15.835647",
+      "error_class": null
+    },
+    {
+      "seq": 8,
+      "event_type": "action_progress",
+      "node_id": "deductive_tree",
+      "created_at": "2026-09-23 22:01:46.815026",
+      "error_class": null
+    },
+    {
+      "seq": 9,
+      "event_type": "action_progress",
+      "node_id": "evidence_collection",
+      "created_at": "2026-09-23 22:01:47.112812",
+      "error_class": null
+    },
+    {
+      "seq": 10,
+      "event_type": "node_failed",
+      "node_id": "deductive_tree",
+      "created_at": "2026-09-23 22:01:47.343598",
+      "error_class": "http_402_insufficient_balance"
+    },
+    {
+      "seq": 11,
+      "event_type": "run_failed",
+      "node_id": null,
+      "created_at": "2026-09-23 22:01:47.350111",
+      "error_class": "http_402_insufficient_balance"
+    }
+  ],
+  "completion_contract": "not evaluated because the run failed before terminal workflow completion"
+}
