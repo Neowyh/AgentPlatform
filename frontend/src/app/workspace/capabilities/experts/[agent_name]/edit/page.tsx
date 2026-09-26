@@ -26,9 +26,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   allowedSubagentsToSelection,
+  DEFAULT_MODEL_VALUE,
   INHERIT_VALUE,
   MAX_AGENT_OUTPUT_TOKENS,
   parseAgentModelSettingsDraft,
+  resolveEffectiveModel,
   selectionToAllowedSubagents,
   selectionToThinkingEnabled,
   thinkingEnabledToSelection,
@@ -169,14 +171,11 @@ export default function AgentEditPage() {
 
   // The resolved model gates which behavior controls are meaningful. When the
   // agent inherits the global default, fall back to models[0] so the controls
-  // stay visible. Both identifiers are accepted because older drafts stored
-  // the provider id while the settings surface stored the unique name.
-  const selectedModel = formData.model
-    ? models.find(
-        (model) =>
-          model.name === formData.model || model.model === formData.model,
-      )
-    : models[0];
+  // stay visible.
+  const selectedModel = resolveEffectiveModel(
+    models,
+    formData.model ?? DEFAULT_MODEL_VALUE,
+  );
   const supportsThinking = selectedModel?.supports_thinking ?? false;
   const supportsReasoningEffort =
     selectedModel?.supports_reasoning_effort ?? false;
@@ -266,7 +265,6 @@ export default function AgentEditPage() {
     maxTokens,
     reasoningEffort,
     revisionsLoadError,
-    selectedModel,
     selectedSubagents,
     subagentAccess,
     supportsReasoningEffort,

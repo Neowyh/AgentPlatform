@@ -114,6 +114,26 @@ describe("resolveEffectiveModel", () => {
     expect(resolveEffectiveModel(models, "b")).toBe(models[1]);
   });
 
+  it("resolves an older draft stored by its provider identifier", () => {
+    // Older agent drafts stored the provider id (Model.model) rather than the
+    // unique name (Model.name); the lookup must accept both identifiers.
+    const modelsWithDistinctIds: Model[] = [
+      { id: "m1", name: "GLM", model: "glm-5.3", display_name: "GLM" },
+    ];
+    expect(resolveEffectiveModel(modelsWithDistinctIds, "glm-5.3")).toBe(
+      modelsWithDistinctIds[0],
+    );
+  });
+
+  it("prefers the unique name when a provider id collides", () => {
+    // provider ids are not guaranteed unique; the unique name match wins.
+    const colliding: Model[] = [
+      { id: "m1", name: "primary", model: "shared-id", display_name: "P" },
+      { id: "m2", name: "shared-id", model: "other", display_name: "S" },
+    ];
+    expect(resolveEffectiveModel(colliding, "shared-id")).toBe(colliding[1]);
+  });
+
   it("returns undefined for an unknown model", () => {
     expect(resolveEffectiveModel(models, "missing")).toBeUndefined();
   });

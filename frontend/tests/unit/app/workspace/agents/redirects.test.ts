@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({
 
 // Server components are async; render() handles promise-returning children.
 import AgentChatRedirectPage from "@/app/workspace/agents/[agent_name]/chats/[thread_id]/page";
+import { legacyRedirectTarget } from "@/app/workspace/agents/legacy-redirect";
 import NewAgentPage from "@/app/workspace/agents/new/page";
 import AgentsPage from "@/app/workspace/agents/page";
 
@@ -15,18 +16,52 @@ beforeEach(() => {
   mockRedirect.mockClear();
 });
 
-describe("legacy /workspace/agents redirects", () => {
-  test("gallery URL redirects to the capability center expert tab", () => {
-    AgentsPage();
-    expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts",
+describe("legacyRedirectTarget", () => {
+  test("appends nothing when search params are empty", () => {
+    expect(legacyRedirectTarget("/workspace/x", {})).toBe("/workspace/x");
+  });
+
+  test("appends a single string parameter", () => {
+    expect(legacyRedirectTarget("/workspace/x", { mock: "true" })).toBe(
+      "/workspace/x?mock=true",
     );
   });
 
-  test("legacy creation URL redirects to the capability center creation page", () => {
-    NewAgentPage();
+  test("encodes values and joins multiple keys", () => {
+    expect(
+      legacyRedirectTarget("/workspace/x", { mock: "true", q: "a b" }),
+    ).toBe("/workspace/x?mock=true&q=a+b");
+  });
+
+  test("preserves repeated keys as repeated parameters", () => {
+    expect(legacyRedirectTarget("/workspace/x", { tag: ["a", "b"] })).toBe(
+      "/workspace/x?tag=a&tag=b",
+    );
+  });
+
+  test("ignores undefined entries", () => {
+    expect(legacyRedirectTarget("/workspace/x", { next: undefined })).toBe(
+      "/workspace/x",
+    );
+  });
+});
+
+describe("legacy /workspace/agents redirects", () => {
+  test("gallery URL redirects preserving path and query", async () => {
+    await AgentsPage({
+      searchParams: Promise.resolve({ mock: "true" }),
+    } as never);
     expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/new",
+      "/workspace/capabilities/experts?mock=true",
+    );
+  });
+
+  test("legacy creation URL redirects preserving path and query", async () => {
+    await NewAgentPage({
+      searchParams: Promise.resolve({ mock: "true" }),
+    } as never);
+    expect(mockRedirect).toHaveBeenCalledWith(
+      "/workspace/capabilities/experts/new?mock=true",
     );
   });
 

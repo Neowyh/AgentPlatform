@@ -58,13 +58,20 @@ export function selectionToThinkingEnabled(
  * effective default model (``models[0]``, matching ``_resolve_model_name`` on
  * the backend) so those controls are not silently hidden for an agent that has
  * not pinned an explicit model.
+ *
+ * Older agent drafts stored the provider identifier (``Model.model``) instead
+ * of the unique name (``Model.name``), so both identifiers resolve — with the
+ * unique name taking priority because provider ids are not guaranteed unique.
  */
 export function resolveEffectiveModel(
   models: Model[],
   modelValue: string,
 ): Model | undefined {
   if (modelValue === DEFAULT_MODEL_VALUE) return models[0];
-  return models.find((m) => m.name === modelValue);
+  return (
+    models.find((m) => m.name === modelValue) ??
+    models.find((m) => m.model === modelValue)
+  );
 }
 
 export type AgentSettingsValidationError = "temperature" | "max_tokens";

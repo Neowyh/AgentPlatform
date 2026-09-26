@@ -10,7 +10,6 @@ rs.mock("@/core/config", () => ({
 
 import { fetch as fetcher } from "@/core/api/fetcher";
 import {
-  fetchAgentsApiEnabled,
   fetchBrowserControlEnabled,
   fetchMcpTasksEnabled,
 } from "@/core/features/api";
@@ -26,28 +25,6 @@ function jsonResponse(status: number, body: unknown): Response {
 
 beforeEach(() => {
   mockedFetch.mockReset();
-});
-
-describe("fetchAgentsApiEnabled", () => {
-  test("returns true when backend reports agents_api enabled", async () => {
-    mockedFetch.mockResolvedValueOnce(
-      jsonResponse(200, { agents_api: { enabled: true } }),
-    );
-    await expect(fetchAgentsApiEnabled()).resolves.toBe(true);
-    expect(mockedFetch).toHaveBeenCalledWith("/api/features");
-  });
-
-  test("returns false when backend reports agents_api disabled", async () => {
-    mockedFetch.mockResolvedValueOnce(
-      jsonResponse(200, { agents_api: { enabled: false } }),
-    );
-    await expect(fetchAgentsApiEnabled()).resolves.toBe(false);
-  });
-
-  test("throws when the features request fails", async () => {
-    mockedFetch.mockResolvedValueOnce(jsonResponse(500, {}));
-    await expect(fetchAgentsApiEnabled()).rejects.toThrow();
-  });
 });
 
 describe("fetchBrowserControlEnabled", () => {
