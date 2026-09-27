@@ -77,6 +77,7 @@ export interface Translations {
   welcome: {
     greeting: string;
     createYourOwnSkill: string;
+    createYourOwnSkillDescription: string;
   };
 
   // Clipboard

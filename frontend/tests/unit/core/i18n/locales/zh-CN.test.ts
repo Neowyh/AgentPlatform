@@ -122,8 +122,10 @@ describe("zhCN locale", () => {
       expect(zhCN.welcome.createYourOwnSkill).toBe("创建你自己的 Agent SKill");
     });
 
-    it("has 2 keys", () => {
-      expect(Object.keys(zhCN.welcome)).toHaveLength(2);
+    it("keeps the Skill mode guidance", () => {
+      expect(zhCN.welcome.createYourOwnSkillDescription).toContain(
+        "创建你的 Agent Skill",
+      );
     });
   });
 

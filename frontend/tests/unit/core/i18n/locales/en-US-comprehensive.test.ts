@@ -162,7 +162,7 @@ describe("enUS locale comprehensive", () => {
     });
 
     it("has 2 keys", () => {
-      expect(Object.keys(enUS.welcome)).toHaveLength(2);
+      expect(Object.keys(enUS.welcome)).toHaveLength(3);
     });
   });
 

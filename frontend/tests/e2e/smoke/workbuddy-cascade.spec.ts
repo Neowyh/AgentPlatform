@@ -80,6 +80,18 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
     await expect(page.getByText("目标明确？")).toBeVisible();
   });
 
+  test("keeps Skill-mode guidance without restoring the ordinary intro", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new?mode=skill");
+    await expect(page.getByText("✨ Create Your Own Skill ✨")).toBeVisible();
+    await expect(
+      page.getByText(/Create your own skill to release the power of iDeer/),
+    ).toBeVisible();
+    await expect(page.getByText(/open source super agent/i)).toHaveCount(0);
+  });
+
   test("fits the welcome home in the desktop acceptance viewport", async ({
     page,
   }) => {
@@ -124,14 +136,35 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
       await expect(input).toBeVisible({ timeout: 15_000 });
 
       for (const locator of [
-        input,
-        page.getByTestId("scenario-tabs"),
+        page.getByTestId("workbench-home").locator(".type-page-title"),
         page.getByRole("tab", { name: /Daily Office/ }),
+        page.getByRole("tab", { name: /Creative Design/ }),
+        page.getByRole("tab", { name: /Professional Tasks/ }),
+        input,
+        page.getByTestId("add-attachments-button"),
+        page.getByTestId("voice-input-button"),
+        page.getByTestId("model-selector-trigger"),
+        page.getByTestId("skill-selector-trigger"),
       ]) {
         await locator.evaluate((element) => {
           element.scrollIntoView({ block: "center" });
         });
         await expectWithinViewport(locator, viewport.height, headerBand);
+      }
+      await page.getByTestId("chat-input").fill("Reachable draft");
+      await expect(page.getByTestId("chat-input")).toHaveValue(
+        "Reachable draft",
+      );
+      await page.getByTestId("model-selector-trigger").click({ trial: true });
+      await page.getByTestId("skill-selector-trigger").click({ trial: true });
+      await page.getByTestId("add-attachments-button").click({ trial: true });
+      await page.getByRole("tab", { name: /Creative Design/ }).click();
+      for (const pill of await page
+        .getByTestId("agent-pill-bar")
+        .getByRole("tab")
+        .all()) {
+        await pill.scrollIntoViewIfNeeded();
+        await expectWithinViewport(pill, viewport.height, headerBand);
       }
     }
   });

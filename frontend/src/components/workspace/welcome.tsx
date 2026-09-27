@@ -48,6 +48,11 @@ export function Welcome({
           </div>
         )}
       </div>
+      {searchParams.get("mode") === "skill" && (
+        <p className="text-muted-foreground type-supporting max-w-full whitespace-pre-line">
+          {t.welcome.createYourOwnSkillDescription}
+        </p>
+      )}
     </div>
   );
 }

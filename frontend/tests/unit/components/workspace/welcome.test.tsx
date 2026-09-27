@@ -14,8 +14,7 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       welcome: {
         greeting: "iDeer，落地你的idea",
-        // Retired keys kept in the mock on purpose: the component must not
-        // render a description even when the catalog still provides one.
+        // Ordinary welcome copy is retired; Skill mode keeps its own guidance.
         description: "How can I help you today?",
         createYourOwnSkill: "Create Your Own Skill",
         createYourOwnSkillDescription: "Build custom skills for your workflow",
@@ -74,10 +73,12 @@ describe("Welcome", () => {
     expect(screen.getByText(/Create Your Own Skill/)).toBeInTheDocument();
   });
 
-  test("does not render the skill description in skill mode", () => {
+  test("keeps the skill-specific description in skill mode", () => {
     mockSearchParams = new URLSearchParams("mode=skill");
     render(<Welcome />);
-    expect(screen.queryByText(/build custom skills/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Build custom skills for your workflow"),
+    ).toBeVisible();
   });
 
   test("does not show the localized greeting in skill mode", () => {

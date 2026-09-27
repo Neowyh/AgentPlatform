@@ -91,6 +91,8 @@ export const zhCN: Translations = {
   welcome: {
     greeting: "iDeer，落地你的idea",
     createYourOwnSkill: "创建你自己的 Agent SKill",
+    createYourOwnSkillDescription:
+      "创建你的 Agent Skill 来释放 iDeer 的潜力。通过自定义技能，iDeer\n可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n网页等作品，几乎可以做任何事情。",
   },
 
   // Clipboard
