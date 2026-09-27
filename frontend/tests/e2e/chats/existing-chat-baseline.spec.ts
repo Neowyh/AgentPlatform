@@ -126,6 +126,35 @@ async function openExistingChat(page: Page, threadId: string) {
 }
 
 test.describe("Existing conversation baseline", () => {
+  test("revisiting a chat does not restore an expanded artifact panel", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, {
+      threads: [
+        {
+          thread_id: MOCK_THREAD_ID,
+          title: "Artifact history conversation",
+          artifacts: ["/reports/summary.md"],
+          messages: [
+            {
+              type: "human",
+              id: "msg-human-artifact-history",
+              content: [{ type: "text", text: "Write a summary" }],
+            },
+          ],
+        },
+      ],
+    });
+
+    await openExistingChat(page, MOCK_THREAD_ID);
+    await page.getByTestId("artifact-trigger").click();
+    await expectPanelOpen(page);
+
+    await page.reload();
+    await expect(page.getByTestId("main-message-list")).toBeVisible();
+    await expectPanelClosed(page);
+  });
+
   test("entering a conversation with browser history keeps the right panel closed", async ({
     page,
   }) => {

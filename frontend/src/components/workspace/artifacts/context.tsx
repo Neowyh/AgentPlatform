@@ -100,7 +100,12 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     const persisted = readPersistedState(pathname);
     setArtifacts(persisted?.artifacts ?? []);
     setSelectedArtifact(persisted?.selectedArtifact ?? null);
-    setOpen(persisted?.open ?? env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true");
+    // A normal chat visit starts at full width even if this tab previously
+    // left its artifact panel open. Static showcases keep their own default.
+    setOpen(
+      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" &&
+        (persisted?.open ?? true),
+    );
     setDrafts({});
     setEditingPath(null);
     hydratedPathRef.current = pathname;

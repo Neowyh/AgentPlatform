@@ -151,6 +151,17 @@ test.describe("Core workspace — visual regression", () => {
     await expect(page.getByTestId("main-message-list")).toBeVisible({
       timeout: 15_000,
     });
+    // dbb2a813's 04-workspace-chat.png places the composer at the bottom of
+    // the full-width chat: left edge around 440, text around 453, right edge
+    // around 1255, and top around 768 on this 1440×900 canvas.
+    const composer = await page.getByTestId("chat-input").boundingBox();
+    expect(composer).not.toBeNull();
+    expect(composer!.x).toBeGreaterThan(445);
+    expect(composer!.x).toBeLessThan(465);
+    expect(composer!.x + composer!.width).toBeGreaterThan(1220);
+    expect(composer!.x + composer!.width).toBeLessThan(1255);
+    expect(composer!.y).toBeGreaterThan(770);
+    expect(composer!.y).toBeLessThan(810);
     await expect(page).toHaveScreenshot("existing-chat.png", {
       fullPage: true,
     });
