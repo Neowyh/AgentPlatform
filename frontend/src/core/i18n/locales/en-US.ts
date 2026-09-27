@@ -1752,6 +1752,14 @@ export const enUS: Translations = {
     revisions: "Revisions",
     evalCases: "Eval Cases",
     retrievalTestTab: "Retrieval Test",
+    evaluation: "Evaluation",
+    qualityEntry: "Revisions & evaluation",
+    quality: {
+      title: "Revisions & evaluation",
+      description:
+        "Manage revisions, eval cases, retrieval tests, and evaluations for a knowledge base.",
+      selectKnowledgeBase: "Select knowledge base",
+    },
     revisionList: {
       selectKnowledgeBase: "Select a knowledge base to view revisions",
       loading: "Loading...",

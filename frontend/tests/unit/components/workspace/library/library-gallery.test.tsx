@@ -34,15 +34,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         search: "Search documents...",
         documents: "Documents",
         knowledgeBases: "Knowledge Bases",
-        revisions: "Revisions",
-        evalCases: "Eval Cases",
-        retrievalTestTab: "Retrieval Test",
-        retrievalTest: {
-          selectKnowledgeBase: "Select a knowledge base",
-          loading: "Loading...",
-          revisionsLoadFailed: "Unable to load revisions.",
-          noPublishedRevision: "No published revision",
-        },
+        qualityEntry: "Revisions & evaluation",
       },
     },
   }),
@@ -50,64 +42,17 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 vi.mock("@/core/library", () => ({
   useKnowledgeBases: () => ({ knowledgeBases: [] }),
-  useKnowledgeRevisions: () => ({
-    revisions: [],
-    isLoading: false,
-    error: null,
-  }),
-  useKnowledgeEvalCases: () => ({
-    evalCases: [],
-    isLoading: false,
-    error: null,
-  }),
-  useKnowledgeEvaluations: () => ({
-    evaluations: [],
-    isLoading: false,
-    error: null,
-  }),
-  useKnowledgeEvaluation: () => ({
-    data: undefined,
-    isLoading: false,
-    error: null,
-  }),
-  useStartKnowledgeEvaluation: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
-  useRetryKnowledgeEvaluation: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
-  useStartKnowledgeEvaluationComparison: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
-  useKnowledgeEvaluationComparison: () => ({ data: undefined }),
-  useKnowledgeEvaluationPolicy: () => ({ data: { configured: false } }),
-  useUpdateKnowledgeEvaluationPolicy: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-    error: null,
-  }),
-  useRetrievalTests: () => ({ tests: [], isLoading: false, error: null }),
-  useRetrievalTest: () => ({ data: undefined, isLoading: false, error: null }),
-  useRunRetrievalTest: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-    error: null,
-    data: undefined,
-  }),
 }));
 
 vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({
     children,
-    defaultValue,
+    value,
   }: {
     children: React.ReactNode;
-    defaultValue?: string;
+    value?: string;
   }) => (
-    <div data-testid="tabs" data-default-value={defaultValue}>
+    <div data-testid="tabs" data-value={value}>
       {children}
     </div>
   ),
@@ -143,22 +88,14 @@ vi.mock("@/components/workspace/library/document-list", () => ({
 }));
 
 vi.mock("@/components/workspace/library/knowledge-base-list", () => ({
-  KnowledgeBaseList: () => (
-    <div data-testid="knowledge-base-list">Knowledge Base List</div>
-  ),
-}));
-
-vi.mock("@/components/workspace/library/revision-list", () => ({
-  RevisionList: () => <div data-testid="revision-list">Revision List</div>,
-}));
-
-vi.mock("@/components/workspace/library/eval-case-list", () => ({
-  EvalCaseList: () => <div data-testid="eval-case-list">Eval Case List</div>,
-}));
-
-vi.mock("@/components/workspace/library/retrieval-test-panel", () => ({
-  RetrievalTestPanel: () => (
-    <div data-testid="retrieval-test-panel">Retrieval Test Panel</div>
+  KnowledgeBaseList: ({ onSelect }: { onSelect?: (id: string) => void }) => (
+    <button
+      type="button"
+      data-testid="knowledge-base-list"
+      onClick={() => onSelect?.("kb-1")}
+    >
+      Knowledge Base List
+    </button>
   ),
 }));
 
@@ -199,39 +136,45 @@ describe("LibraryGallery", () => {
     ).toBeInTheDocument();
   });
 
-  test("renders tabs for documents and knowledge bases", () => {
+  test("links to the revisions and evaluation page", () => {
+    render(<LibraryGallery />);
+    expect(
+      screen.getByRole("link", { name: "Revisions & evaluation" }),
+    ).toHaveAttribute("href", "/workspace/library/quality");
+  });
+
+  test("renders only the baseline documents and knowledge bases tabs", () => {
     render(<LibraryGallery />);
     expect(screen.getByTestId("tabs")).toBeInTheDocument();
     expect(screen.getByTestId("tabs-list")).toBeInTheDocument();
     expect(screen.getByText("Documents")).toBeInTheDocument();
     expect(screen.getByText("Knowledge Bases")).toBeInTheDocument();
-    expect(screen.getByText("Revisions")).toBeInTheDocument();
-    expect(screen.getByText("Eval Cases")).toBeInTheDocument();
-    expect(screen.getByText("Retrieval Test")).toBeInTheDocument();
+
+    const triggers = screen.getAllByTestId("tabs-trigger");
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0]?.getAttribute("data-value")).toBe("documents");
+    expect(triggers[1]?.getAttribute("data-value")).toBe("knowledge-bases");
   });
 
-  test("renders tab content sections", () => {
+  test("renders documents and knowledge base tab content", () => {
     render(<LibraryGallery />);
     expect(screen.getByTestId("document-list")).toBeInTheDocument();
     expect(screen.getByTestId("knowledge-base-list")).toBeInTheDocument();
-    expect(screen.getByTestId("revision-list")).toBeInTheDocument();
-    expect(screen.getByTestId("eval-case-list")).toBeInTheDocument();
-    expect(screen.getByTestId("retrieval-test-panel")).toBeInTheDocument();
   });
 
-  test("has correct default tab value", () => {
+  test("defaults to the documents tab", () => {
     render(<LibraryGallery />);
-    const tabs = screen.getByTestId("tabs");
-    expect(tabs.getAttribute("data-default-value")).toBe("documents");
+    expect(screen.getByTestId("tabs").getAttribute("data-value")).toBe(
+      "documents",
+    );
   });
 
-  test("has correct tab trigger values", () => {
+  test("selecting a knowledge base opens its documents", async () => {
+    const user = userEvent.setup();
     render(<LibraryGallery />);
-    const triggers = screen.getAllByTestId("tabs-trigger");
-    expect(triggers[0]?.getAttribute("data-value")).toBe("documents");
-    expect(triggers[1]?.getAttribute("data-value")).toBe("knowledge-bases");
-    expect(triggers[2]?.getAttribute("data-value")).toBe("revisions");
-    expect(triggers[3]?.getAttribute("data-value")).toBe("eval-cases");
-    expect(triggers[4]?.getAttribute("data-value")).toBe("retrieval-test");
+    await user.click(screen.getByText("Knowledge Base List"));
+    expect(screen.getByTestId("tabs").getAttribute("data-value")).toBe(
+      "documents",
+    );
   });
 });

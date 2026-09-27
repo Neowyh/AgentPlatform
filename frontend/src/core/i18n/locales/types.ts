@@ -1399,6 +1399,13 @@ export interface Translations {
     revisions: string;
     evalCases: string;
     retrievalTestTab: string;
+    evaluation: string;
+    qualityEntry: string;
+    quality: {
+      title: string;
+      description: string;
+      selectKnowledgeBase: string;
+    };
     revisionList: {
       selectKnowledgeBase: string;
       loading: string;

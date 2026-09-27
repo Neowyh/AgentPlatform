@@ -153,7 +153,9 @@ function getBreadcrumbSegments(
         href: "/workspace/library",
       });
 
-      if (parts[2]) {
+      if (parts[2] === "quality") {
+        segments.push({ label: t.library.quality.title });
+      } else if (parts[2]) {
         const docId = parts[2];
         segments.push({
           label: docId,

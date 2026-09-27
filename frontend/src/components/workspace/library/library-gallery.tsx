@@ -1,27 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
 import { useKnowledgeBases } from "@/core/library";
 
 import { DocumentList } from "./document-list";
-import { EvalCaseList } from "./eval-case-list";
-import { EvaluationPanel } from "./evaluation-panel";
 import { KnowledgeBaseList } from "./knowledge-base-list";
-import { RetrievalTestPanel } from "./retrieval-test-panel";
-import { RevisionList } from "./revision-list";
 
 export function LibraryGallery() {
   const { t } = useI18n();
   const { knowledgeBases } = useKnowledgeBases();
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] =
     useState<string>();
+  const [activeTab, setActiveTab] = useState("documents");
   const selectedId = selectedKnowledgeBaseId ?? knowledgeBases[0]?.id;
-  const selectedKnowledgeBase = knowledgeBases.find(
-    (kb) => kb.id === selectedId,
-  );
+
+  function handleSelectKnowledgeBase(id: string) {
+    setSelectedKnowledgeBaseId(id);
+    setActiveTab("documents");
+  }
 
   return (
     <div className="workbench-collection-surface flex h-full flex-col gap-6 p-6">
@@ -30,19 +31,32 @@ export function LibraryGallery() {
           <h1 className="type-page-title font-bold">{t.library.title}</h1>
           <p className="text-muted-foreground">{t.library.description}</p>
         </div>
-        <button
-          type="button"
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2"
-          onClick={() =>
-            document
-              .querySelector<HTMLInputElement>(
-                'input[data-knowledge-upload="true"]',
-              )
-              ?.click()
-          }
-        >
-          {t.library.upload}
-        </button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link
+              href={
+                selectedId
+                  ? `/workspace/library/quality?kb=${encodeURIComponent(selectedId)}`
+                  : "/workspace/library/quality"
+              }
+            >
+              {t.library.qualityEntry}
+            </Link>
+          </Button>
+          <button
+            type="button"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2"
+            onClick={() =>
+              document
+                .querySelector<HTMLInputElement>(
+                  'input[data-knowledge-upload="true"]',
+                )
+                ?.click()
+            }
+          >
+            {t.library.upload}
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -66,18 +80,12 @@ export function LibraryGallery() {
         </svg>
       </div>
 
-      <Tabs defaultValue="documents" className="flex-1">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
         <TabsList>
           <TabsTrigger value="documents">{t.library.documents}</TabsTrigger>
           <TabsTrigger value="knowledge-bases">
             {t.library.knowledgeBases}
           </TabsTrigger>
-          <TabsTrigger value="revisions">{t.library.revisions}</TabsTrigger>
-          <TabsTrigger value="eval-cases">{t.library.evalCases}</TabsTrigger>
-          <TabsTrigger value="retrieval-test">
-            {t.library.retrievalTestTab}
-          </TabsTrigger>
-          <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="flex-1">
@@ -85,34 +93,9 @@ export function LibraryGallery() {
         </TabsContent>
 
         <TabsContent value="knowledge-bases" className="flex-1">
-          <KnowledgeBaseList onSelect={setSelectedKnowledgeBaseId} />
-        </TabsContent>
-
-        <TabsContent value="revisions" className="flex-1">
-          <RevisionList
-            knowledgeBaseId={selectedId}
-            canModify={selectedKnowledgeBase?.can_modify}
-          />
-        </TabsContent>
-
-        <TabsContent value="eval-cases" className="flex-1">
-          <EvalCaseList
-            knowledgeBaseId={selectedId}
-            canModify={selectedKnowledgeBase?.can_modify}
-          />
-        </TabsContent>
-
-        <TabsContent value="retrieval-test" className="flex-1">
-          <RetrievalTestPanel
-            knowledgeBaseId={selectedId}
-            canModify={selectedKnowledgeBase?.can_modify}
-          />
-        </TabsContent>
-
-        <TabsContent value="evaluation" className="flex-1">
-          <EvaluationPanel
-            knowledgeBaseId={selectedId}
-            canModify={selectedKnowledgeBase?.can_modify}
+          <KnowledgeBaseList
+            selectedId={selectedId}
+            onSelect={handleSelectKnowledgeBase}
           />
         </TabsContent>
       </Tabs>

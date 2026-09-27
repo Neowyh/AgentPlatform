@@ -37,6 +37,9 @@ test.describe("real Knowledge Center Gate 8", () => {
     await page.goto("/workspace/library");
     await page.getByRole("tab", { name: /Knowledge Bases|知识库/i }).click();
     await page.getByRole("button", { name: knowledgeBaseSlug! }).click();
+    await page
+      .getByRole("link", { name: /Revisions & evaluation|版本与评估/i })
+      .click();
 
     await page.getByRole("tab", { name: /Retrieval|检索/i }).click();
     const matchingRecord = page

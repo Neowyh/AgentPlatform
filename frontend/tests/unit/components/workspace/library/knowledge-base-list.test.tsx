@@ -1,20 +1,26 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import type { KnowledgeBase } from "@/core/library";
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockKnowledgeBases = [
+const mockKnowledgeBases: KnowledgeBase[] = [
   {
     id: "kb-1",
     slug: "knowledge-base-1",
     display_name: "Knowledge Base 1",
     visibility: "private",
+    type: "knowledge_base",
+    can_modify: true,
   },
   {
     id: "kb-2",
     slug: "knowledge-base-2",
     display_name: "Knowledge Base 2",
     visibility: "public",
+    type: "knowledge_base",
+    can_modify: true,
   },
 ];
 
@@ -65,6 +71,32 @@ describe("KnowledgeBaseList", () => {
     expect(screen.getByText("knowledge-base-1")).toBeInTheDocument();
     expect(screen.getByText("private")).toBeInTheDocument();
     expect(screen.getByText("public")).toBeInTheDocument();
+  });
+
+  test("displays the document count when it is available", () => {
+    hookState.knowledgeBases = [
+      {
+        id: "kb-1",
+        slug: "knowledge-base-1",
+        display_name: "Knowledge Base 1",
+        visibility: "private",
+        knowledge_document_count: 7,
+        type: "knowledge_base",
+        can_modify: true,
+      },
+    ];
+    render(<KnowledgeBaseList />);
+    expect(screen.getByText("7 documents")).toBeInTheDocument();
+  });
+
+  test("marks the selected knowledge base", () => {
+    render(<KnowledgeBaseList selectedId="kb-2" />);
+    expect(
+      screen.getByText("Knowledge Base 2").closest("button")!,
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByText("Knowledge Base 1").closest("button")!,
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   test("displays a loading state", () => {

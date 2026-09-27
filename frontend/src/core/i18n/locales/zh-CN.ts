@@ -1671,6 +1671,13 @@ export const zhCN: Translations = {
     revisions: "版本",
     evalCases: "评测用例",
     retrievalTestTab: "检索测试",
+    evaluation: "评估",
+    qualityEntry: "版本与评估",
+    quality: {
+      title: "版本与评估",
+      description: "管理知识库的版本、评测用例、检索测试与评估。",
+      selectKnowledgeBase: "选择知识库",
+    },
     revisionList: {
       selectKnowledgeBase: "选择一个知识库以查看版本",
       loading: "加载中...",

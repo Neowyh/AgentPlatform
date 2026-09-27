@@ -8,8 +8,10 @@ import { useCreateKnowledgeBase, useKnowledgeBases } from "@/core/library";
 
 export function KnowledgeBaseList({
   onSelect,
+  selectedId,
 }: {
   onSelect?: (id: string) => void;
+  selectedId?: string;
 }) {
   const { knowledgeBases, isLoading, error } = useKnowledgeBases();
   const createKnowledgeBase = useCreateKnowledgeBase();
@@ -73,24 +75,32 @@ export function KnowledgeBaseList({
         <div className="text-muted-foreground">No knowledge bases found</div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {knowledgeBases.map((kb) => (
-            <button
-              key={kb.id}
-              type="button"
-              onClick={() => onSelect?.(kb.id)}
-              className="w-full rounded-lg border p-4 text-left"
-            >
-              <h3 className="type-section-title font-medium">
-                {kb.display_name}
-              </h3>
-              <p className="text-muted-foreground type-body">{kb.slug}</p>
-              <div className="mt-2">
-                <span className="text-muted-foreground type-body">
-                  {kb.visibility}
-                </span>
-              </div>
-            </button>
-          ))}
+          {knowledgeBases.map((kb) => {
+            const selected = kb.id === selectedId;
+            return (
+              <button
+                key={kb.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onSelect?.(kb.id)}
+                className={`w-full rounded-lg border p-4 text-left ${
+                  selected ? "border-primary ring-primary/30 ring-1" : ""
+                }`}
+              >
+                <h3 className="type-section-title font-medium">
+                  {kb.display_name}
+                </h3>
+                <p className="text-muted-foreground type-body">{kb.slug}</p>
+                <div className="mt-2">
+                  <span className="text-muted-foreground type-body">
+                    {typeof kb.knowledge_document_count === "number"
+                      ? `${kb.knowledge_document_count} documents`
+                      : kb.visibility}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

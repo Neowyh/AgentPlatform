@@ -16,6 +16,55 @@ test.describe("Core workspace — visual regression", () => {
     });
   });
 
+  test("library desktop screenshot", async ({ page }) => {
+    await page.route(/\/api\/resources\?type=knowledge_base/, (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "kb-1",
+              type: "knowledge_base",
+              slug: "team-docs",
+              display_name: "Team docs",
+              visibility: "public",
+              can_modify: true,
+              knowledge_document_count: 2,
+            },
+          ],
+          total: 1,
+        },
+      }),
+    );
+    await page.route(/\/api\/resources\/[^/?]+\/documents$/, (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "doc-1",
+              resource_id: "kb-1",
+              name: "Platform overview",
+              size: 1024,
+              mime_type: "text/plain",
+              content_hash: "hash-doc-1",
+              source: "upload",
+              status: "ready",
+              can_modify: true,
+              metadata: {},
+              created_at: "2026-09-01T00:00:00Z",
+              updated_at: null,
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto("/workspace/library");
+    await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+    await expect(page.getByText("Platform overview")).toBeVisible();
+    await expect(page).toHaveScreenshot("library.png", {
+      fullPage: true,
+    });
+  });
+
   test("workflow editor desktop screenshot", async ({ page }) => {
     await page.goto("/workspace/workflows/new");
     await expect(page.getByRole("main")).toBeVisible();

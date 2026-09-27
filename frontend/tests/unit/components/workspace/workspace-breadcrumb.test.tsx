@@ -36,6 +36,10 @@ const mockT = {
   sidebar: {
     agents: "Agents",
     capabilities: "Capabilities",
+    library: "Library",
+  },
+  library: {
+    quality: { title: "Revisions & evaluation" },
   },
   resources: { experts: "Experts", skills: "Skills", connectors: "Connectors" },
   workspace: {
@@ -203,6 +207,20 @@ describe("WorkspaceBreadcrumb", () => {
     mockPathname = "/workspace/workflows/my-workflow/runs";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Runs")).toBeInTheDocument();
+  });
+
+  test("renders library breadcrumb", () => {
+    mockPathname = "/workspace/library";
+    render(<WorkspaceBreadcrumb />);
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.getByText("Library")).toBeInTheDocument();
+  });
+
+  test("renders library quality breadcrumb", () => {
+    mockPathname = "/workspace/library/quality";
+    render(<WorkspaceBreadcrumb />);
+    expect(screen.getByText("Library")).toBeInTheDocument();
+    expect(screen.getByText("Revisions & evaluation")).toBeInTheDocument();
   });
 
   test("renders admin breadcrumb", () => {
