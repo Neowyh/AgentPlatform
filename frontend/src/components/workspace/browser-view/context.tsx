@@ -30,6 +30,9 @@ export function BrowserViewProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [latestFrame, setLatestFrame] = useState<BrowserViewFrame | null>(null);
 
+  // Recording a frame never opens the panel: entering a conversation with
+  // browser history or receiving a new frame must not narrow the chat area.
+  // Opening stays on the user (trigger button, inline frame preview).
   const pushFrame = useCallback((frame: BrowserViewFrame) => {
     setLatestFrame((prev) => {
       const sameFrame =
@@ -37,14 +40,7 @@ export function BrowserViewProvider({ children }: { children: ReactNode }) {
         prev?.url === frame.url &&
         prev?.title === frame.title &&
         prev?.action === frame.action;
-      if (sameFrame) {
-        return prev;
-      }
-      if (prev?.screenshot !== frame.screenshot) {
-        // A new browser frame arrived — surface the panel automatically.
-        setOpen(true);
-      }
-      return frame;
+      return sameFrame ? prev : frame;
     });
   }, []);
 

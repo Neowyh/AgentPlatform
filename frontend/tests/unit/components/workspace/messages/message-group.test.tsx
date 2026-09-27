@@ -1,10 +1,4 @@
-import {
-  render,
-  screen,
-  cleanup,
-  fireEvent,
-  act,
-} from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -172,13 +166,16 @@ vi.mock("@/components/workspace/messages/markdown-content", () => ({
 
 let mockSelectedArtifact: string | null = null;
 
+const artifactsMock = vi.hoisted(() => ({
+  setOpen: vi.fn(),
+  select: vi.fn(),
+}));
+
 vi.mock("@/components/workspace/artifacts", () => ({
   useArtifacts: () => ({
-    setOpen: vi.fn(),
-    autoOpen: true,
-    autoSelect: true,
+    setOpen: artifactsMock.setOpen,
     selectedArtifact: mockSelectedArtifact,
-    select: vi.fn(),
+    select: artifactsMock.select,
   }),
 }));
 
@@ -1769,130 +1766,60 @@ describe("MessageGroup", () => {
     expect(screen.getByText("120 tokens")).toBeInTheDocument();
   });
 
-  // ── write_file / str_replace auto-open artifact (lines 593-604) ────────────
+  // ── write_file / str_replace: streaming writes never open the panel ────────
 
-  test("write_file auto-opens artifact when isLoading=true, isLast, autoOpen, autoSelect, path, no result", () => {
-    vi.useFakeTimers();
-    try {
-      const msg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "write_file",
-            args: { path: "/src/test.ts" },
-          },
-        ],
-      });
-      render(<MessageGroup messages={[msg]} isLoading={true} />);
-      // Advance timer to trigger the setTimeout callback (100ms)
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      // Component renders without errors; the auto-open logic ran
-      expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
-      expect(screen.getByText("/src/test.ts")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+  test("streaming write_file does not open the artifact panel", () => {
+    const msg = makeAiMessage({
+      id: "ai-1",
+      tool_calls: [
+        {
+          id: "tc-1",
+          name: "write_file",
+          args: { path: "/src/test.ts" },
+        },
+      ],
+    });
+    render(<MessageGroup messages={[msg]} isLoading={true} />);
+    expect(artifactsMock.setOpen).not.toHaveBeenCalled();
+    expect(artifactsMock.select).not.toHaveBeenCalled();
+    expect(screen.getByText("/src/test.ts")).toBeInTheDocument();
   });
 
-  test("str_replace auto-opens artifact when isLoading=true and conditions met", () => {
-    vi.useFakeTimers();
-    try {
-      const msg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "str_replace",
-            args: { path: "/src/file.ts" },
-          },
-        ],
-      });
-      render(<MessageGroup messages={[msg]} isLoading={true} />);
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
-      expect(screen.getByText("/src/file.ts")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+  test("streaming str_replace does not open the artifact panel", () => {
+    const msg = makeAiMessage({
+      id: "ai-1",
+      tool_calls: [
+        {
+          id: "tc-1",
+          name: "str_replace",
+          args: { path: "/src/file.ts" },
+        },
+      ],
+    });
+    render(<MessageGroup messages={[msg]} isLoading={true} />);
+    expect(artifactsMock.setOpen).not.toHaveBeenCalled();
+    expect(artifactsMock.select).not.toHaveBeenCalled();
+    expect(screen.getByText("/src/file.ts")).toBeInTheDocument();
   });
 
-  test("write_file does not auto-open when isLoading=false", () => {
-    vi.useFakeTimers();
-    try {
-      const msg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "write_file",
-            args: { path: "/src/test.ts" },
-          },
-        ],
-      });
-      render(<MessageGroup messages={[msg]} isLoading={false} />);
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      // Should still render, just no auto-open
-      expect(screen.getByText("/src/test.ts")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("write_file does not auto-open when result is present", () => {
-    vi.useFakeTimers();
-    try {
-      const aiMsg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "write_file",
-            args: { path: "/src/test.ts" },
-          },
-        ],
-      });
-      const toolMsg = makeToolMessage({
-        tool_call_id: "tc-1",
-        content: "File written successfully",
-      });
-      render(<MessageGroup messages={[aiMsg, toolMsg]} isLoading={true} />);
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      expect(screen.getByText("/src/test.ts")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("write_file does not auto-open when path is missing", () => {
-    vi.useFakeTimers();
-    try {
-      const msg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "write_file",
-            args: { description: "Writing" },
-          },
-        ],
-      });
-      render(<MessageGroup messages={[msg]} isLoading={true} />);
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      expect(screen.getByText("Writing")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+  test("completed write_file renders without opening the panel", () => {
+    const aiMsg = makeAiMessage({
+      id: "ai-1",
+      tool_calls: [
+        {
+          id: "tc-1",
+          name: "write_file",
+          args: { path: "/src/test.ts" },
+        },
+      ],
+    });
+    const toolMsg = makeToolMessage({
+      tool_call_id: "tc-1",
+      content: "File written successfully",
+    });
+    render(<MessageGroup messages={[aiMsg, toolMsg]} isLoading={true} />);
+    expect(artifactsMock.setOpen).not.toHaveBeenCalled();
+    expect(screen.getByText("/src/test.ts")).toBeInTheDocument();
   });
 
   // ── web_fetch string result with non-untitled title (lines 520-525) ────────
@@ -2213,8 +2140,10 @@ describe("MessageGroup", () => {
       .closest("[data-testid='chain-of-thought-step']");
     expect(step).toBeInTheDocument();
     fireEvent.click(step!);
-    // Component should not crash after click
-    expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
+    expect(artifactsMock.select).toHaveBeenCalledWith(
+      "write-file:/src/new.ts?message_id=ai-1&tool_call_id=tc-1",
+    );
+    expect(artifactsMock.setOpen).toHaveBeenCalledWith(true);
   });
 
   test("clicking str_replace step triggers onClick handler", () => {
@@ -2234,37 +2163,11 @@ describe("MessageGroup", () => {
       .closest("[data-testid='chain-of-thought-step']");
     expect(step).toBeInTheDocument();
     fireEvent.click(step!);
-    expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
+    expect(artifactsMock.select).toHaveBeenCalledWith(
+      "write-file:/src/fix.ts?message_id=ai-1&tool_call_id=tc-1",
+    );
+    expect(artifactsMock.setOpen).toHaveBeenCalledWith(true);
   });
 
-  // ── Line 599: selectedArtifact match in setTimeout callback ────────────────
-
-  test("write_file auto-open skips select when selectedArtifact already matches URL", () => {
-    // Set mockSelectedArtifact to match the URL that would be constructed:
-    // write-file:/src/test.ts?message_id=ai-1&tool_call_id=tc-1
-    mockSelectedArtifact =
-      "write-file:/src/test.ts?message_id=ai-1&tool_call_id=tc-1";
-    vi.useFakeTimers();
-    try {
-      const msg = makeAiMessage({
-        id: "ai-1",
-        tool_calls: [
-          {
-            id: "tc-1",
-            name: "write_file",
-            args: { path: "/src/test.ts" },
-          },
-        ],
-      });
-      render(<MessageGroup messages={[msg]} isLoading={true} />);
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      // selectedArtifact matches URL, so the callback returns early (line 599)
-      // select() and setOpen() are NOT called
-      expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+  // ── write_file / str_replace step click opens the panel explicitly ─────────
 });

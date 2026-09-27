@@ -15,7 +15,7 @@ import {
   SquareTerminalIcon,
   WrenchIcon,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import {
   ChainOfThought,
@@ -247,10 +247,7 @@ function MessageGroupComponent({
     );
   };
 
-  const renderToolCall = (
-    step: CoTToolCallStep,
-    options?: { isLast?: boolean },
-  ) => {
+  const renderToolCall = (step: CoTToolCallStep) => {
     const debugStep =
       showTokenDebugSummaries && step.messageId
         ? debugStepByMessageId.get(step.messageId)
@@ -261,8 +258,6 @@ function MessageGroupComponent({
         key={step.id}
         {...step}
         threadId={threadId}
-        isLast={options?.isLast}
-        isLoading={isLoading}
         deferBrowserPreview={deferBrowserPreviews}
         tokenDebugStep={
           debugStep && !debugStep.sharedAttribution ? debugStep : undefined
@@ -371,7 +366,7 @@ function MessageGroupComponent({
                 stepIndexByStep.get(lastToolCallStep) ?? -1,
               )}
               <FlipDisplay uniqueKey={lastToolCallStep.id ?? ""}>
-                {renderToolCall(lastToolCallStep, { isLast: true })}
+                {renderToolCall(lastToolCallStep)}
               </FlipDisplay>
               {afterLastToolCallAssistantTextSteps
                 .filter((step) => !belowLastReasoningSteps.has(step))
@@ -534,7 +529,7 @@ function DebugStepLabel({
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0 flex-1">{label}</div>
       {token ? (
-        <div className="text-muted-foreground shrink-0 font-mono type-compact">
+        <div className="text-muted-foreground type-compact shrink-0 font-mono">
           {token}
         </div>
       ) : null}
@@ -577,8 +572,6 @@ function ToolCall({
   name,
   args,
   result,
-  isLast = false,
-  isLoading = false,
   deferBrowserPreview = false,
   tokenDebugStep,
   browserView,
@@ -589,16 +582,15 @@ function ToolCall({
   name: string;
   args: Record<string, unknown>;
   result?: string | Record<string, unknown>;
-  isLast?: boolean;
-  isLoading?: boolean;
   deferBrowserPreview?: boolean;
   tokenDebugStep?: TokenDebugStep;
   browserView?: BrowserViewMeta;
   threadId?: string;
 }) {
   const { t } = useI18n();
-  const { setOpen, autoOpen, autoSelect, selectedArtifact, select } =
-    useArtifacts();
+  // The write_file/str_replace panel opens only on user click below: a
+  // streaming file write must not expand the right panel on its own.
+  const { setOpen, select } = useArtifacts();
   const browserViewPanel = useMaybeBrowserView();
   const tokenLabel = tokenDebugStep
     ? formatDebugToken(tokenDebugStep, t)
@@ -621,28 +613,6 @@ function ToolCall({
         toolCallId: id,
       })
     : null;
-  const autoOpenArtifactUrl =
-    isLoading &&
-    isLast &&
-    autoOpen &&
-    autoSelect &&
-    writeFileArtifactUrl &&
-    !result
-      ? writeFileArtifactUrl
-      : null;
-
-  useEffect(() => {
-    if (!autoOpenArtifactUrl || selectedArtifact === autoOpenArtifactUrl) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      select(autoOpenArtifactUrl, true);
-      setOpen(true);
-    }, 100);
-
-    return () => window.clearTimeout(timeout);
-  }, [autoOpenArtifactUrl, select, selectedArtifact, setOpen]);
 
   if (name.startsWith("browser_")) {
     const shot = browserView?.screenshot;
@@ -683,7 +653,7 @@ function ToolCall({
               decoding="async"
             />
             {browserView?.url && (
-              <div className="text-muted-foreground bg-muted/40 truncate px-2 py-1 text-left type-compact">
+              <div className="text-muted-foreground bg-muted/40 type-compact truncate px-2 py-1 text-left">
                 {browserView.url}
               </div>
             )}

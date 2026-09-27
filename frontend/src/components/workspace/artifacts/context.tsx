@@ -20,12 +20,10 @@ export interface ArtifactsContextType {
   setArtifacts: (artifacts: string[]) => void;
 
   selectedArtifact: string | null;
-  autoSelect: boolean;
-  select: (artifact: string, autoSelect?: boolean) => void;
+  select: (artifact: string) => void;
   deselect: () => void;
 
   open: boolean;
-  autoOpen: boolean;
   setOpen: (open: boolean) => void;
 
   drafts: Record<string, ArtifactDraftState>;
@@ -85,11 +83,9 @@ interface ArtifactsProviderProps {
 export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   const [artifacts, setArtifacts] = useState<string[]>([]);
   const [selectedArtifact, setSelectedArtifact] = useState<string | null>(null);
-  const [autoSelect, setAutoSelect] = useState(true);
   const [open, setOpen] = useState(
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true",
   );
-  const [autoOpen, setAutoOpen] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, ArtifactDraftState>>({});
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const { setOpen: setSidebarOpen } = useSidebar();
@@ -105,8 +101,6 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     setArtifacts(persisted?.artifacts ?? []);
     setSelectedArtifact(persisted?.selectedArtifact ?? null);
     setOpen(persisted?.open ?? env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true");
-    setAutoOpen(true);
-    setAutoSelect(!persisted?.selectedArtifact);
     setDrafts({});
     setEditingPath(null);
     hydratedPathRef.current = pathname;
@@ -141,21 +135,17 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   }, [artifacts, open, pathname, selectedArtifact]);
 
   const select = useCallback(
-    (artifact: string, autoSelect = false) => {
+    (artifact: string) => {
       setSelectedArtifact(artifact);
       if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true") {
         setSidebarOpen(false);
       }
-      if (!autoSelect) {
-        setAutoSelect(false);
-      }
     },
-    [setSidebarOpen, setSelectedArtifact, setAutoSelect],
+    [setSidebarOpen, setSelectedArtifact],
   );
 
   const deselect = useCallback(() => {
     setSelectedArtifact(null);
-    setAutoSelect(true);
     setOpen(false);
   }, []);
 
@@ -164,15 +154,7 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     setArtifacts,
 
     open,
-    autoOpen,
-    autoSelect,
-    setOpen: (isOpen: boolean) => {
-      if (!isOpen && autoOpen) {
-        setAutoOpen(false);
-        setAutoSelect(false);
-      }
-      setOpen(isOpen);
-    },
+    setOpen,
 
     selectedArtifact,
     select,

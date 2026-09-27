@@ -7,28 +7,19 @@ import { MessageGroup } from "@/components/workspace/messages/message-group";
 import { I18nContext } from "@/core/i18n/context";
 import { enUS } from "@/core/i18n/locales/en-US";
 
-const artifactsMockState = rs.hoisted(() => ({
-  autoOpen: false,
-  autoSelect: false,
-}));
-
 rs.mock("@/components/workspace/artifacts", () => ({
   useArtifacts: () => ({
     artifacts: [],
     setArtifacts: () => undefined,
     selectedArtifact: null,
-    autoSelect: artifactsMockState.autoSelect,
     select: () => undefined,
     deselect: () => undefined,
     open: false,
-    autoOpen: artifactsMockState.autoOpen,
     setOpen: () => undefined,
   }),
 }));
 
 afterEach(() => {
-  artifactsMockState.autoOpen = false;
-  artifactsMockState.autoSelect = false;
   rs.restoreAllMocks();
 });
 
@@ -157,9 +148,7 @@ describe("MessageGroup", () => {
     expect(html).toContain(">answer.</span>");
   });
 
-  it("does not schedule artifact auto-open during render", () => {
-    artifactsMockState.autoOpen = true;
-    artifactsMockState.autoSelect = true;
+  it("does not schedule artifact panel opening during render", () => {
     const timeoutSpy = rs.spyOn(globalThis, "setTimeout");
     const html = renderGroup(
       [

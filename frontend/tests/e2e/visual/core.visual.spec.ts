@@ -121,6 +121,41 @@ test.describe("Core workspace — visual regression", () => {
     );
   });
 
+  test("existing chat desktop screenshot", async ({ page }) => {
+    // Match the pre-merge manual's 04-workspace-chat.png canvas.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    mockLangGraphAPI(page, {
+      threads: [
+        {
+          thread_id: "00000000-0000-0000-0000-000000004100",
+          title: "Quarterly report review",
+          messages: [
+            {
+              type: "human",
+              id: "msg-human-existing-chat",
+              content: [
+                { type: "text", text: "Summarize the quarterly report" },
+              ],
+            },
+            {
+              type: "ai",
+              id: "msg-ai-existing-chat",
+              content:
+                "Here is the quarterly summary. Revenue grew steadily and the top three accounts drove most of the increase.",
+            },
+          ],
+        },
+      ],
+    });
+    await page.goto("/workspace/chats/00000000-0000-0000-0000-000000004100");
+    await expect(page.getByTestId("main-message-list")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveScreenshot("existing-chat.png", {
+      fullPage: true,
+    });
+  });
+
   test("admin dashboard desktop screenshot", async ({ page }) => {
     await page.goto("/workspace/admin");
     await expect(page.getByRole("main")).toBeVisible();

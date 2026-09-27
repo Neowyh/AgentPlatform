@@ -43,13 +43,7 @@ function TestConsumer() {
       <span data-testid="artifacts">{JSON.stringify(ctx.artifacts)}</span>
       <span data-testid="selected">{ctx.selectedArtifact}</span>
       <span data-testid="open">{String(ctx.open)}</span>
-      <span data-testid="auto-select">{String(ctx.autoSelect)}</span>
-      <span data-testid="auto-open">{String(ctx.autoOpen)}</span>
       <button data-testid="select-btn" onClick={() => ctx.select("file-1")} />
-      <button
-        data-testid="select-auto-btn"
-        onClick={() => ctx.select("file-2", true)}
-      />
       <button data-testid="deselect-btn" onClick={() => ctx.deselect()} />
       <button data-testid="set-open-btn" onClick={() => ctx.setOpen(true)} />
       <button data-testid="set-close-btn" onClick={() => ctx.setOpen(false)} />
@@ -73,8 +67,6 @@ describe("ArtifactsProvider", () => {
     expect(screen.getByTestId("artifacts")).toHaveTextContent("[]");
     expect(screen.getByTestId("selected")).toHaveTextContent("");
     expect(screen.getByTestId("open")).toHaveTextContent("false");
-    expect(screen.getByTestId("auto-select")).toHaveTextContent("true");
-    expect(screen.getByTestId("auto-open")).toHaveTextContent("true");
   });
 
   test("select sets selectedArtifact and closes sidebar", () => {
@@ -88,29 +80,7 @@ describe("ArtifactsProvider", () => {
     expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
   });
 
-  test("select with autoSelect=true does not change autoSelect", () => {
-    render(
-      <ArtifactsProvider>
-        <TestConsumer />
-      </ArtifactsProvider>,
-    );
-    fireEvent.click(screen.getByTestId("select-auto-btn"));
-    expect(screen.getByTestId("selected")).toHaveTextContent("file-2");
-    // autoSelect stays true when autoSelect param is true
-    expect(screen.getByTestId("auto-select")).toHaveTextContent("true");
-  });
-
-  test("select with autoSelect=false (default) sets autoSelect to false", () => {
-    render(
-      <ArtifactsProvider>
-        <TestConsumer />
-      </ArtifactsProvider>,
-    );
-    fireEvent.click(screen.getByTestId("select-btn"));
-    expect(screen.getByTestId("auto-select")).toHaveTextContent("false");
-  });
-
-  test("deselect clears selectedArtifact and resets state", () => {
+  test("deselect clears selectedArtifact and closes the panel", () => {
     render(
       <ArtifactsProvider>
         <TestConsumer />
@@ -123,7 +93,6 @@ describe("ArtifactsProvider", () => {
     // Then deselect
     fireEvent.click(screen.getByTestId("deselect-btn"));
     expect(screen.getByTestId("selected")).toHaveTextContent("");
-    expect(screen.getByTestId("auto-select")).toHaveTextContent("true");
     expect(screen.getByTestId("open")).toHaveTextContent("false");
   });
 
@@ -137,7 +106,7 @@ describe("ArtifactsProvider", () => {
     expect(screen.getByTestId("open")).toHaveTextContent("true");
   });
 
-  test("setOpen(false) sets open to false and resets autoOpen/autoSelect", () => {
+  test("setOpen(false) sets open to false", () => {
     render(
       <ArtifactsProvider>
         <TestConsumer />
@@ -145,8 +114,6 @@ describe("ArtifactsProvider", () => {
     );
     fireEvent.click(screen.getByTestId("set-close-btn"));
     expect(screen.getByTestId("open")).toHaveTextContent("false");
-    expect(screen.getByTestId("auto-open")).toHaveTextContent("false");
-    expect(screen.getByTestId("auto-select")).toHaveTextContent("false");
   });
 
   test("setArtifacts updates the artifacts list", () => {
