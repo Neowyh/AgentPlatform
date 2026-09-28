@@ -303,7 +303,7 @@ class TestGetMe:
 
         with (
             patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
-            patch("app.gateway.routers.auth._platform_role_for_user", new_callable=AsyncMock, return_value="user"),
+            patch("app.gateway.routers.auth._platform_identity_for_user", new_callable=AsyncMock, return_value=("user", None)),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -313,6 +313,7 @@ class TestGetMe:
         data = resp.json()
         assert data["email"] == "me@example.com"
         assert data["system_role"] == "user"
+        assert data["department_id"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -583,11 +583,15 @@ async def get_me(request: Request):
     user = await get_current_user_from_request(request)
     from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
 
-    role = "user" if getattr(request.state, "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED else await _platform_role_for_user(str(user.id))
+    if getattr(request.state, "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
+        role, department_id = "user", None
+    else:
+        role, department_id = await _platform_identity_for_user(str(user.id))
     return UserResponse(
         id=str(user.id),
         email=user.email,
         system_role=role,
+        department_id=department_id,
         needs_setup=user.needs_setup,
         oauth_provider=user.oauth_provider,
     )
@@ -763,7 +767,7 @@ async def _count_active_super_admin_users() -> int:
         )
 
 
-async def _platform_role_for_user(user_id: str) -> str:
+async def _platform_identity_for_user(user_id: str) -> tuple[str, str | None]:
     from sqlalchemy import select
 
     from app.agentplatform.rbac_models import UserModel, UserRole
@@ -777,9 +781,11 @@ async def _platform_role_for_user(user_id: str) -> str:
     if profile is None or profile.disabled:
         raise HTTPException(status_code=403, detail="Authenticated user has no active RBAC profile")
     try:
-        return UserRole(profile.role).value
+        role = UserRole(profile.role).value
     except ValueError as exc:
         raise HTTPException(status_code=403, detail="Authenticated user has an invalid RBAC role") from exc
+    department_id = str(profile.department_id) if profile.department_id is not None else None
+    return role, department_id
 
 
 @router.get("/setup-status")

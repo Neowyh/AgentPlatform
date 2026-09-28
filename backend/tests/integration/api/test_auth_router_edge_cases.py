@@ -587,7 +587,7 @@ class TestMeProfileResolution:
 
     def _me_patches(self, user, scalar_return):
         session = AsyncMock()
-        session.scalar = AsyncMock(return_value=scalar_return)
+        session.scalar = AsyncMock(side_effect=scalar_return) if isinstance(scalar_return, list) else AsyncMock(return_value=scalar_return)
         context = AsyncMock()
         context.__aenter__ = AsyncMock(return_value=session)
         context.__aexit__ = AsyncMock(return_value=False)
@@ -649,6 +649,40 @@ class TestMeProfileResolution:
 
         assert resp.status_code == 200
         assert resp.json()["system_role"] == "viewer"
+
+    @pytest.mark.parametrize(
+        ("role", "department_id"),
+        [("department_admin", "dept-1"), ("super_admin", None)],
+    )
+    def test_me_returns_current_platform_department(self, role, department_id):
+        user = _fake_user(email="department@example.com")
+        profile = MagicMock()
+        profile.role = role
+        profile.department_id = department_id
+        profile.disabled = False
+        p1, p2 = self._me_patches(user, scalar_return=profile)
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["system_role"] == role
+        assert resp.json()["department_id"] == department_id
+
+    def test_me_role_and_department_use_one_rbac_snapshot(self):
+        user = _fake_user(email="snapshot@example.com")
+        first = MagicMock(role="department_admin", department_id="dept-1", disabled=False)
+        second = MagicMock(role="super_admin", department_id=None, disabled=False)
+        p1, p2 = self._me_patches(user, scalar_return=[first, second])
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["system_role"] == "department_admin"
+        assert resp.json()["department_id"] == "dept-1"
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ describe("userSchema", () => {
       id: "u-1",
       email: "alice@example.com",
       system_role: "super_admin",
+      department_id: null,
       needs_setup: true,
       oauth_provider: null,
     };
@@ -36,6 +37,20 @@ describe("userSchema", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.needs_setup).toBe(false);
+      expect(result.data.department_id).toBeUndefined();
+    }
+  });
+
+  test("keeps the current user's department from the auth response", () => {
+    const result = userSchema.safeParse({
+      id: "u-3",
+      email: "admin@example.com",
+      system_role: "department_admin",
+      department_id: "dept-1",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.department_id).toBe("dept-1");
     }
   });
 

@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 const mockPush = vi.fn();
 const mockSendMessage = vi.fn();
 const mockCreateVisibilityApplication = vi.fn();
-let authUser: { system_role: string } | null = null;
+let authUser: { system_role: string; department_id?: string | null } | null =
+  null;
 let selectOnValueChange: ((value: string) => void) | undefined;
 
 let threadIsLoading = false;
@@ -365,6 +366,45 @@ describe("NewAgentPage", () => {
   // =========================================================================
 
   describe("Visibility options based on user role", () => {
+    test("super admin without a department cannot select department visibility", () => {
+      authUser = { system_role: "super_admin", department_id: null };
+      renderPage();
+      expect(screen.getByRole("button", { name: "部门共享" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "公开" })).toBeEnabled();
+    });
+
+    test("department admin with a department can request department visibility", async () => {
+      authUser = {
+        system_role: "department_admin",
+        department_id: "dept-1",
+      };
+      mockedGetAgent.mockResolvedValue({
+        name: "department-agent",
+        resource_id: "resource-dept",
+        visibility: "private",
+      } as any);
+      renderPage();
+      const departmentOption = screen.getByRole("button", { name: "部门共享" });
+      expect(departmentOption).toBeEnabled();
+      fireEvent.click(departmentOption);
+      expect(screen.getByTestId("select")).toHaveAttribute(
+        "data-value",
+        "department",
+      );
+      fireEvent.change(getNameInput(), {
+        target: { value: "department-agent" },
+      });
+      fireEvent.click(getContinueButton());
+      await act(async () => {});
+      await act(async () => toolEndCallback?.({ name: "setup_agent" }));
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource_id: "resource-dept",
+          target_visibility: "department",
+        }),
+      );
+    });
+
     test("admin sees approval guidance after selecting public visibility", () => {
       authUser = { system_role: "super_admin" };
       renderPage();

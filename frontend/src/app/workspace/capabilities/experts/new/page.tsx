@@ -102,6 +102,7 @@ export default function NewAgentPage() {
   const isAdmin =
     user?.system_role === "super_admin" ||
     user?.system_role === "department_admin";
+  const canShareWithDepartment = isAdmin && Boolean(user?.department_id);
 
   const completeAgentCreation = useCallback(
     (createdAgent: Agent) => {
@@ -109,6 +110,7 @@ export default function NewAgentPage() {
       const resourceId = createdAgent.resource_id;
       if (
         !isAdmin ||
+        (visibility === "department" && !canShareWithDepartment) ||
         visibility === "private" ||
         !resourceId ||
         visibilityRequestResourceId.current === resourceId
@@ -128,6 +130,7 @@ export default function NewAgentPage() {
         );
     },
     [
+      canShareWithDepartment,
       isAdmin,
       t.agents.applicationSubmitted,
       t.agents.createPageTitle,
@@ -415,7 +418,10 @@ export default function NewAgentPage() {
                     <SelectItem value="private">
                       {t.agents.visibilityPrivate}
                     </SelectItem>
-                    <SelectItem value="department" disabled={!isAdmin}>
+                    <SelectItem
+                      value="department"
+                      disabled={!canShareWithDepartment}
+                    >
                       {t.agents.visibilityDepartment}
                     </SelectItem>
                     <SelectItem value="public" disabled={!isAdmin}>

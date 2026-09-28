@@ -9,6 +9,7 @@ export const userSchema = z.object({
     (value) => (value === "admin" ? "super_admin" : value),
     z.enum(["viewer", "user", "department_admin", "super_admin"]),
   ),
+  department_id: z.string().nullable().optional(),
   needs_setup: z.boolean().optional().default(false),
   oauth_provider: z.string().nullable().optional().default(null),
 });
