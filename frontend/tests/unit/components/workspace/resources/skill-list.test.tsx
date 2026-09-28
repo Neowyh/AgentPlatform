@@ -18,6 +18,7 @@ const mockSkills = [
     description: "Skill 2 description",
   },
 ];
+const defaultSkills = [...mockSkills];
 
 vi.mock("@/core/skills", () => ({
   useSkills: () => ({
@@ -61,6 +62,7 @@ let SkillList: typeof import("@/components/workspace/resources/skill-list").Skil
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockSkills.splice(0, mockSkills.length, ...defaultSkills);
   const mod = await import("@/components/workspace/resources/skill-list");
   SkillList = mod.SkillList;
 });
@@ -72,6 +74,18 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("SkillList", () => {
+  test("offers create and import when the skill library is empty", () => {
+    mockSkills.splice(0);
+    render(<SkillList />);
+
+    expect(screen.getByText("No skills found")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Create skill" })).toHaveAttribute(
+      "href",
+      `/workspace/chats/new?prompt=${encodeURIComponent("请使用 skill-creator 帮我创建一个新技能。")}`,
+    );
+  });
+
   test("displays list of skills", () => {
     render(<SkillList />);
     expect(screen.getByText("skill-1")).toBeInTheDocument();

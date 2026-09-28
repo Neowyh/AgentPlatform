@@ -97,12 +97,6 @@ export function SkillList() {
 
   if (isLoading)
     return <div className="text-muted-foreground">{t.common.loading}</div>;
-  if (!skills.length)
-    return (
-      <div className="text-muted-foreground flex h-64 items-center justify-center">
-        No skills found
-      </div>
-    );
 
   return (
     <div className="space-y-4">
@@ -229,11 +223,15 @@ export function SkillList() {
           );
         })}
       </div>
-      {!visibleSkills.length && (
+      {!skills.length ? (
+        <div className="text-muted-foreground flex h-64 items-center justify-center">
+          No skills found
+        </div>
+      ) : !visibleSkills.length ? (
         <div className="text-muted-foreground">
           {t.settings.skills.noResults}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

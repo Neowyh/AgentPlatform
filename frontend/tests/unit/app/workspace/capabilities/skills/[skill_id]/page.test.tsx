@@ -2,9 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { exportSkill, toastError } = vi.hoisted(() => ({
+const { exportSkill, toastError, skillCategory } = vi.hoisted(() => ({
   exportSkill: vi.fn(),
   toastError: vi.fn(),
+  skillCategory: { value: "custom" as "custom" | "public" },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -58,7 +59,7 @@ vi.mock("@/core/skills", () => ({
       description: "Demo skill",
       description_zh: "完整的技能简介",
       summary: "面向用户的短简介",
-      category: "custom",
+      category: skillCategory.value,
       license: "MIT",
       enabled: true,
       visibility: "private",
@@ -83,7 +84,23 @@ vi.mock("@/components/workspace/settings/skill-apply-dialog", () => ({
 import SkillDetailPage from "@/app/workspace/capabilities/skills/[skill_id]/page";
 
 describe("SkillDetailPage export", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    skillCategory.value = "custom";
+  });
+
+  test("offers visibility application for custom skills", () => {
+    render(<SkillDetailPage />);
+    expect(screen.getByRole("button", { name: "Apply" })).toBeVisible();
+  });
+
+  test("keeps public skills read only for visibility applications", () => {
+    skillCategory.value = "public";
+    render(<SkillDetailPage />);
+    expect(
+      screen.queryByRole("button", { name: "Apply" }),
+    ).not.toBeInTheDocument();
+  });
 
   test("shows a localized error when export fails", async () => {
     exportSkill.mockRejectedValueOnce(new Error("network"));

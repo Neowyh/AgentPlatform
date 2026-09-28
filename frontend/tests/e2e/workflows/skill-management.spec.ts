@@ -20,101 +20,136 @@ const MOCK_SKILLS = [
   },
 ];
 
-/** Helper: open the settings dialog via sidebar dropdown menu */
 async function openSettings(page: Page) {
-  // Click the sidebar footer dropdown trigger ("Settings and more")
-  const trigger = page
-    .locator("button")
-    .filter({ hasText: /settings and more|settings/i })
-    .last();
-  await trigger.click({ timeout: 10_000 });
+  await page.getByTestId("nav-menu-trigger").click();
+  await page.getByTestId("settings-menu-item").click();
+}
 
-  // Click the "Settings" menu item in the dropdown
-  await page.getByRole("menuitem", { name: /settings/i }).click();
+async function mockPublishedSkills(page: Page) {
+  await page.route(/\/api\/resources\/[^/?]+\/published/, (route) => {
+    const id = route
+      .request()
+      .url()
+      .split("/api/resources/")[1]!
+      .split("/")[0]!;
+    const custom = id.endsWith("custom-skill");
+    const name = custom ? "my-custom-skill" : "deep-research";
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        resource: {
+          id,
+          slug: name,
+          display_name: name,
+          owner_id: "e2e-user",
+          visibility: custom ? "private" : "public",
+          scope_department_id: null,
+          system_owned: false,
+          can_modify: custom,
+        },
+        content: { name, description: `${name} description` },
+        skill_md: `# ${name}`,
+        version: { version: 1 },
+      }),
+    });
+  });
 }
 
 test.describe("Skill management", () => {
-  test.describe("Settings Page", () => {
-    test("skills settings page loads with tabs", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
+  test("legacy Skills entry opens the capability library with its common actions", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, { skills: MOCK_SKILLS });
+    await page.goto("/workspace/chats/new");
+    await openSettings(page);
+    await page.getByTestId("settings-tab-skills").click();
 
-      await openSettings(page);
-
-      // Navigate to Skills section
-      await page.getByText(/^skills$/i).click();
-
-      // Should show Public and Custom tabs
-      await expect(page.getByRole("tab", { name: /public/i })).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByRole("tab", { name: /custom/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/workspace\/capabilities\/skills$/, {
+      timeout: 30_000,
     });
+    await expect(
+      page.getByRole("link", { name: "deep-research" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "my-custom-skill" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /import/i })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /create skill/i }),
+    ).toBeVisible();
+  });
 
-    test("public tab shows public skills", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
+  test("empty skill library still offers import and creation", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, { skills: [] });
+    await page.goto("/workspace/capabilities/skills");
 
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
+    await expect(page.getByText("No skills found")).toBeVisible();
+    await expect(page.getByRole("button", { name: /import/i })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /create skill/i }),
+    ).toHaveAttribute("href", /\/workspace\/chats\/new\?prompt=/);
+  });
 
-      // Public tab should be active by default, showing deep-research
-      await expect(page.getByText("deep-research").first()).toBeVisible({
-        timeout: 15_000,
-      });
-    });
+  test("public skills link to details without an archive action", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, { skills: [MOCK_SKILLS[0]!] });
+    await page.goto("/workspace/capabilities/skills");
+    const detailLink = page.getByRole("link", { name: "deep-research" });
+    await expect(detailLink).toHaveAttribute(
+      "href",
+      /\/workspace\/capabilities\/skills\//,
+    );
+    await expect(
+      page.getByRole("button", { name: /skill archived/i }),
+    ).toHaveCount(0);
+  });
 
-    test("custom tab shows custom skills", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
+  test("custom skills link to details and offer an archive action", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, { skills: [MOCK_SKILLS[1]!] });
+    await page.goto("/workspace/capabilities/skills");
+    const detailLink = page.getByRole("link", { name: "my-custom-skill" });
+    await expect(detailLink).toHaveAttribute(
+      "href",
+      /\/workspace\/capabilities\/skills\//,
+    );
+    await expect(
+      page.getByRole("button", { name: /skill archived/i }),
+    ).toBeVisible();
+  });
 
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
+  test("public and custom skill details keep visibility actions scoped", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    mockLangGraphAPI(page, { skills: MOCK_SKILLS });
+    await mockPublishedSkills(page);
 
-      // Switch to Custom tab
-      await page.getByRole("tab", { name: /custom/i }).click();
+    await page.goto(
+      "/workspace/capabilities/skills/00000000-0000-0000-0000-eep-research",
+      { waitUntil: "domcontentloaded", timeout: 60_000 },
+    );
+    await expect(
+      page.getByRole("heading", { name: "deep-research" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /apply visibility/i }),
+    ).toHaveCount(0);
 
-      // Should show custom skill
-      await expect(page.getByText("my-custom-skill").first()).toBeVisible({
-        timeout: 15_000,
-      });
-    });
-
-    test("public skills do not show a visibility application action", async ({
-      page,
-    }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-
-      // Should show category badge
-      await expect(page.getByText("public").first()).toBeVisible({
-        timeout: 15_000,
-      });
-
-      await expect(
-        page.getByRole("button", { name: /apply visibility/i }),
-      ).toHaveCount(0);
-    });
-
-    test("custom skills show a visibility application action", async ({
-      page,
-    }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-      await page.getByRole("tab", { name: /custom/i }).click();
-
-      await expect(page.getByText("my-custom-skill").first()).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(
-        page.getByRole("button", { name: /apply visibility/i }),
-      ).toBeVisible();
-    });
+    await page.goto(
+      "/workspace/capabilities/skills/00000000-0000-0000-0000-custom-skill",
+      { waitUntil: "domcontentloaded", timeout: 60_000 },
+    );
+    await expect(
+      page.getByRole("heading", { name: "my-custom-skill" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /apply visibility/i }),
+    ).toBeVisible();
   });
 });
