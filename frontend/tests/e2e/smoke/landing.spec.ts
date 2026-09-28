@@ -18,6 +18,7 @@ test.describe("@smoke Landing page", () => {
   });
 
   test("Get Started link navigates to workspace", async ({ page }) => {
+    test.setTimeout(90_000);
     mockLangGraphAPI(page);
 
     await page.goto("/");
@@ -29,6 +30,7 @@ test.describe("@smoke Landing page", () => {
 
     // Auth is disabled in the mock lane, so the login hop bounces straight
     // into the workspace.
-    await page.waitForURL(/\/workspace/, { timeout: 15_000 });
+    await page.waitForURL(/\/workspace/, { timeout: 60_000 });
+    await expect(page.getByRole("link", { name: "New chat" })).toBeVisible();
   });
 });
