@@ -58,7 +58,7 @@ import {
   selectContextUsage,
   threadTokenUsageToTokenUsage,
 } from "@/core/threads/token-usage";
-import { textOfMessage } from "@/core/threads/utils";
+import { pathOfThread, textOfMessage } from "@/core/threads/utils";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -138,7 +138,7 @@ export default function AgentChatPage() {
       history.replaceState(
         null,
         "",
-        `/workspace/capabilities/experts/${agent_name}/chats/${createdThreadId}`,
+        pathOfThread(createdThreadId, { agent_name }),
       );
     },
     // onSend only animates the UI; do NOT flip `isNewThread` here — the
@@ -154,7 +154,7 @@ export default function AgentChatPage() {
       history.replaceState(
         null,
         "",
-        `/workspace/capabilities/experts/${agent_name}/chats/${createdThreadId}`,
+        pathOfThread(createdThreadId, { agent_name }),
       );
     },
     onFinish: (state) => {
@@ -190,7 +190,7 @@ export default function AgentChatPage() {
       !hasMoreHistory &&
       !hasThreadMessages
     ) {
-      router.replace(`/workspace/capabilities/experts/${agent_name}/chats/new`);
+      router.replace(pathOfThread("new", { agent_name }));
     }
   }, [
     agent_name,
@@ -317,9 +317,7 @@ export default function AgentChatPage() {
                     size="sm"
                     variant="secondary"
                     onClick={() => {
-                      router.push(
-                        `/workspace/capabilities/experts/${agent_name}/chats/new`,
-                      );
+                      router.push(pathOfThread("new", { agent_name }));
                     }}
                   >
                     <PlusSquare />

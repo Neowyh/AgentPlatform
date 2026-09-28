@@ -9,7 +9,7 @@ import {
   SaveIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -49,6 +49,7 @@ import { useI18n } from "@/core/i18n/hooks";
 import { createHumanInputSubmitter } from "@/core/messages/human-input";
 import { useThreadStream } from "@/core/threads/hooks";
 import { uuid } from "@/core/utils/uuid";
+import { createVisibilityApplication } from "@/core/visibility-applications/api";
 import { isIMEComposing } from "@/lib/ime";
 import { cn } from "@/lib/utils";
 
@@ -96,10 +97,43 @@ export default function NewAgentPage() {
   const [setupAgentStatus, setSetupAgentStatus] =
     useState<SetupAgentStatus>("idle");
   const [visibility, setVisibility] = useState<Visibility>("private");
+  const visibilityRequestResourceId = useRef<string | null>(null);
 
   const isAdmin =
     user?.system_role === "super_admin" ||
     user?.system_role === "department_admin";
+
+  const completeAgentCreation = useCallback(
+    (createdAgent: Agent) => {
+      setAgent(createdAgent);
+      const resourceId = createdAgent.resource_id;
+      if (
+        !isAdmin ||
+        visibility === "private" ||
+        !resourceId ||
+        visibilityRequestResourceId.current === resourceId
+      ) {
+        return;
+      }
+      visibilityRequestResourceId.current = resourceId;
+      void createVisibilityApplication({
+        resource_type: "agent",
+        resource_id: resourceId,
+        target_visibility: visibility,
+        reason: t.agents.createPageTitle,
+      })
+        .then(() => toast.success(t.agents.applicationSubmitted))
+        .catch((error) =>
+          toast.error(error instanceof Error ? error.message : String(error)),
+        );
+    },
+    [
+      isAdmin,
+      t.agents.applicationSubmitted,
+      t.agents.createPageTitle,
+      visibility,
+    ],
+  );
 
   const threadId = useMemo(() => uuid(), []);
 
@@ -119,7 +153,7 @@ export default function NewAgentPage() {
       setSetupAgentStatus("completed");
       void getAgentWithRetry(agentName).then((fetched) => {
         if (fetched) {
-          setAgent(fetched);
+          completeAgentCreation(fetched);
           return;
         }
 
@@ -137,13 +171,18 @@ export default function NewAgentPage() {
     if (!resourceId || agent) return;
     void getAgentWithRetry(resourceId).then((fetched) => {
       if (fetched) {
-        setAgent(fetched);
+        completeAgentCreation(fetched);
         return;
       }
 
       toast.error(t.agents.agentCreatedPendingRefresh);
     });
-  }, [agent, resourceId, t.agents.agentCreatedPendingRefresh]);
+  }, [
+    agent,
+    completeAgentCreation,
+    resourceId,
+    t.agents.agentCreatedPendingRefresh,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || step !== "chat") {
@@ -384,6 +423,11 @@ export default function NewAgentPage() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                {isAdmin && visibility !== "private" && (
+                  <p className="text-muted-foreground type-body">
+                    {t.agents.visibilityUpgradeHint}
+                  </p>
+                )}
                 {!isAdmin && (
                   <p className="text-muted-foreground type-body">
                     {t.agents.visibilityAdminOnly}

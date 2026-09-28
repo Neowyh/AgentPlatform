@@ -40,6 +40,7 @@ import { useAgent } from "@/core/agents";
 import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { useSkills } from "@/core/skills";
+import { pathOfThread } from "@/core/threads/utils";
 import {
   changeResourceVisibility,
   createVisibilityApplication,
@@ -151,9 +152,7 @@ export default function AgentDetailPage() {
         actions={
           <>
             <Button asChild>
-              <Link
-                href={`/workspace/chats/new?agent=${encodeURIComponent(chatIdentity)}`}
-              >
+              <Link href={pathOfThread("new", { agent_name: chatIdentity })}>
                 <MessageSquareIcon className="mr-1.5 h-4 w-4" />
                 {t.agents.detailChat}
               </Link>

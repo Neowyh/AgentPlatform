@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockPush = vi.fn();
 const mockSendMessage = vi.fn();
+const mockCreateVisibilityApplication = vi.fn();
+let authUser: { system_role: string } | null = null;
+let selectOnValueChange: ((value: string) => void) | undefined;
 
 let threadIsLoading = false;
 let toolEndCallback: ((args: { name: string }) => void) | undefined;
@@ -41,6 +44,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         visibilityDepartment: "部门共享",
         visibilityPublic: "公开",
         visibilityAdminOnly: "部门共享和公开选项仅管理员可用",
+        visibilityUpgradeHint: "共享需要审核通过后生效",
+        applicationSubmitted: "申请已提交",
         more: "More",
         save: "Save",
         saving: "Saving...",
@@ -73,7 +78,12 @@ vi.mock("@/core/agents/api", () => ({
 }));
 
 vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: authUser }),
+}));
+
+vi.mock("@/core/visibility-applications/api", () => ({
+  createVisibilityApplication: (...args: unknown[]) =>
+    mockCreateVisibilityApplication(...args),
 }));
 
 vi.mock("@/core/threads/hooks", () => ({
@@ -112,16 +122,25 @@ vi.mock("@/components/ui/label", () => ({
 }));
 
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, value }: any) => (
-    <div data-testid="select" data-value={value}>
-      {children}
-    </div>
-  ),
+  Select: ({ children, value, onValueChange }: any) => {
+    selectOnValueChange = onValueChange;
+    return (
+      <div data-testid="select" data-value={value}>
+        {children}
+      </div>
+    );
+  },
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children, value, disabled }: any) => (
-    <div data-value={value} data-disabled={disabled ? "true" : "false"}>
+    <button
+      type="button"
+      data-value={value}
+      data-disabled={disabled ? "true" : "false"}
+      disabled={disabled}
+      onClick={() => selectOnValueChange?.(value)}
+    >
       {children}
-    </div>
+    </button>
   ),
   SelectTrigger: ({ children }: any) => <div>{children}</div>,
   SelectValue: () => null,
@@ -264,6 +283,9 @@ describe("NewAgentPage", () => {
     mockPush.mockClear();
     mockSendMessage.mockClear();
     mockSendMessage.mockResolvedValue(undefined);
+    mockCreateVisibilityApplication.mockReset().mockResolvedValue({});
+    authUser = null;
+    selectOnValueChange = undefined;
     mockedCheckAgentName.mockClear();
     mockedCheckAgentName.mockResolvedValue({ available: true, name: "agent" });
     mockedGetAgent.mockClear();
@@ -343,6 +365,13 @@ describe("NewAgentPage", () => {
   // =========================================================================
 
   describe("Visibility options based on user role", () => {
+    test("admin sees approval guidance after selecting public visibility", () => {
+      authUser = { system_role: "super_admin" };
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "公开" }));
+      expect(screen.getByText("共享需要审核通过后生效")).toBeInTheDocument();
+    });
+
     test("non-admin shows hint about admin-only options", () => {
       renderPage();
       expect(
@@ -911,6 +940,53 @@ describe("NewAgentPage", () => {
   // =========================================================================
 
   describe("Agent created state", () => {
+    test("admin's public selection submits a visibility request after creation", async () => {
+      authUser = { system_role: "super_admin" };
+      mockedGetAgent.mockResolvedValue({
+        name: "shared-agent",
+        resource_id: "resource-123",
+        visibility: "private",
+      } as any);
+
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "公开" }));
+      fireEvent.change(getNameInput(), { target: { value: "shared-agent" } });
+      fireEvent.click(getContinueButton());
+      await act(async () => {});
+      await act(async () => toolEndCallback?.({ name: "setup_agent" }));
+
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource_type: "agent",
+          resource_id: "resource-123",
+          target_visibility: "public",
+        }),
+      );
+      expect(mockedToast.success).toHaveBeenCalledWith("申请已提交");
+    });
+
+    test("shows visibility request failure while keeping the created expert", async () => {
+      authUser = { system_role: "super_admin" };
+      mockCreateVisibilityApplication.mockRejectedValue(
+        new Error("Approval request failed"),
+      );
+      mockedGetAgent.mockResolvedValue({
+        name: "shared-agent",
+        resource_id: "resource-123",
+        visibility: "private",
+      } as any);
+
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "公开" }));
+      fireEvent.change(getNameInput(), { target: { value: "shared-agent" } });
+      fireEvent.click(getContinueButton());
+      await act(async () => {});
+      await act(async () => toolEndCallback?.({ name: "setup_agent" }));
+
+      expect(mockedToast.error).toHaveBeenCalledWith("Approval request failed");
+      expect(screen.getByText("Agent created")).toBeInTheDocument();
+    });
+
     test("shows agent created card after onToolEnd with setup_agent", async () => {
       mockedGetAgent.mockResolvedValue({
         name: "created-agent",
@@ -927,6 +1003,7 @@ describe("NewAgentPage", () => {
       expect(screen.getByText("Agent created")).toBeInTheDocument();
       expect(screen.getByText("Start Chatting")).toBeInTheDocument();
       expect(screen.getByText("Back")).toBeInTheDocument();
+      expect(mockCreateVisibilityApplication).not.toHaveBeenCalled();
     });
 
     test("hides prompt input when agent is created", async () => {

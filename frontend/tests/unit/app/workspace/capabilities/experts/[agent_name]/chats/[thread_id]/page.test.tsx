@@ -11,6 +11,7 @@ const mockSetSettings = vi.fn();
 const mockTextOfMessage = vi.fn().mockReturnValue("");
 const mockRouterPush = vi.fn();
 const mockRouterReplace = vi.fn();
+let agentNameParam = "test-agent";
 
 const { mockUseAgent, mockUseThreadChat, mockUseThreadStream } = vi.hoisted(
   () => ({
@@ -26,7 +27,7 @@ let lastMessageListProps: any = {};
 let tokenUsageEnabledFlag = false;
 
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ agent_name: "test-agent" }),
+  useParams: () => ({ agent_name: agentNameParam }),
   useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace }),
 }));
 
@@ -147,7 +148,8 @@ vi.mock("@/core/threads/token-usage", () => ({
   selectContextUsage: () => null,
 }));
 
-vi.mock("@/core/threads/utils", () => ({
+vi.mock("@/core/threads/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/core/threads/utils")>()),
   textOfMessage: (...args: any[]) => mockTextOfMessage(...args),
 }));
 
@@ -223,6 +225,7 @@ describe("AgentChatPage", () => {
     lastTokenUsageProps = {};
     lastMessageListProps = {};
     tokenUsageEnabledFlag = false;
+    agentNameParam = "test-agent";
     mockStopFn.mockReset();
     mockSendMessage.mockReset().mockReturnValue(Promise.resolve());
     mockSetThreadId.mockReset();
@@ -430,6 +433,28 @@ describe("AgentChatPage", () => {
       "/workspace/capabilities/experts/test-agent/chats/created-thread-123",
     );
 
+    replaceStateSpy.mockRestore();
+  });
+
+  test("encodes expert and thread route segments after a chat starts", () => {
+    agentNameParam = "ops/team";
+    mockUseThreadChat.mockReturnValue({
+      threadId: "new",
+      setThreadId: mockSetThreadId,
+      isNewThread: true,
+      setIsNewThread: mockSetIsNewThread,
+      isMock: false,
+    });
+    const replaceStateSpy = vi.spyOn(history, "replaceState");
+
+    render(<AgentChatPage />);
+    act(() => mockStreamCallbacks.onStart("thread/#1"));
+
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      null,
+      "",
+      "/workspace/capabilities/experts/ops%2Fteam/chats/thread%2F%231",
+    );
     replaceStateSpy.mockRestore();
   });
 

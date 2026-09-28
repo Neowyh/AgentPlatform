@@ -35,6 +35,7 @@ import { useDeleteAgent, useToggleAgentFavorite } from "@/core/agents";
 import type { Agent } from "@/core/agents";
 import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
+import { pathOfThread } from "@/core/threads/utils";
 
 interface AgentCardProps {
   agent: Agent;
@@ -50,9 +51,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   const chatIdentity = agent.slug ?? agent.name;
 
   function handleChat() {
-    router.push(
-      `/workspace/chats/new?agent=${encodeURIComponent(chatIdentity)}`,
-    );
+    router.push(pathOfThread("new", { agent_name: chatIdentity }));
   }
 
   async function handleToggleFavorite() {

@@ -103,7 +103,7 @@ describe("AgentDetailPage unified resource detail", () => {
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
       "href",
-      "/workspace/chats/new?agent=fault-zeroing",
+      "/workspace/capabilities/experts/fault-zeroing/chats/new",
     );
     expect(screen.getByRole("link", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
