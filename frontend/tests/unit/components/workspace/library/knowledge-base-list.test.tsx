@@ -3,6 +3,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { KnowledgeBase } from "@/core/library";
 
+const { translations } = vi.hoisted(() => ({
+  translations: {
+    library: {
+      documentCount: (count: number) => `${count} documents`,
+    },
+  },
+}));
+
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({ t: translations }),
+}));
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const mockKnowledgeBases: KnowledgeBase[] = [
@@ -87,6 +99,23 @@ describe("KnowledgeBaseList", () => {
     ];
     render(<KnowledgeBaseList />);
     expect(screen.getByText("7 documents")).toBeInTheDocument();
+  });
+
+  test("uses localized copy for the document count", () => {
+    translations.library.documentCount = (count) => `${count} 个文档`;
+    hookState.knowledgeBases = [
+      {
+        id: "kb-1",
+        slug: "knowledge-base-1",
+        display_name: "Knowledge Base 1",
+        visibility: "private",
+        knowledge_document_count: 7,
+        type: "knowledge_base",
+        can_modify: true,
+      },
+    ];
+    render(<KnowledgeBaseList />);
+    expect(screen.getByText("7 个文档")).toBeInTheDocument();
   });
 
   test("marks the selected knowledge base", () => {

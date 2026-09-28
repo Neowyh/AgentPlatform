@@ -1396,6 +1396,7 @@ export interface Translations {
     upload: string;
     search: string;
     documents: string;
+    documentCount: (count: number) => string;
     knowledgeBases: string;
     revisions: string;
     evalCases: string;

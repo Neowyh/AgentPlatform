@@ -1669,6 +1669,7 @@ export const zhCN: Translations = {
     upload: "上传文档",
     search: "搜索文档...",
     documents: "文档",
+    documentCount: (count: number) => `${count} 个文档`,
     knowledgeBases: "知识库",
     revisions: "版本",
     evalCases: "评测用例",

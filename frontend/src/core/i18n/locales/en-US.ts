@@ -1750,6 +1750,8 @@ export const enUS: Translations = {
     upload: "Upload Document",
     search: "Search documents...",
     documents: "Documents",
+    documentCount: (count: number) =>
+      `${count} document${count === 1 ? "" : "s"}`,
     knowledgeBases: "Knowledge Bases",
     revisions: "Revisions",
     evalCases: "Eval Cases",

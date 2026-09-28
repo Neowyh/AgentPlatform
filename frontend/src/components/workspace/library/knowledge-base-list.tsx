@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/core/i18n/hooks";
 import { useCreateKnowledgeBase, useKnowledgeBases } from "@/core/library";
 
 export function KnowledgeBaseList({
@@ -13,6 +14,7 @@ export function KnowledgeBaseList({
   onSelect?: (id: string) => void;
   selectedId?: string;
 }) {
+  const { t } = useI18n();
   const { knowledgeBases, isLoading, error } = useKnowledgeBases();
   const createKnowledgeBase = useCreateKnowledgeBase();
   const [displayName, setDisplayName] = useState("");
@@ -94,7 +96,7 @@ export function KnowledgeBaseList({
                 <div className="mt-2">
                   <span className="text-muted-foreground type-body">
                     {typeof kb.knowledge_document_count === "number"
-                      ? `${kb.knowledge_document_count} documents`
+                      ? t.library.documentCount(kb.knowledge_document_count)
                       : kb.visibility}
                   </span>
                 </div>
