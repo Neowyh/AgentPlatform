@@ -208,7 +208,9 @@ test.describe("Existing conversation baseline", () => {
     });
     // The conversation has browser history, so the trigger is available —
     // but history replay must not open the panel by itself.
-    await expect(page.getByTestId("browser-trigger")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Open Agent browser panel" }),
+    ).toBeVisible();
     await expectPanelClosed(page);
   });
 

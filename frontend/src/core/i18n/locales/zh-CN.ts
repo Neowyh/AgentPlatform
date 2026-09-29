@@ -60,7 +60,7 @@ export const zhCN: Translations = {
     branch: "分叉",
     showArtifacts: "查看此对话的文件",
     browser: "浏览器",
-    showBrowser: "打开浏览器面板",
+    showBrowser: "打开 Agent 浏览器面板",
     deleteTitle: "删除会话",
     deleteThreadConfirm: (title: string) =>
       `确定要删除「${title}」吗？删除后该会话及全部聊天记录将无法恢复。`,

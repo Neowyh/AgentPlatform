@@ -60,7 +60,7 @@ export const enUS: Translations = {
     branch: "Branch conversation",
     showArtifacts: "Show artifacts of this conversation",
     browser: "Browser",
-    showBrowser: "Open browser panel",
+    showBrowser: "Open Agent browser panel",
     deleteTitle: "Delete conversation",
     deleteThreadConfirm: (title: string) =>
       `Are you sure you want to delete "${title}"? The conversation and all its messages will be permanently lost.`,
