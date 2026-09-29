@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
+from app.agentplatform.fault_zeroing.intake import assess_evidence_intake
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
 from app.agentplatform.knowledge.eval_cases import KnowledgeEvalCaseService
@@ -2077,6 +2078,9 @@ async def create_workflow_run(
     config = get_app_config()
     if body.model_name is not None and config.get_model_config(body.model_name) is None:
         raise HTTPException(400, f"Model {body.model_name!r} is not in the configured model allowlist")
+    # evidence_mode is a derived system result, never a user input: drop any
+    # client-supplied value so the definition's derived default applies.
+    body.inputs.pop("evidence_mode", None)
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
             str(uuid.uuid4()),
@@ -2132,14 +2136,16 @@ async def create_workflow_run_with_files(
     run_id = str(uuid.uuid4())
     user_id = str(current_user.id)
     source_manifest, _stored_names = await _store_workflow_run_files(run_id=run_id, user_id=user_id, files=files)
-    mode = submitted.get("evidence_mode") or ("hybrid" if source_manifest is not None else "document")
-    submitted["evidence_mode"] = mode
     if source_manifest is not None:
-        if mode == "document":
-            _cleanup_run_user_data(run_id, user_id)
-            raise HTTPException(400, "document evidence_mode cannot be used with a source ZIP")
         submitted["code_package_source"] = source_manifest.source_virtual_path
     submitted["upload_dir"] = "/mnt/user-data/uploads"
+    # The evidence mode is a derived system result (Hybrid Evidence Intake):
+    # a client-supplied value is overwritten, never honored.
+    submitted["evidence_mode"] = assess_evidence_intake(
+        problem_description=submitted.get("problem_description"),
+        upload_dir=submitted.get("upload_dir"),
+        code_package_source=submitted.get("code_package_source"),
+    ).evidence_mode
 
     runtime = get_app_config().workflow_runtime
     try:

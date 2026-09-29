@@ -146,9 +146,6 @@ export function buildScenarioSubmissionBinding({
     agent_resource_id: agent.resource_id,
     agent_label: pill?.label,
   });
-  if (selectedPill.agentSlug === "fault-zeroing") {
-    context.evidence_mode = "hybrid";
-  }
   if (!task) {
     return { valid: true, context };
   }

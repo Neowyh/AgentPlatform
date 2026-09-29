@@ -134,12 +134,6 @@ export default function WorkflowDetailPage() {
       }
       return next;
     });
-    if (accepted.some((file) => file.name.toLowerCase().endsWith(".zip"))) {
-      setInputValues((previous) => ({
-        ...previous,
-        evidence_mode: previous.evidence_mode ?? "hybrid",
-      }));
-    }
     event.target.value = "";
   }
 
@@ -171,9 +165,12 @@ export default function WorkflowDetailPage() {
 
   async function handleRun() {
     if (!workflow) return;
+    // Server-owned inputs (evidence paths and the derived evidence mode)
+    // are never user-editable.
+    const serverOwned = ["code_package_source", "upload_dir", "evidence_mode"];
     // Validate required inputs
     for (const [key, param] of Object.entries(workflow.inputs)) {
-      if (["code_package_source", "upload_dir"].includes(key)) continue;
+      if (serverOwned.includes(key)) continue;
       if (param.required && !inputValues[key]?.trim()) {
         toast.error(t.workflows.requiredMissing(key));
         return;
@@ -182,7 +179,7 @@ export default function WorkflowDetailPage() {
 
     const inputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(inputValues)) {
-      if (["code_package_source", "upload_dir"].includes(key)) continue;
+      if (serverOwned.includes(key)) continue;
       if (value.trim()) {
         try {
           inputs[key] = JSON.parse(value);
@@ -662,7 +659,11 @@ export default function WorkflowDetailPage() {
               {Object.entries(workflow.inputs)
                 .filter(
                   ([key]) =>
-                    !["code_package_source", "upload_dir"].includes(key),
+                    ![
+                      "code_package_source",
+                      "upload_dir",
+                      "evidence_mode",
+                    ].includes(key),
                 )
                 .map(([key, param]) => (
                   <div key={key} className="space-y-2">

@@ -9,6 +9,12 @@ run creation and before any model execution:
   confirmation bound to the input snapshot;
 - both sides missing  -> reject before model execution (no usable run).
 
+Per the CONTEXT.md glossary, a non-empty problem description or any
+document-type attachment satisfies the documentary side; the code side
+requires a Code Evidence Package.  The evidence mode is a derived system
+result (always ``hybrid`` for a run that continues) — it is never a
+user-selectable input.
+
 Confirmations are bound to an input snapshot hash: any material added after
 confirmation changes the hash and requires re-confirmation.  Runs that
 continue with one side missing stay ``hybrid`` and must disclose the gap in
@@ -37,6 +43,11 @@ INTAKE_MISSING_BOTH = "intake_evidence_missing_both"
 INTAKE_SNAPSHOT_CHANGED = "intake_snapshot_changed"
 
 INTERRUPT_TYPE = "evidence_confirmation"
+
+# The evidence mode is a derived system result: every run that continues is
+# ``hybrid`` (CONTEXT.md Avoid "Evidence Mode selection", "document-only
+# Run", "code-only Run").  It is never a user-selectable input.
+DERIVED_EVIDENCE_MODE = "hybrid"
 
 
 class IntakeError(RuntimeError):
@@ -79,19 +90,39 @@ class EvidenceIntakeDecision:
             raise IntakeError(f"invalid evidence intake record: {exc}") from exc
 
 
-def build_input_snapshot(upload_dir: str | None, code_package_source: str | None) -> dict[str, str]:
+def build_input_snapshot(
+    problem_description: str | None,
+    upload_dir: str | None,
+    code_package_source: str | None,
+) -> dict[str, str]:
     """Canonical, comparable snapshot of the two evidence sides.
 
-    The snapshot binds the confirmation to the *declared* inputs (the
-    evidence-side paths accepted at run creation).  Adding brand-new files
-    inside an already-declared directory does not change this hash; callers
-    that accept additional material mid-run should surface it as a new
-    declared input (a new path/package id), which does change the hash and
-    therefore forces re-confirmation.
+    Per the Hybrid Evidence Intake glossary, the document side is satisfied
+    by a non-empty problem description *or* any document-type attachment
+    (proxied at intake by a non-empty ``upload_dir``; the file-level
+    manifest is the gateway's domain).  The ``document_evidence`` value is
+    therefore the normalized representation of "description and/or path",
+    and the confirmation hash is sensitive to a description change: any
+    material added after confirmation changes the hash and requires
+    re-confirmation.  Adding brand-new files inside an already-declared
+    directory does not change this hash; callers that accept additional
+    material mid-run should surface it as a new declared input (a new
+    path/package id), which does change the hash.
     """
 
+    description = (problem_description or "").strip()
+    document_evidence = ""
+    if description or upload_dir:
+        # JSON encoding keeps the two sources unambiguously separated
+        # (a description containing "|" must not collide with a path).
+        document_evidence = json.dumps(
+            {"problem_description": description, "upload_dir": str(upload_dir) if upload_dir else ""},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
     return {
-        "document_evidence": str(upload_dir) if upload_dir else "",
+        "document_evidence": document_evidence,
         "code_evidence_package": str(code_package_source) if code_package_source else "",
     }
 
@@ -103,21 +134,19 @@ def input_snapshot_hash(snapshot: dict[str, str]) -> str:
 
 def assess_evidence_intake(
     *,
+    problem_description: str | None = None,
     upload_dir: str | None = None,
     code_package_source: str | None = None,
-    evidence_mode: str = "hybrid",
 ) -> EvidenceIntakeDecision:
     """Decide how a run starts based on the evidence sides it provides.
 
-    The effective mode of a run that continues with one side missing stays
-    ``hybrid`` so downstream consumers know the analysis is incomplete by
-    construction.
+    The evidence mode is a derived system result, never a user declaration:
+    a run that executes is always ``hybrid`` (a missing side stays visible
+    in ``missing`` and must be disclosed downstream), so no document-only or
+    code-only mode can be resurrected through the derived value.
     """
 
-    if evidence_mode not in {"hybrid", "document", "code"}:
-        raise IntakeError(f"unsupported evidence_mode {evidence_mode!r}")
-
-    snapshot = build_input_snapshot(upload_dir, code_package_source)
+    snapshot = build_input_snapshot(problem_description, upload_dir, code_package_source)
     snapshot_hash = input_snapshot_hash(snapshot)
     missing = tuple(side for side in SIDES if not snapshot.get(side))
 
@@ -125,7 +154,7 @@ def assess_evidence_intake(
         # Both sides missing: refuse before any model execution, no usable run.
         return EvidenceIntakeDecision(
             status=REJECT,
-            evidence_mode=evidence_mode,
+            evidence_mode=DERIVED_EVIDENCE_MODE,
             missing=missing,
             reason_code=INTAKE_MISSING_BOTH,
             input_snapshot=snapshot,
@@ -135,7 +164,7 @@ def assess_evidence_intake(
         # One side missing: persistent pause awaiting user confirmation.
         return EvidenceIntakeDecision(
             status=PAUSE,
-            evidence_mode="hybrid",
+            evidence_mode=DERIVED_EVIDENCE_MODE,
             missing=missing,
             reason_code=INTAKE_CONFIRMATION_REQUIRED,
             input_snapshot=snapshot,
@@ -143,7 +172,7 @@ def assess_evidence_intake(
         )
     return EvidenceIntakeDecision(
         status=EXECUTE,
-        evidence_mode=evidence_mode if evidence_mode != "code" else "hybrid",
+        evidence_mode=DERIVED_EVIDENCE_MODE,
         missing=(),
         reason_code=INTAKE_COMPLETE,
         input_snapshot=snapshot,

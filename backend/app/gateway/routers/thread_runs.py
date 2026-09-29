@@ -102,9 +102,14 @@ class ThreadMessagesPageResponse(BaseModel):
 
 
 class RunCreateRequest(SharedRunCreateRequest):
-    """Shared LangGraph run contract plus DeerFlow evidence options."""
+    """Shared LangGraph run contract plus DeerFlow evidence options.
 
-    evidence_mode: Literal["document", "code", "hybrid"] = Field(default="hybrid", description="Internal evidence strategy for fault-analysis runs")
+    ``evidence_mode`` is not a user input: the fault-zeroing intake derives
+    it (always ``hybrid`` for a run that continues).  The shared contract
+    forbids extra fields, so a client-supplied value is rejected as an
+    unknown input rather than silently honored.
+    """
+
     code_package_id: str | None = Field(default=None, description="Validated Thread-private Code Evidence Package")
 
 

@@ -124,7 +124,11 @@ def _tree_has_pending_verification(outputs_dir: str) -> bool:
 
 
 def _current_inputs_snapshot(inputs: dict[str, Any]) -> dict[str, str]:
-    return intake_mod.build_input_snapshot(inputs.get("upload_dir"), inputs.get("code_package_source"))
+    return intake_mod.build_input_snapshot(
+        inputs.get("problem_description"),
+        inputs.get("upload_dir"),
+        inputs.get("code_package_source"),
+    )
 
 
 def _current_snapshot_hash(inputs: dict[str, Any]) -> str:
@@ -188,10 +192,13 @@ class FaultZeroingKernel:
         """
 
         run_id = run_id or str(self._id_factory())
+        # The evidence mode is derived here, never read from the inputs:
+        # a caller-supplied value cannot resurrect a document-only or
+        # code-only run (CONTEXT.md Avoid "Evidence Mode selection").
         decision = intake_mod.assess_evidence_intake(
+            problem_description=inputs.get("problem_description"),
             upload_dir=inputs.get("upload_dir"),
             code_package_source=inputs.get("code_package_source"),
-            evidence_mode=inputs.get("evidence_mode", "hybrid"),
         )
 
         if decision.status == intake_mod.REJECT:

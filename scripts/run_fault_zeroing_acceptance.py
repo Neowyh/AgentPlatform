@@ -223,7 +223,6 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                     "upload_dir": "/mnt/user-data/uploads",
                     "problem_description": problem_description,
                     "output_base_dir": "/mnt/user-data/outputs",
-                    "evidence_mode": "hybrid",
                 },
                 created_by=user_id,
                 run_id=run_id,

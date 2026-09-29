@@ -91,7 +91,6 @@ class FakeStore:
 BASE_INPUTS = {
     "upload_dir": "/mnt/user-data/uploads",
     "code_package_source": "/mnt/user-data/code-evidence/pkg-1/source",
-    "evidence_mode": "hybrid",
 }
 
 
@@ -199,9 +198,9 @@ def _intake_snapshot(missing: list[str]) -> dict:
     return {
         "evidence_intake": {
             "status": "paused",
-            "evidence_mode": "document",
+            "evidence_mode": "hybrid",
             "missing": missing,
-            "reason_code": "code_evidence_missing",
+            "reason_code": "intake_confirmation_required",
             "input_snapshot": {},
             "input_snapshot_hash": "hash-1",
         }

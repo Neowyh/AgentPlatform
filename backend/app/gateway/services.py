@@ -208,13 +208,7 @@ def normalize_stream_modes(raw: list[str] | str | None) -> list[str]:
 
 def _strip_external_message_metadata(message: Any) -> Any:
     if isinstance(message, dict) and isinstance(message.get("additional_kwargs"), dict):
-        additional_kwargs = {
-            key: value
-            for key, value in message["additional_kwargs"].items()
-            if key != ORIGINAL_USER_CONTENT_KEY
-            and key != MESSAGE_SEQ_KEY
-            and key not in _SERVER_OWNED_MESSAGE_METADATA_KEYS
-        }
+        additional_kwargs = {key: value for key, value in message["additional_kwargs"].items() if key != ORIGINAL_USER_CONTENT_KEY and key != MESSAGE_SEQ_KEY and key not in _SERVER_OWNED_MESSAGE_METADATA_KEYS}
         return {**message, "additional_kwargs": additional_kwargs}
     if not isinstance(message, BaseMessage):
         return message
@@ -230,17 +224,11 @@ def _strip_external_message_metadata(message: Any) -> Any:
 
 def _strip_external_delegation_verdict(entry: Any) -> Any:
     if isinstance(entry, dict):
-        return {
-            key: value
-            for key, value in entry.items()
-            if key not in {"receipt_verdict", "acceptance_verdict"}
-        }
+        return {key: value for key, value in entry.items() if key not in {"receipt_verdict", "acceptance_verdict"}}
     return entry
 
 
-def normalize_input(
-    raw_input: dict[str, Any] | None, *, trusted_internal: bool = False
-) -> dict[str, Any]:
+def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool = False) -> dict[str, Any]:
     """Convert LangGraph Platform input format to LangChain state dict.
 
     Delegates dict→message coercion to ``langchain_core.messages.utils.convert_to_messages``
@@ -273,19 +261,14 @@ def normalize_input(
             else:
                 converted.append(msg)
         if not trusted_internal:
-            converted = [
-                _strip_external_message_metadata(message) for message in converted
-            ]
+            converted = [_strip_external_message_metadata(message) for message in converted]
         result = {**raw_input, "messages": converted}
     else:
         result = raw_input
     if not trusted_internal and isinstance(result.get("delegations"), list):
         result = {
             **result,
-            "delegations": [
-                _strip_external_delegation_verdict(item)
-                for item in result["delegations"]
-            ],
+            "delegations": [_strip_external_delegation_verdict(item) for item in result["delegations"]],
         }
     return result
 
@@ -295,37 +278,23 @@ def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, An
     cleaned: dict[str, Any] = {}
     for channel, value in values.items():
         if channel == "delegations" and isinstance(value, list):
-            cleaned[channel] = [
-                _strip_external_delegation_verdict(item) for item in value
-            ]
+            cleaned[channel] = [_strip_external_delegation_verdict(item) for item in value]
         elif isinstance(value, list):
-            cleaned[channel] = [
-                _strip_external_message_metadata(item) for item in value
-            ]
+            cleaned[channel] = [_strip_external_message_metadata(item) for item in value]
         else:
             cleaned[channel] = _strip_external_message_metadata(value)
     return cleaned
 
 
-def validate_evidence_selection(
-    evidence_mode: str | None, code_package_id: str | None
-) -> tuple[str, str | None]:
-    """Normalize the hidden hybrid mode and validate an optional code package."""
-    mode = evidence_mode or "hybrid"
-    if mode not in {"document", "code", "hybrid"}:
-        raise HTTPException(
-            status_code=400, detail="evidence_mode must be document, code, or hybrid"
-        )
-    if mode == "code" and not code_package_id:
-        raise HTTPException(
-            status_code=400, detail=f"{mode} mode requires a Code Evidence Package"
-        )
-    if mode == "document" and code_package_id:
-        raise HTTPException(
-            status_code=400,
-            detail="document mode cannot include a Code Evidence Package",
-        )
-    return mode, str(code_package_id) if code_package_id else None
+def validate_evidence_selection(code_package_id: str | None) -> str | None:
+    """Validate the optional Thread-private Code Evidence Package.
+
+    The evidence mode is no longer a caller input: it is derived by the
+    fault-zeroing intake (always ``hybrid`` for a run that continues), so
+    this seam only normalizes the package identity.
+    """
+
+    return str(code_package_id) if code_package_id else None
 
 
 _DEFAULT_ASSISTANT_ID = "lead_agent"
@@ -360,9 +329,7 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
     }
 )
 
-_CONTEXT_ONLY_KEYS: frozenset[str] = frozenset(
-    {"github_token", "disable_clarification"}
-)
+_CONTEXT_ONLY_KEYS: frozenset[str] = frozenset({"github_token", "disable_clarification"})
 
 _CONTEXT_INTERNAL_CALLER_KEYS: frozenset[str] = frozenset({"non_interactive"})
 _SERVER_OWNED_AUTHZ_CONTEXT_KEYS: frozenset[str] = frozenset(
@@ -412,11 +379,7 @@ def merge_run_context_overrides(
         return
     configurable = config.setdefault("configurable", {})
     runtime_context = config.setdefault("context", {})
-    keys = (
-        _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS
-        if internal
-        else _CONTEXT_CONFIGURABLE_KEYS
-    )
+    keys = _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS if internal else _CONTEXT_CONFIGURABLE_KEYS
     for key in keys:
         if key in context:
             if isinstance(configurable, dict):
@@ -482,10 +445,7 @@ def inject_authenticated_user_context(
             configurable.pop("user_id", None)
         return
 
-    if (
-        internal_owner_user is None
-        and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE
-    ):
+    if internal_owner_user is None and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
         runtime_context.pop("user_role", None)
         runtime_context.pop("oauth_provider", None)
         runtime_context.pop("oauth_id", None)
@@ -499,9 +459,7 @@ def inject_authenticated_user_context(
     # legacy auth-table value, which would silently re-escalate a downgraded
     # or unprovisioned account.
     cached_identity = getattr(getattr(request, "state", None), "_ideer_rbac_user", None)
-    resolved_role = (
-        cached_identity.get("role") if isinstance(cached_identity, dict) else None
-    )
+    resolved_role = cached_identity.get("role") if isinstance(cached_identity, dict) else None
     # Direct embedded callers and focused contract tests do not pass the
     # middleware's RBAC cache. Preserve the authenticated user's role there;
     # requests that went through middleware always use the server-resolved
@@ -514,18 +472,12 @@ def inject_authenticated_user_context(
         runtime_context["user_role"] = resolved_role
     runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
     runtime_context["oauth_id"] = getattr(user, "oauth_id", None)
-    department_id = (
-        cached_identity.get("department_id")
-        if isinstance(cached_identity, dict)
-        else None
-    )
+    department_id = cached_identity.get("department_id") if isinstance(cached_identity, dict) else None
     if department_id is not None:
         runtime_context["authz_attributes"] = {"department_id": str(department_id)}
 
 
-async def resolve_trusted_internal_owner_for_attribution(
-    request: Request, owner_user_id: str | None
-) -> Any | None:
+async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:
     if not owner_user_id:
         return None
     user = getattr(request.state, "user", None)
@@ -593,31 +545,21 @@ async def _canonical_selection_metadata(
                     )
                     .outerjoin(
                         ResourceVersion,
-                        (ResourceVersion.resource_id == Resource.id)
-                        & (ResourceVersion.version == RunResourceSnapshot.version),
+                        (ResourceVersion.resource_id == Resource.id) & (ResourceVersion.version == RunResourceSnapshot.version),
                     )
                     .where(RunResourceSnapshot.run_id == run_id)
                 )
             ).all()
         )
-    by_id = {
-        resource.id: (resource, version, snapshot)
-        for resource, version, snapshot in rows
-    }
-    agent, agent_version, agent_snapshot = by_id.get(
-        agent_resource_id, (None, None, None)
-    )
+    by_id = {resource.id: (resource, version, snapshot) for resource, version, snapshot in rows}
+    agent, agent_version, agent_snapshot = by_id.get(agent_resource_id, (None, None, None))
     if agent is None or (agent_version is None and agent_snapshot is None):
         return {}
-    selected_skill = body_context.get("skill_resource_id") or body_context.get(
-        "skill_name"
-    )
+    selected_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
     skill_entry = None
     if selected_skill:
         for resource, version, snapshot in by_id.values():
-            if resource.type == "skill" and (
-                resource.id == selected_skill or resource.slug == selected_skill
-            ):
+            if resource.type == "skill" and (resource.id == selected_skill or resource.slug == selected_skill):
                 if version is None and snapshot is None:
                     continue
                 skill_entry = {
@@ -625,21 +567,11 @@ async def _canonical_selection_metadata(
                     "display_name": resource.display_name,
                     "slug": resource.slug,
                     "version": version.version if version is not None else snapshot.version,
-                    "content_hash": (
-                        version.content_hash
-                        if version is not None
-                        else snapshot.content_hash
-                    ),
+                    "content_hash": (version.content_hash if version is not None else snapshot.content_hash),
                 }
                 break
-    agent_version_number = (
-        agent_version.version if agent_version is not None else agent_snapshot.version
-    )
-    agent_content_hash = (
-        agent_version.content_hash
-        if agent_version is not None
-        else agent_snapshot.content_hash
-    )
+    agent_version_number = agent_version.version if agent_version is not None else agent_snapshot.version
+    agent_content_hash = agent_version.content_hash if agent_version is not None else agent_snapshot.content_hash
     selection: dict[str, Any] = {
         "agent": {
             "resource_id": agent.id,
@@ -648,11 +580,7 @@ async def _canonical_selection_metadata(
             "version": agent_version_number,
             "content_hash": agent_content_hash,
         },
-        "resolved_skill_ids": sorted(
-            resource.id
-            for resource, _version, _snapshot in by_id.values()
-            if resource.type == "skill"
-        ),
+        "resolved_skill_ids": sorted(resource.id for resource, _version, _snapshot in by_id.values() if resource.type == "skill"),
         "resource_snapshots": [
             {
                 "resource_id": snapshot.resource_id,
@@ -671,9 +599,7 @@ async def _canonical_selection_metadata(
             }
             for _resource, _version, snapshot in rows
         ],
-        "policy_revision": str(
-            max(snapshot.authz_revision for _resource, _version, snapshot in rows)
-        ),
+        "policy_revision": str(max(snapshot.authz_revision for _resource, _version, snapshot in rows)),
     }
     if skill_entry is not None:
         selection["preferred_skill"] = skill_entry
@@ -707,9 +633,7 @@ async def _discard_canonical_run_snapshot(run_id: str) -> None:
     if session_factory is None:
         return
     async with session_factory() as session:
-        await session.execute(
-            delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id)
-        )
+        await session.execute(delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id))
         await session.commit()
 
 
@@ -794,22 +718,12 @@ def build_run_config(
     if assistant_id and assistant_id != _DEFAULT_ASSISTANT_ID:
         normalized = assistant_id.strip().lower().replace("_", "-")
         if not normalized or not re.fullmatch(r"[a-z0-9-]+", normalized):
-            raise ValueError(
-                f"Invalid assistant_id {assistant_id!r}: must contain only letters, digits, and hyphens after normalization."
-            )
+            raise ValueError(f"Invalid assistant_id {assistant_id!r}: must contain only letters, digits, and hyphens after normalization.")
         context_target = config.setdefault("context", {})
-        configurable_target = config.setdefault(
-            "configurable", {"thread_id": thread_id}
-        )
-        if not isinstance(context_target, dict) or not isinstance(
-            configurable_target, dict
-        ):
+        configurable_target = config.setdefault("configurable", {"thread_id": thread_id})
+        if not isinstance(context_target, dict) or not isinstance(configurable_target, dict):
             raise TypeError("run config containers must be mappings")
-        effective_agent_name = (
-            context_target.get("agent_name")
-            or configurable_target.get("agent_name")
-            or normalized
-        )
+        effective_agent_name = context_target.get("agent_name") or configurable_target.get("agent_name") or normalized
         context_target["agent_name"] = effective_agent_name
         configurable_target["agent_name"] = effective_agent_name
         config.setdefault("run_name", resolve_root_run_name(config, normalized))
@@ -870,9 +784,7 @@ def build_checkpoint_state_mutation_accessor(
 # cached reference keeps the old config alive, so id-reuse cannot produce a
 # false hit. Bounded: cleared when too many distinct assistants appear.
 _STATE_ACCESSOR_GRAPH_CACHE_MAX = 64
-_state_accessor_graph_cache: dict[
-    tuple[str | None, str, int | None], tuple[Any, Any, Any]
-] = {}
+_state_accessor_graph_cache: dict[tuple[str | None, str, int | None], tuple[Any, Any, Any]] = {}
 
 
 def _accessor_graph_cache_max(app_config: Any) -> int:
@@ -956,18 +868,14 @@ class _RawCheckpointReadAccessor:
     @staticmethod
     def _gate(tup: Any) -> None:
         if checkpoint_tuple_uses_delta(tup):
-            raise CheckpointModeMismatchError(
-                "Thread requires delta mode; materialize and convert its checkpoints before using full mode."
-            )
+            raise CheckpointModeMismatchError("Thread requires delta mode; materialize and convert its checkpoints before using full mode.")
 
     async def aget(self, config: dict[str, Any]) -> _RawCheckpointSnapshot:
         tup = await self.checkpointer.aget_tuple(config)
         self._gate(tup)
         return _RawCheckpointSnapshot(config, tup)
 
-    async def ahistory(
-        self, config: dict[str, Any], *, limit: int | None = None
-    ) -> list[_RawCheckpointSnapshot]:
+    async def ahistory(self, config: dict[str, Any], *, limit: int | None = None) -> list[_RawCheckpointSnapshot]:
         if limit is not None and limit <= 0:
             return []
         result: list[_RawCheckpointSnapshot] = []
@@ -981,11 +889,7 @@ class _RawCheckpointReadAccessor:
             before = config
             walk_config = {
                 **config,
-                "configurable": {
-                    k: v
-                    for k, v in config.get("configurable", {}).items()
-                    if k != "checkpoint_id"
-                },
+                "configurable": {k: v for k, v in config.get("configurable", {}).items() if k != "checkpoint_id"},
             }
             anchor = await self.checkpointer.aget_tuple(before)
             self._gate(anchor)
@@ -993,9 +897,7 @@ class _RawCheckpointReadAccessor:
                 result.append(_RawCheckpointSnapshot(config, anchor))
         if limit is None or len(result) < limit:
             remaining = None if limit is None else limit - len(result)
-            async for tup in self.checkpointer.alist(
-                walk_config, before=before, limit=remaining
-            ):
+            async for tup in self.checkpointer.alist(walk_config, before=before, limit=remaining):
                 self._gate(tup)
                 result.append(_RawCheckpointSnapshot(config, tup))
                 if limit is not None and len(result) >= limit:
@@ -1044,9 +946,7 @@ def build_checkpoint_state_accessor(
             thread_id,
             exc_info=True,
         )
-        return _RawCheckpointReadAccessor(
-            ctx.checkpointer, ctx.checkpoint_channel_mode
-        ), config
+        return _RawCheckpointReadAccessor(ctx.checkpointer, ctx.checkpoint_channel_mode), config
     accessor = CheckpointStateAccessor.bind(
         graph,
         ctx.checkpointer,
@@ -1074,9 +974,7 @@ async def resolve_thread_assistant_id(
         thread_store = get_thread_store(request)
         record = await thread_store.get(thread_id)
     except Exception:
-        logger.warning(
-            "Failed to resolve assistant_id for thread %s", thread_id, exc_info=True
-        )
+        logger.warning("Failed to resolve assistant_id for thread %s", thread_id, exc_info=True)
         if fail_closed:
             raise
         return None
@@ -1096,9 +994,7 @@ async def build_thread_checkpoint_state_accessor(
     with the default lead schema would drop channels contributed by a custom
     ``AgentMiddleware.state_schema`` from the response.
     """
-    assistant_id = await resolve_thread_assistant_id(
-        request, thread_id, fail_closed=fail_closed
-    )
+    assistant_id = await resolve_thread_assistant_id(request, thread_id, fail_closed=fail_closed)
     return build_checkpoint_state_accessor(
         request,
         thread_id=thread_id,
@@ -1184,19 +1080,13 @@ async def apply_checkpoint_to_run_config(
             checkpoint_id,
             sanitize_log_param(thread_id),
         )
-        raise HTTPException(
-            status_code=500, detail="Failed to validate checkpoint"
-        ) from exc
+        raise HTTPException(status_code=500, detail="Failed to validate checkpoint") from exc
     if checkpoint_tuple is None:
-        raise HTTPException(
-            status_code=404, detail=f"Checkpoint {checkpoint_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
 
     configurable = config.setdefault("configurable", {})
     if not isinstance(configurable, dict):
-        raise HTTPException(
-            status_code=400, detail="request config configurable must be an object"
-        )
+        raise HTTPException(status_code=400, detail="request config configurable must be an object")
     configurable.update(
         {
             "thread_id": thread_id,
@@ -1213,9 +1103,7 @@ async def apply_checkpoint_to_run_config(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_canonical_alias(
-    assistant_id: str | None, request: Request
-) -> str | None:
+async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
     """Resolve a legacy-name assistant through the catalog alias resolver.
 
     Legacy owner-directory reads are sealed, so names must map to an active
@@ -1247,9 +1135,7 @@ async def _resolve_canonical_alias(
 
     session_factory = get_session_factory()
     if session_factory is None:
-        raise HTTPException(
-            status_code=503, detail="Resource persistence is unavailable"
-        )
+        raise HTTPException(status_code=503, detail="Resource persistence is unavailable")
     try:
         # T2: reuse the identity _authenticate already resolved instead of
         # issuing a duplicate UserModel SELECT on every first turn.
@@ -1276,16 +1162,12 @@ async def _resolve_canonical_alias(
                     raise ResourcePermissionDenied("Active RBAC user is required")
                 actor = ResourceActor(
                     user_id=str(user.id),
-                    department_id=str(user.department_id)
-                    if user.department_id is not None
-                    else None,
+                    department_id=str(user.department_id) if user.department_id is not None else None,
                     role=str(user.role),
                     permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
                     tool_groups=None,
                 )
-            resource = await ResourceService(session, actor).resolve_legacy_alias(
-                "agent", assistant_id
-            )
+            resource = await ResourceService(session, actor).resolve_legacy_alias("agent", assistant_id)
         return resource.id
     except ResourceNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1331,9 +1213,7 @@ async def ensure_checkpoint_history_seeded(
     )
     if events:
         await event_store.put_batch(events)
-        logger.info(
-            "Seeded %d checkpoint-history events for thread %s", len(events), thread_id
-        )
+        logger.info("Seeded %d checkpoint-history events for thread %s", len(events), thread_id)
 
 
 def _consume_task_result(task: asyncio.Task) -> None:
@@ -1370,15 +1250,11 @@ async def _ensure_thread_metadata(
         unscoped = await thread_store.get(record.thread_id, user_id=None)
         if unscoped is not None:
             if unscoped.get("user_id") != owner_user_id:
-                await thread_store.update_owner(
-                    record.thread_id, owner_user_id, user_id=None
-                )
+                await thread_store.update_owner(record.thread_id, owner_user_id, user_id=None)
             existing = await thread_store.get(record.thread_id)
     if existing is None:
         if require_existing_thread:
-            raise LookupError(
-                f"Thread {record.thread_id} was deleted during run admission"
-            )
+            raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
         await thread_store.create(
             record.thread_id,
             assistant_id=record.assistant_id,
@@ -1431,11 +1307,7 @@ async def start_run(
     run_mgr = get_run_manager(request)
     run_ctx = get_run_context(request)
 
-    disconnect = (
-        DisconnectMode.cancel
-        if body.on_disconnect == "cancel"
-        else DisconnectMode.continue_
-    )
+    disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
     # Deep module owns evidence/manifest/alias parallelism and snapshot freeze.
     from app.gateway.run_preparation import discard_canonical_snapshot, prepare_run
@@ -1454,12 +1326,8 @@ async def start_run(
     canonical_factory = prepared.canonical_factory
     model_name = prepared.model_name
     run_metadata = prepared.run_metadata
-    if prepared.evidence_mode == "hybrid" and "evidence_mode" not in (
-        getattr(body, "metadata", None) or {}
-    ):
-        run_metadata = {
-            key: value for key, value in run_metadata.items() if key != "evidence_mode"
-        }
+    if prepared.evidence_mode == "hybrid" and "evidence_mode" not in (getattr(body, "metadata", None) or {}):
+        run_metadata = {key: value for key, value in run_metadata.items() if key != "evidence_mode"}
     run_metadata = {**run_metadata, DEERFLOW_TRACE_METADATA_KEY: trace_id}
 
     owner_user_id = get_trusted_internal_owner_user_id(request)
@@ -1472,9 +1340,7 @@ async def start_run(
             owner_user_id = str(owner_user_id)
 
     if require_existing_thread:
-        if not await run_ctx.thread_store.check_access(
-            thread_id, owner_user_id, require_existing=True
-        ):
+        if not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
 
     # Validate checkpoint admission before the durable run row is created.
@@ -1483,17 +1349,10 @@ async def start_run(
     else:
         graph_input = normalize_input(
             body.input,
-            trusted_internal=getattr(
-                getattr(request, "state", None), "auth_source", None
-            )
-            == AUTH_SOURCE_INTERNAL,
+            trusted_internal=getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL,
         )
-    config = build_run_config(
-        thread_id, body.config, run_metadata, assistant_id=body.assistant_id
-    )
-    await apply_checkpoint_to_run_config(
-        config, body=body, thread_id=thread_id, request=request
-    )
+    config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
+    await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
 
     try:
         await ensure_checkpoint_history_seeded(
@@ -1501,9 +1360,7 @@ async def start_run(
             thread_id=thread_id,
             assistant_id=body.assistant_id,
         )
-        if require_existing_thread and not await run_ctx.thread_store.check_access(
-            thread_id, owner_user_id, require_existing=True
-        ):
+        if require_existing_thread and not await run_ctx.thread_store.check_access(thread_id, owner_user_id, require_existing=True):
             raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
         create_kwargs = {
             "on_disconnect": disconnect,
@@ -1520,9 +1377,7 @@ async def start_run(
             create_kwargs["run_id"] = canonical_run_id
         if idempotency_key is not None:
             create_kwargs["idempotency_key"] = idempotency_key
-        record = await run_mgr.create_or_reject(
-            thread_id, body.assistant_id, **create_kwargs
-        )
+        record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
         await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1544,25 +1399,13 @@ async def start_run(
     # The ``context`` field is a custom extension for the langgraph-compat layer
     # that carries agent configuration (model_name, thinking_enabled, etc.).
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
-    is_internal_caller = (
-        getattr(getattr(request, "state", None), "auth_source", None)
-        == AUTH_SOURCE_INTERNAL
-    )
+    is_internal_caller = getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL
     merge_run_context_overrides(config, body_context, internal=is_internal_caller)
     if not is_internal_caller:
         strip_internal_context_keys(config)
     request_context_values = getattr(body, "config", None) or {}
-    needs_owner_attribution = isinstance(
-        request_context_values.get("context"), dict
-    ) and any(
-        key in request_context_values["context"]
-        for key in ("user_role", "oauth_provider", "oauth_id", "authz_attributes")
-    )
-    internal_owner_user = (
-        await resolve_trusted_internal_owner_for_attribution(request, owner_user_id)
-        if needs_owner_attribution
-        else None
-    )
+    needs_owner_attribution = isinstance(request_context_values.get("context"), dict) and any(key in request_context_values["context"] for key in ("user_role", "oauth_provider", "oauth_id", "authz_attributes"))
+    internal_owner_user = await resolve_trusted_internal_owner_for_attribution(request, owner_user_id) if needs_owner_attribution else None
     inject_authenticated_user_context(
         config,
         request,
@@ -1630,27 +1473,19 @@ async def start_run(
                     _THREAD_METADATA_SETUP_TIMEOUT_SECONDS,
                 )
                 if require_existing_thread:
-                    metadata_failure = TimeoutError(
-                        "Timed out verifying existing thread metadata"
-                    )
+                    metadata_failure = TimeoutError("Timed out verifying existing thread metadata")
         finally:
             if metadata_task.done():
                 if not metadata_failure_logged:
                     _log_thread_metadata_task_result(metadata_task, thread_id=thread_id)
             else:
                 metadata_task.cancel()
-                metadata_task.add_done_callback(
-                    lambda task: _log_thread_metadata_task_result(
-                        task, thread_id=thread_id
-                    )
-                )
+                metadata_task.add_done_callback(lambda task: _log_thread_metadata_task_result(task, thread_id=thread_id))
             if not abort_task.done():
                 abort_task.cancel()
                 abort_task.add_done_callback(_consume_task_result)
         if metadata_failure is not None and require_existing_thread:
-            await run_mgr.fail_start_if_pending(
-                record.run_id, error=str(metadata_failure)
-            )
+            await run_mgr.fail_start_if_pending(record.run_id, error=str(metadata_failure))
         await run_agent(
             bridge,
             run_mgr,
@@ -1673,12 +1508,7 @@ async def start_run(
         if binding is None:
             return False
         archived_receipt = {**receipt, "archive_status": "archived"}
-        receipts = tuple(
-            archived_receipt
-            if item.get("receipt_id") == receipt.get("receipt_id")
-            else item
-            for item in binding.retrieval_receipts
-        )
+        receipts = tuple(archived_receipt if item.get("receipt_id") == receipt.get("receipt_id") else item for item in binding.retrieval_receipts)
         record.metadata = {
             **(record.metadata or {}),
             "run_evidence": {
@@ -1689,12 +1519,7 @@ async def start_run(
         }
         persisted = await run_mgr.persist_current_record(record.run_id)
         if not persisted:
-            failed = tuple(
-                {**item, "archive_status": "failed"}
-                if item.get("receipt_id") == receipt.get("receipt_id")
-                else item
-                for item in binding.retrieval_receipts
-            )
+            failed = tuple({**item, "archive_status": "failed"} if item.get("receipt_id") == receipt.get("receipt_id") else item for item in binding.retrieval_receipts)
             record.metadata = {
                 **(record.metadata or {}),
                 "run_evidence": {
@@ -1705,9 +1530,7 @@ async def start_run(
             }
         return persisted
 
-    owner_context_token = (
-        set_current_user(SimpleNamespace(id=owner_user_id)) if owner_user_id else None
-    )
+    owner_context_token = set_current_user(SimpleNamespace(id=owner_user_id)) if owner_user_id else None
     try:
         if run_evidence_binding is not None:
             from agentplatform_extension.evidence import (
@@ -1739,9 +1562,7 @@ def _resolve_scheduler_recursion_limit() -> int:
 
     try:
         scheduler = getattr(get_app_config(), "scheduler", None)
-        configured = int(
-            getattr(scheduler, "recursion_limit", _DEFAULT_RECURSION_LIMIT)
-        )
+        configured = int(getattr(scheduler, "recursion_limit", _DEFAULT_RECURSION_LIMIT))
         ceiling = _resolve_max_recursion_limit()
         if configured > ceiling:
             logger.warning(
@@ -1780,14 +1601,8 @@ async def launch_scheduled_thread_run(
             raise ValueError("launch_scheduled_thread_run requires request or app")
         request = SimpleNamespace(
             app=app,
-            headers=(
-                {INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id}
-                if owner_user_id
-                else {}
-            ),
-            state=SimpleNamespace(
-                user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL
-            ),
+            headers=({INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id} if owner_user_id else {}),
+            state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
             cookies={},
         )
 
@@ -1810,15 +1625,9 @@ async def launch_scheduled_thread_run(
     # defaults this field to ``keep``.
     body.on_completion = None
     scheduled_task_run_id = (metadata or {}).get("scheduled_task_run_id")
-    idempotency_key = (
-        f"scheduled-task:{scheduled_task_run_id}"
-        if isinstance(scheduled_task_run_id, str)
-        else None
-    )
+    idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
     with ensure_trace_context():
-        record = await start_run(
-            body, thread_id, request, idempotency_key=idempotency_key
-        )
+        record = await start_run(body, thread_id, request, idempotency_key=idempotency_key)
     return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
@@ -1858,9 +1667,7 @@ async def launch_mcp_task_notification_run(
     request = SimpleNamespace(
         app=app,
         headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
-        state=SimpleNamespace(
-            user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL
-        ),
+        state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
         cookies={},
     )
     body = RunCreateRequest(
@@ -1913,9 +1720,7 @@ def _run_is_terminal(record: RunRecord) -> bool:
     return record.status in _TERMINAL_RUN_STATUSES
 
 
-async def _terminal_record_stream_missing(
-    bridge: StreamBridge, record: RunRecord
-) -> bool:
+async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
     """True when a terminal run has no retained stream on bridges that can tell."""
     if not _run_is_terminal(record):
         return False
@@ -1954,11 +1759,7 @@ async def _orphan_recovery_observed_after_heartbeat(
     if not inspect.isawaitable(refreshed_result):
         return False
     refreshed = await refreshed_result
-    return (
-        refreshed is not None
-        and _run_is_terminal(refreshed)
-        and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
-    )
+    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
 
 
 async def wait_for_run_completion(
@@ -1998,9 +1799,7 @@ async def wait_for_run_completion(
     try:
         while True:
             gap_seen = False
-            async for entry in bridge.subscribe(
-                record.run_id, last_event_id=resume_from_event_id
-            ):
+            async for entry in bridge.subscribe(record.run_id, last_event_id=resume_from_event_id):
                 # END_SENTINEL means the run reached a terminal state; honour it
                 # even if the client just disconnected so the caller still serializes
                 # the real final checkpoint.
@@ -2014,10 +1813,7 @@ async def wait_for_run_completion(
                     resume_from_event_id = entry.latest_available_event_id
                     gap_seen = True
                     break
-                if (
-                    entry is HEARTBEAT_SENTINEL
-                    and await _orphan_recovery_observed_after_heartbeat(record, run_mgr)
-                ):
+                if entry is HEARTBEAT_SENTINEL and await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
                     completed = True
                     return True
                 if await request.is_disconnected():
@@ -2096,11 +1892,6 @@ async def sse_consumer(
     finally:
         # Only the creator's own stream may cancel-on-disconnect — never an
         # observer join, and never a run executing on another worker.
-        if (
-            apply_on_disconnect
-            and not gap_emitted
-            and not record.store_only
-            and record.status in (RunStatus.pending, RunStatus.running)
-        ):
+        if apply_on_disconnect and not gap_emitted and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
             if record.on_disconnect == DisconnectMode.cancel:
                 await run_mgr.cancel(record.run_id)

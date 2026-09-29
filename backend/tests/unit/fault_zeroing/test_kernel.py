@@ -134,7 +134,6 @@ def kernel_env(tmp_path):
 BASE_INPUTS = {
     "upload_dir": "/mnt/user-data/uploads",
     "code_package_source": "/mnt/user-data/code-evidence/pkg-1/source",
-    "evidence_mode": "hybrid",
 }
 
 
@@ -165,7 +164,7 @@ def test_start_run_queues_when_both_sides_present(kernel_env) -> None:
 
 def test_start_run_pauses_on_missing_side_without_claimable_task(kernel_env) -> None:
     _, _, _, _, kernel, store, _ = kernel_env
-    inputs = {"upload_dir": "/mnt/user-data/uploads", "evidence_mode": "hybrid"}
+    inputs = {"upload_dir": "/mnt/user-data/uploads"}
 
     result = asyncio.run(
         kernel.start_run(
@@ -193,13 +192,54 @@ def test_start_run_rejects_when_both_sides_missing(kernel_env) -> None:
             kernel.start_run(
                 workflow_name="fault-zeroing",
                 definition_version=1,
-                inputs={"evidence_mode": "hybrid"},
+                inputs={},
                 created_by="user-1",
             )
         )
 
     assert excinfo.value.reason_code == "intake_evidence_missing_both"
     assert store.runs == {}  # no usable run is created
+
+
+def test_description_only_start_pauses_with_derived_hybrid_snapshot(kernel_env) -> None:
+    """A non-empty description satisfies the document side (glossary)."""
+
+    _, _, _, _, kernel, store, _ = kernel_env
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警，请分析根因"},
+            created_by="user-1",
+        )
+    )
+
+    assert result.status == "paused"
+    record = store.runs[result.run_id].snapshot["evidence_intake"]
+    assert record["missing"] == ["code_evidence_package"]
+    # The mode in the Run snapshot is the derived system result.
+    assert record["evidence_mode"] == "hybrid"
+
+
+def test_user_supplied_evidence_mode_in_inputs_is_ignored(kernel_env) -> None:
+    """evidence_mode is no longer a caller input; a stale value cannot
+    resurrect a document-only run."""
+
+    _, _, _, _, kernel, store, _ = kernel_env
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警", "evidence_mode": "document"},
+            created_by="user-1",
+        )
+    )
+
+    record = store.runs[result.run_id].snapshot["evidence_intake"]
+    assert record["evidence_mode"] == "hybrid"
+    assert record["missing"] == ["code_evidence_package"]
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +278,7 @@ def test_start_canonical_run_queues_through_frozen_closure(kernel_env) -> None:
 def test_start_canonical_run_pauses_with_intake_snapshot(kernel_env) -> None:
     _, _, _, _, kernel, store, _ = kernel_env
     actor = _actor()
-    inputs = {"upload_dir": "/mnt/user-data/uploads", "evidence_mode": "hybrid"}
+    inputs = {"upload_dir": "/mnt/user-data/uploads"}
 
     result = asyncio.run(
         kernel.start_run(
@@ -270,7 +310,7 @@ def test_start_canonical_run_rejects_before_creating_anything(kernel_env) -> Non
             kernel.start_run(
                 workflow_name="fault-zeroing",
                 definition_version=1,
-                inputs={"evidence_mode": "hybrid"},
+                inputs={},
                 created_by="user-1",
                 workflow_resource_id="wf-resource-uuid",
                 actor=actor,
@@ -287,7 +327,7 @@ def test_confirm_evidence_resumes_paused_run(kernel_env) -> None:
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
@@ -337,7 +377,7 @@ def test_new_material_requires_reconfirmation(kernel_env) -> None:
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
@@ -358,6 +398,59 @@ def test_new_material_requires_reconfirmation(kernel_env) -> None:
     # The rejection is observable.
     assert any(event_type == "kernel_confirmation_rejected" for _, event_type, _ in store.events)
     assert not store.commands  # nothing was resumed
+
+
+def test_description_change_after_pause_requires_reconfirmation(kernel_env) -> None:
+    """The problem description is part of the confirmation-bound hash."""
+
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    # The description changed after the pause: the presented hash is stale.
+    store.runs[started.run_id].inputs = dict(store.runs[started.run_id].inputs, problem_description="主轴电机过热停机")
+
+    with pytest.raises(kernel_mod.ConfirmationStaleError) as excinfo:
+        asyncio.run(
+            kernel.confirm_evidence(
+                started.run_id,
+                payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+                confirmed_by="user-1",
+            )
+        )
+    assert excinfo.value.reason_code == "intake_snapshot_changed"
+    assert not store.commands
+
+
+def test_confirm_succeeds_while_description_unchanged(kernel_env) -> None:
+    _, _, _, _, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    result = asyncio.run(
+        kernel.confirm_evidence(
+            started.run_id,
+            payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+            confirmed_by="user-1",
+        )
+    )
+
+    assert result["missing_evidence_sides"] == ["code_evidence_package"]
+    assert store.commands and store.commands[0][2] == "resume"
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +526,7 @@ def test_single_side_run_requires_hybrid_disclosure_at_completion(kernel_env) ->
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
