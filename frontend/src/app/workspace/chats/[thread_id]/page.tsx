@@ -43,6 +43,8 @@ import { useAgent, useAgents } from "@/core/agents/hooks";
 import { getAPIClient } from "@/core/api";
 import { useBrowserControlEnabled } from "@/core/features";
 import { useI18n } from "@/core/i18n/hooks";
+import { hasOpenHumanInputRequest } from "@/core/messages/human-input";
+import { isHiddenFromUIMessage } from "@/core/messages/utils";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import {
@@ -320,6 +322,7 @@ export default function ChatPage() {
     thread,
     pendingUsageMessages,
     sendMessage,
+    editAndRegenerateMessage,
     isUploading,
     isHistoryLoading,
     hasMoreHistory,
@@ -424,6 +427,11 @@ export default function ChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+  const handleEditAndRegenerate = useCallback(
+    (messageId: string, replacementText: string) =>
+      editAndRegenerateMessage(threadId, messageId, replacementText),
+    [editAndRegenerateMessage, threadId],
+  );
   const handleBranchTurn = useCallback(
     async (messageId: string, messageIds: string[]) => {
       if (
@@ -460,6 +468,14 @@ export default function ChatPage() {
   const { activeGoal, hasGoal, setLocalGoal } = useActiveGoal(
     threadId,
     thread.values.goal,
+  );
+  const hasOpenHumanInputCard = useMemo(
+    () =>
+      hasOpenHumanInputRequest(
+        thread.messages,
+        (message) => !isHiddenFromUIMessage(message),
+      ),
+    [thread.messages],
   );
 
   return (
@@ -530,6 +546,17 @@ export default function ChatPage() {
                     loadMoreHistory={loadMoreHistory}
                     isHistoryLoading={isHistoryLoading}
                     tokenUsageInlineMode={tokenUsageInlineMode}
+                    canEdit={
+                      !isNewThread &&
+                      !isMock &&
+                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
+                      !isUploading &&
+                      !thread.isLoading &&
+                      !branchThread.isPending &&
+                      !hasGoal &&
+                      !hasOpenHumanInputCard
+                    }
+                    onEditAndRegenerateMessage={handleEditAndRegenerate}
                     canBranch={
                       !isNewThread &&
                       !isMock &&

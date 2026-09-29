@@ -27,6 +27,130 @@ function textFromMessageContent(content: unknown) {
 }
 
 test.describe("Streaming message actions", () => {
+  test("edits and reruns only the latest question in a regular chat", async ({
+    page,
+  }) => {
+    const firstHuman = {
+      type: "human",
+      id: "edit-chat-human-1",
+      content: [{ type: "text", text: "Earlier question" }],
+    };
+    const firstAI = {
+      type: "ai",
+      id: "edit-chat-ai-1",
+      content: "Earlier answer",
+    };
+    const latestHuman = {
+      type: "human",
+      id: "edit-chat-human-2",
+      content: [{ type: "text", text: "Original latest question" }],
+    };
+    const latestAI = {
+      type: "ai",
+      id: "edit-chat-ai-2",
+      content: "Latest answer",
+    };
+    const replacementHuman = {
+      type: "human",
+      id: "edit-chat-human-2-replacement",
+      content: [{ type: "text", text: "Edited latest question" }],
+    };
+    mockLangGraphAPI(page, {
+      threads: [
+        {
+          thread_id: MOCK_THREAD_ID,
+          title: "Editable conversation",
+          messages: [firstHuman, firstAI, latestHuman, latestAI],
+        },
+      ],
+    });
+
+    let prepareBody:
+      | { human_message_id?: string; replacement_text?: string }
+      | undefined;
+    await page.route(
+      `**/api/threads/${MOCK_THREAD_ID}/runs/edit-regenerate/prepare`,
+      (route) => {
+        prepareBody = route.request().postDataJSON() as {
+          human_message_id?: string;
+          replacement_text?: string;
+        };
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            input: { messages: [replacementHuman] },
+            checkpoint: {
+              checkpoint_id: "checkpoint-before-latest-human",
+              checkpoint_ns: "",
+              checkpoint_map: null,
+            },
+            metadata: {
+              replay_kind: "edit",
+              regenerate_from_message_id: latestAI.id,
+              regenerate_from_run_id: `run-${MOCK_THREAD_ID}`,
+              regenerate_checkpoint_id: "checkpoint-before-latest-human",
+              edit_from_message_id: latestHuman.id,
+              edit_message_id: replacementHuman.id,
+              edit_version_group_id: latestHuman.id,
+            },
+            target_run_id: `run-${MOCK_THREAD_ID}`,
+            replacement_human_message_id: replacementHuman.id,
+            source_message_ids: [latestHuman.id, latestAI.id],
+          }),
+        });
+      },
+    );
+    await page.route(
+      `**/api/langgraph/threads/${MOCK_THREAD_ID}/runs/stream`,
+      (route) =>
+        handleRunStream(route, {}, undefined, {
+          responseMessage: {
+            type: "ai",
+            id: "edit-chat-ai-rerun",
+            content: "Answer to edited question",
+          },
+        }),
+    );
+
+    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
+    await expect(page.getByText("Original latest question")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const earlierQuestion = page.getByText("Earlier question");
+    const earlierMessage = earlierQuestion.locator(
+      "xpath=ancestor::*[contains(@class, 'group/conversation-message')]",
+    );
+    await earlierQuestion.hover();
+    await expect(
+      earlierMessage.getByRole("button", { name: "Edit and rerun" }),
+    ).toHaveCount(0);
+
+    const latestQuestion = page.getByText("Original latest question");
+    await latestQuestion.hover();
+    await page.getByRole("button", { name: "Edit and rerun" }).click();
+    const editor = page.locator("textarea").first();
+    await expect(editor).toHaveValue("Original latest question");
+    await expect(
+      page.getByText(
+        "Rerunning restores conversation state only. Files, memory, and external actions are not undone.",
+      ),
+    ).toBeVisible();
+    await editor.fill("Edited latest question");
+    await page.getByRole("button", { name: "Update and rerun" }).click();
+
+    await expect
+      .poll(() => prepareBody)
+      .toEqual({
+        human_message_id: latestHuman.id,
+        replacement_text: "Edited latest question",
+      });
+    await expect(page.getByText("Earlier answer")).toBeVisible();
+    await expect(page.getByText("Edited latest question")).toBeVisible();
+    await expect(page.getByText("Answer to edited question")).toBeVisible();
+  });
+
   test("keeps a completed answer copyable while the next turn starts", async ({
     page,
   }) => {
