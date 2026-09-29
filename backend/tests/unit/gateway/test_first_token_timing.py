@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,10 +33,7 @@ def test_auth_stage_emits_timing(caplog):
             headers=create_internal_auth_headers(),
         )
     assert res.status_code == 200
-    assert any(
-        "first_token_timing" in message and "stage=auth" in message
-        for message in caplog.messages
-    )
+    assert any("first_token_timing" in message and "stage=auth" in message for message in caplog.messages)
 
 
 @pytest.mark.asyncio
@@ -56,17 +53,12 @@ async def test_snapshot_stage_emits_timing(caplog):
             "_prepare_canonical_agent_run",
             new=AsyncMock(return_value=MagicMock()),
         ),
-        patch.object(
-            prep, "_canonical_selection_metadata", new=AsyncMock(return_value={})
-        ),
+        patch.object(prep, "_canonical_selection_metadata", new=AsyncMock(return_value={})),
         caplog.at_level(logging.INFO, logger="app.gateway.run_preparation"),
     ):
         prepared = await prep.prepare_run(body, "thread-1", request)
     assert prepared.canonical_run_id is not None
-    assert any(
-        "first_token_timing" in message and "stage=snapshot" in message
-        for message in caplog.messages
-    )
+    assert any("first_token_timing" in message and "stage=snapshot" in message for message in caplog.messages)
 
 
 @pytest.mark.asyncio
@@ -96,14 +88,8 @@ async def test_snapshot_timing_excludes_metadata_processing(caplog):
     ):
         await prep.prepare_run(body, "thread-1", request)
 
-    snapshot = next(
-        message for message in caplog.messages if "stage=snapshot" in message
-    )
-    preparation = next(
-        message for message in caplog.messages if "stage=run_preparation" in message
-    )
+    snapshot = next(message for message in caplog.messages if "stage=snapshot" in message)
+    preparation = next(message for message in caplog.messages if "stage=run_preparation" in message)
     snapshot_ms = float(re.search(r"elapsed_ms=([0-9.]+)", snapshot).group(1))
-    preparation_ms = float(
-        re.search(r"pre_llm_total_ms=([0-9.]+)", preparation).group(1)
-    )
+    preparation_ms = float(re.search(r"pre_llm_total_ms=([0-9.]+)", preparation).group(1))
     assert preparation_ms >= snapshot_ms + 10

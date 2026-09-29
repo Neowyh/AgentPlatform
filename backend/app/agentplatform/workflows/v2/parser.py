@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from .file_roots import path_within_root, workflow_state_root
+from .result_contract import load_result_contract_validator
 from .schema import WorkflowV2
 
 _PATH = re.compile(r"\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
@@ -81,6 +82,24 @@ def _validate_graph(workflow: WorkflowV2) -> None:
     _validate_writes(workflow)
     _validate_preconditions(workflow)
     _validate_write_schemas(workflow)
+    _validate_result_contracts(workflow)
+
+
+def _validate_result_contracts(workflow: WorkflowV2) -> None:
+    """A declared contract validator must be loadable at parse time.
+
+    Format and importability are checked here so a definition can never be
+    published (or seeded) with a gate the runner would silently skip.
+    """
+    contract = workflow.result_contract
+    if contract is None:
+        return
+    try:
+        load_result_contract_validator(contract.validator)
+    except Exception as exc:
+        # Any import-time failure (including modules that raise while loading)
+        # must surface as the parser's standard ValueError contract.
+        raise ValueError(f"invalid result_contract: {exc}") from exc
 
 
 def _validate_cycles(workflow: WorkflowV2, outgoing: dict[str, list[str]]) -> None:

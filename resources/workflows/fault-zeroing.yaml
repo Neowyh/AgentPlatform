@@ -44,6 +44,12 @@ state:
     type: object
     default: {}
 
+# 完成前 Result Contract 契约门：图执行成功后、终态写入前，运行器调用该声明
+# 校验器判定五件套产物（转调统一契约实现）。未通过 → Run 终态 failed、
+# 违规清单入 Run 记录、产物保留可下载；校验器异常按 failed（fail-closed）。
+result_contract:
+  validator: "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"
+
 entrypoint: fork_start
 
 nodes:

@@ -128,12 +128,21 @@ def test_entry_adapter_rejects_unknown_entry() -> None:
 
 
 def test_entries_do_not_reimplement_stages_or_validation() -> None:
-    """The adapter module must stay a thin shim: no stage or gate logic."""
+    """The adapter module must stay a thin shim: no stage or gate logic.
+
+    The workflow contract-gate adapter (unified-kernel ticket 01) delegates
+    to ``contract.evaluate_result_contract``; the guard forbids carrying any
+    contract rules or finding construction locally, so the shared contract
+    stays the single validation standard.
+    """
 
     source = (PKG_DIR / "entries.py").read_text(encoding="utf-8")
     forbidden_fragments = (
         "def validate_",  # no result validation in the adapter
-        "def evaluate_",  # no contract evaluation in the adapter
+        "ContractFinding(",  # no finding construction in the adapter
+        "REQUIRED_OUTPUTS",  # no contract rule constants in the adapter
+        "output_missing",  # no contract reason codes in the adapter
+        "report_section_missing",
         "jsonschema",  # no gate implementation
         "precondition",  # no stage logic
         "schema_file",  # no gate wiring
@@ -171,3 +180,90 @@ def test_semantic_fields_are_entry_independent(tmp_path: Path) -> None:
     (dir_two / "fault_tree.json").write_text(json.dumps(tree, ensure_ascii=False), encoding="utf-8")
     fields_two = entries_mod.semantic_fields(dir_two)
     assert not entries_mod.semantic_equivalent(fields_one, fields_two)
+
+
+# ---------------------------------------------------------------------------
+# Workflow contract-gate adapter (unified-kernel ticket 01).
+# ---------------------------------------------------------------------------
+
+
+def _gate_fixtures():
+    contract_tests = load_module(
+        "fz_contract_fixtures_gate",
+        REPO_ROOT / "backend" / "tests" / "unit" / "fault_zeroing" / "test_contract.py",
+    )
+    return contract_tests, load_all()[4]
+
+
+def _intake_snapshot(missing: list[str]) -> dict:
+    return {
+        "evidence_intake": {
+            "status": "paused",
+            "evidence_mode": "document",
+            "missing": missing,
+            "reason_code": "code_evidence_missing",
+            "input_snapshot": {},
+            "input_snapshot_hash": "hash-1",
+        }
+    }
+
+
+def test_workflow_contract_adapter_delegates_to_shared_contract(tmp_path: Path) -> None:
+    """Contract-valid five artifacts produce no violations via the gate adapter."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+
+    assert entries_mod.evaluate_workflow_contract(outputs, {}) == []
+
+
+def test_workflow_contract_adapter_reports_violation_messages(tmp_path: Path) -> None:
+    """Violations come back as human-readable messages, not a verdict object."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+    (outputs / "zeroing_report.md").write_text("# 归零报告\n", encoding="utf-8")
+
+    violations = entries_mod.evaluate_workflow_contract(outputs, {})
+
+    assert violations and all(isinstance(item, str) for item in violations)
+    assert any("zeroing_report.md" in item for item in violations)
+
+
+def test_workflow_contract_adapter_judges_intake_missing_sides(tmp_path: Path) -> None:
+    """A snapshot carrying an intake record pins the missing evidence sides."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+
+    # Undisclosed missing code side must fail the run.
+    violations = entries_mod.evaluate_workflow_contract(outputs, _intake_snapshot(["code_evidence_package"]))
+    assert any("代码证据包未提供" in item for item in violations)
+
+    # The same artifacts with the disclosure present complete legitimately.
+    report = contract_tests.valid_report()
+    report = report.replace(
+        "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |",
+        "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |\n| 代码证据包 | 未提供 | — | 代码证据包未提供，代码侧结论保持 pending_verification |",
+    )
+    report = report.replace(
+        "暂无缺失资料风险；BE-02 仍待验证。",
+        "暂无其他缺失资料风险；代码证据包未提供，代码侧结论保持 pending_verification；BE-02 仍待验证。",
+    )
+    (outputs / "zeroing_report.md").write_text(report, encoding="utf-8")
+    assert entries_mod.evaluate_workflow_contract(outputs, _intake_snapshot(["code_evidence_package"])) == []
+
+
+def test_workflow_contract_adapter_treats_missing_intake_as_no_missing_sides(tmp_path: Path) -> None:
+    """Snapshots without an intake record (workflow-entry runs) judge empty."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+
+    assert entries_mod.evaluate_workflow_contract(outputs, {}) == []
+    assert entries_mod.evaluate_workflow_contract(outputs, {"inputs": {}, "state": {}, "outputs": {}}) == []
+
+
+def test_workflow_contract_adapter_fails_closed_on_malformed_intake(tmp_path: Path) -> None:
+    """A malformed intake record is an execution error, not a silent pass."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+
+    with pytest.raises(Exception, match="intake"):
+        entries_mod.evaluate_workflow_contract(outputs, {"evidence_intake": {"status": "paused"}})

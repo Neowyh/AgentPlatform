@@ -147,12 +147,27 @@ class EdgeV2(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ResultContractSpec(BaseModel):
+    """Completion-time artifact contract declared on a workflow definition.
+
+    ``validator`` names an importable ``<module>:<function>`` callable.  After
+    the graph succeeds, the runner calls it with the run's artifact root
+    directory and the persisted run snapshot; it must return a list of
+    violation messages (empty list = the artifacts pass).  A non-empty list
+    fails the run; a validator that cannot be loaded or that raises fails the
+    run too (fail-closed).  Workflows without this declaration are unaffected.
+    """
+
+    validator: str = Field(min_length=1)
+
+
 class WorkflowV2(BaseModel):
     schema_version: Literal[2]
     name: str = Field(min_length=1, max_length=60)
     description: str = ""
     inputs: dict[str, ValueSpec] = Field(default_factory=dict)
     state: dict[str, ValueSpec] = Field(default_factory=dict)
+    result_contract: ResultContractSpec | None = None
     entrypoint: str
     nodes: list[NodeV2] = Field(min_length=1)
     edges: list[EdgeV2] = Field(default_factory=list)

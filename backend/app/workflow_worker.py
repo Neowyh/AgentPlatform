@@ -30,6 +30,7 @@ from app.agentplatform.workflow_runtime import (
     WorkflowRunError,
     WorkflowV2Store,
     WorkflowWorker,
+    enforce_result_contract,
     make_host_resolver,
     parse_workflow_v2,
     run_failure_payload,
@@ -364,6 +365,19 @@ async def execute_workflow_task(
     if "__interrupt__" in result:
         await emit_event("interrupted", {"value": snapshot["interrupt"]})
         raise WorkflowPaused
+    # Declared Result Contract gate (unified-kernel ticket 01): after the graph
+    # succeeds and before the terminal state is written, the run's declared
+    # validator judges the artifacts.  A violation (or a broken validator,
+    # fail-closed) ends the run as failed; artifacts are never cleaned up here.
+    violation = enforce_result_contract(
+        definition,
+        run_inputs=run.inputs or {},
+        run_snapshot=snapshot,
+        resolver=make_host_resolver(run_id, run.created_by, sandbox_scope=sandbox_scope),
+    )
+    if violation is not None:
+        await emit_terminal_event("run_failed", run_failure_payload(violation))
+        raise violation
     await emit_terminal_event("run_completed", {})
 
 
