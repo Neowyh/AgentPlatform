@@ -4,6 +4,7 @@ import {
   ChevronUpIcon,
   GitBranchPlusIcon,
   Loader2Icon,
+  MoreHorizontalIcon,
   MessageCircleIcon,
   MessageSquarePlusIcon,
   RefreshCcwIcon,
@@ -25,6 +26,12 @@ import {
   type ConversationProps,
 } from "@/components/ai-elements/conversation";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { extractArtifactsFromThread } from "@/core/artifacts/utils";
 import { useI18n } from "@/core/i18n/hooks";
 import { getArtifactArchiveCandidatesByGroupIndex } from "@/core/messages/artifact-archive";
@@ -891,38 +898,51 @@ export function MessageList({
             !isStreaming &&
             actionTarget?.id &&
             onBranchTurn && (
-              <Tooltip content={t.common.branch}>
-                <Button
-                  aria-label={t.common.branch}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                  disabled={
-                    !canBranch ||
-                    replayActionBusy ||
-                    branchingMessageId === actionTarget.id
-                  }
-                  onClick={() => {
-                    const targetId = actionTarget.id;
-                    if (!targetId) {
-                      return;
+              <DropdownMenu>
+                <Tooltip content={t.common.more}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label={t.common.more}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                      disabled={!canBranch || replayActionBusy}
+                    >
+                      <MoreHorizontalIcon className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </Tooltip>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    disabled={
+                      !canBranch ||
+                      replayActionBusy ||
+                      branchingMessageId === actionTarget.id
                     }
-                    setBranchingMessageId(targetId);
-                    void Promise.resolve(
-                      onBranchTurn(targetId, assistantMessageIds),
-                    ).finally(() => {
-                      setBranchingMessageId(null);
-                    });
-                  }}
-                >
-                  <GitBranchPlusIcon
-                    className={cn(
-                      "size-4",
-                      branchingMessageId === actionTarget.id && "animate-pulse",
-                    )}
-                  />
-                </Button>
-              </Tooltip>
+                    onSelect={() => {
+                      const targetId = actionTarget.id;
+                      if (!targetId) {
+                        return;
+                      }
+                      setBranchingMessageId(targetId);
+                      void Promise.resolve(
+                        onBranchTurn(targetId, assistantMessageIds),
+                      ).finally(() => {
+                        setBranchingMessageId(null);
+                      });
+                    }}
+                  >
+                    <GitBranchPlusIcon
+                      className={cn(
+                        "size-4",
+                        branchingMessageId === actionTarget.id &&
+                          "animate-pulse",
+                      )}
+                    />
+                    {t.common.branch}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           {enableRegenerateForTurn &&
             actionTarget?.id &&
@@ -973,6 +993,7 @@ export function MessageList({
       regeneratingMessageId,
       replayActionBusy,
       t.common.branch,
+      t.common.more,
       t.common.regenerate,
     ],
   );
@@ -1363,7 +1384,7 @@ export function MessageList({
                   results.push(
                     <div
                       key="subtask-count"
-                      className="text-muted-foreground pt-2 type-supporting font-normal"
+                      className="text-muted-foreground type-supporting pt-2 font-normal"
                     >
                       {t.subtasks.executing(tasks.size)}
                     </div>,
@@ -1468,7 +1489,7 @@ export function MessageList({
           style={{ left: selectionToolbar.x, top: selectionToolbar.y }}
         >
           <Button
-            className="h-8 rounded-full px-2.5 type-compact"
+            className="type-compact h-8 rounded-full px-2.5"
             size="sm"
             type="button"
             variant="ghost"
@@ -1480,7 +1501,7 @@ export function MessageList({
           </Button>
           {!sidecarSurface && (
             <Button
-              className="h-8 rounded-full px-2.5 type-compact"
+              className="type-compact h-8 rounded-full px-2.5"
               size="sm"
               type="button"
               variant="ghost"

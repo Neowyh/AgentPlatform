@@ -66,7 +66,9 @@ test.describe("Branch from turn", () => {
       ],
     });
 
-    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
+    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`, {
+      waitUntil: "domcontentloaded",
+    });
 
     const historicalTurn = page
       .locator("[data-assistant-turn]")
@@ -82,7 +84,7 @@ test.describe("Branch from turn", () => {
     await historicalTurn.hover();
     await expect(
       historicalTurn.getByRole("button", { name: /branch conversation/i }),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     await expect(intermediateTurn).toBeVisible();
     await intermediateTurn.hover();
@@ -93,9 +95,14 @@ test.describe("Branch from turn", () => {
     await expect(targetTurn).toBeVisible();
 
     await targetTurn.hover();
-    await targetTurn
-      .getByRole("button", { name: /branch conversation/i })
-      .click();
+    await expect(
+      targetTurn.getByRole("button", { name: /branch conversation/i }),
+    ).toHaveCount(0);
+    await targetTurn.getByRole("button", { name: /^more$/i }).click();
+    await expect(
+      page.getByRole("menuitem", { name: /branch conversation/i }),
+    ).toBeVisible();
+    await page.getByRole("menuitem", { name: /branch conversation/i }).click();
 
     await expect(page).toHaveURL(
       new RegExp(`/workspace/chats/${MOCK_THREAD_ID_2}$`),
