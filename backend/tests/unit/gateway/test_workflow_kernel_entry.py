@@ -291,6 +291,36 @@ async def test_with_files_kernel_launch_returns_the_stored_code_package(env, mon
 
 
 @pytest.mark.asyncio
+async def test_with_files_kernel_launch_binds_materialized_files_to_the_created_run(env, monkeypatch) -> None:
+    """预物化的上传与代码包必须落在内核实际创建的 Run 工作区下。"""
+
+    stored_under: dict[str, str] = {}
+
+    async def _fake_store_files(*, run_id, user_id, files):
+        stored_under["run_id"] = run_id
+        return None, []
+
+    async def _fake_cleanup(run_id, user_id):
+        return None
+
+    monkeypatch.setattr(resources, "_store_workflow_run_files", _fake_store_files)
+    monkeypatch.setattr(resources, "_cleanup_run_user_data", _fake_cleanup)
+
+    response = await resources.create_workflow_run_with_files(
+        "wf-contract",
+        inputs='{"problem_description": "主轴电机过热报警"}',
+        model_name=None,
+        files=[SimpleNamespace(filename="log.txt")],
+        current_user=_user(UserRole.USER, "owner-1"),
+    )
+
+    # No source ZIP in this launch: single-missing-side intake parks the run —
+    # the point is that the parked Run owns the pre-materialized workspace.
+    assert response["status"] == "paused"
+    assert response["run_id"] == stored_under["run_id"]
+
+
+@pytest.mark.asyncio
 async def test_resume_on_an_evidence_pause_confirms_through_the_kernel(env) -> None:
     started = await resources.create_workflow_run(
         "wf-contract",

@@ -723,6 +723,8 @@ tool_groups:
   - name: bash
   - name: browser
   - name: knowledge
+  # 归零执行内核的聊天闭环工具组：仅注册给声明本组的归零 Expert。
+  - name: fault-zeroing
 
 # ============================================================================
 # Tools Configuration
@@ -730,6 +732,22 @@ tool_groups:
 # Configure available tools for the agent to use
 
 tools:
+  # 归零聊天闭环（Fault-zeroing Execution Kernel 入口工具，ticket 04）：
+  # 真实归零分析经 start_zeroing_run 转正为正式 Run；缺侧确认与产物回桥
+  # 分别走 confirm_zeroing_run / check_zeroing_run。仅声明 fault-zeroing
+  # 工具组的 Agent（归零 Expert）可见，工具内部仍校验闭包与 RBAC。
+  - name: start_zeroing_run
+    group: fault-zeroing
+    use: app.agentplatform.tools.zeroing_run_tool:start_zeroing_run_tool
+
+  - name: confirm_zeroing_run
+    group: fault-zeroing
+    use: app.agentplatform.tools.zeroing_run_tool:confirm_zeroing_run_tool
+
+  - name: check_zeroing_run
+    group: fault-zeroing
+    use: app.agentplatform.tools.zeroing_run_tool:check_zeroing_run_tool
+
   # RAGFlow knowledge retrieval (read-only). Uncomment this single entry.
   # `datasets` is optional. Omit it to list every tenant-visible dataset at
   # search time; an explicit `datasets: []` is invalid. Empty datasets are

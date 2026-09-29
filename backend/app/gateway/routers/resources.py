@@ -2260,6 +2260,10 @@ async def create_workflow_run_with_files(
                 definition_version=workflow.latest_version,
                 inputs=kernel_inputs,
                 created_by=user_id,
+                # The uploads and the code package were materialized under this
+                # pre-generated id's workspace bucket; the kernel must create
+                # the Run under the same id or the evidence is orphaned.
+                run_id=run_id,
                 workflow_resource_id=resource_id,
                 actor=actor,
                 entry="workflow",
