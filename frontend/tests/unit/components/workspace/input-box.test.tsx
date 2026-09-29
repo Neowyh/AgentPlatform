@@ -183,11 +183,7 @@ vi.mock("@/components/ai-elements/model-selector", () => ({
   ModelSelectorInput: (props: any) => <input {...props} />,
   ModelSelectorList: ({ children }: any) => <div>{children}</div>,
   ModelSelectorItem: ({ children, onSelect, value, ...props }: any) => (
-    <button
-      data-testid={`model-item-${value}`}
-      onClick={onSelect}
-      {...props}
-    >
+    <button data-testid={`model-item-${value}`} onClick={onSelect} {...props}>
       {children}
     </button>
   ),
@@ -459,6 +455,14 @@ function defaultProps(overrides: Record<string, any> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(window, "SpeechRecognition", {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(window, "webkitSpeechRecognition", {
+    configurable: true,
+    value: undefined,
+  });
   mockTextInputContext = {
     value: "",
     setInput: mockSetInput,
@@ -498,6 +502,34 @@ describe("InputBox", () => {
   // ----- Basic rendering -----
 
   describe("basic rendering", () => {
+    test("hides voice input when browser speech recognition is unavailable", () => {
+      Object.defineProperty(window, "SpeechRecognition", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(window, "webkitSpeechRecognition", {
+        configurable: true,
+        value: undefined,
+      });
+
+      render(<InputBox {...defaultProps()} />);
+
+      expect(
+        screen.queryByTestId("voice-input-button"),
+      ).not.toBeInTheDocument();
+    });
+
+    test("shows voice input when browser speech recognition is available", () => {
+      Object.defineProperty(window, "SpeechRecognition", {
+        configurable: true,
+        value: class {},
+      });
+
+      render(<InputBox {...defaultProps()} />);
+
+      expect(screen.getByTestId("voice-input-button")).toBeInTheDocument();
+    });
+
     test("renders the input box with data-testid", () => {
       render(<InputBox {...defaultProps()} />);
       expect(screen.getByTestId("input-box")).toBeInTheDocument();

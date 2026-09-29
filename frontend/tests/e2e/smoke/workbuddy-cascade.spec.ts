@@ -134,18 +134,35 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
       const headerBand = await fixedHeaderBand(page);
       const input = page.getByTestId("chat-input");
       await expect(input).toBeVisible({ timeout: 15_000 });
+      const voiceInputSupported = await page.evaluate(() => {
+        const speechWindow = window as Window & {
+          SpeechRecognition?: unknown;
+          webkitSpeechRecognition?: unknown;
+        };
+        return Boolean(
+          speechWindow.SpeechRecognition ??
+          speechWindow.webkitSpeechRecognition,
+        );
+      });
+      const voiceInput = page.getByTestId("voice-input-button");
+      if (!voiceInputSupported) {
+        await expect(voiceInput).toHaveCount(0);
+      }
 
-      for (const locator of [
+      const reachableControls = [
         page.getByTestId("workbench-home").locator(".type-page-title"),
         page.getByRole("tab", { name: /Daily Office/ }),
         page.getByRole("tab", { name: /Creative Design/ }),
         page.getByRole("tab", { name: /Professional Tasks/ }),
         input,
         page.getByTestId("add-attachments-button"),
-        page.getByTestId("voice-input-button"),
         page.getByTestId("model-selector-trigger"),
         page.getByTestId("skill-selector-trigger"),
-      ]) {
+      ];
+      if (voiceInputSupported) {
+        reachableControls.push(voiceInput);
+      }
+      for (const locator of reachableControls) {
         await locator.evaluate((element) => {
           element.scrollIntoView({ block: "center" });
         });

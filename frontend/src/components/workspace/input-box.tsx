@@ -2760,12 +2760,14 @@ export function InputBox({
               disabled={composerLocked}
               uploadLimits={uploadLimits}
             />
-            <VoiceInputButton
-              disabled={composerLocked}
-              listening={voiceListening}
-              supported={voiceInputSupported}
-              onToggle={toggleVoiceInput}
-            />
+            {voiceInputSupported && (
+              <VoiceInputButton
+                disabled={composerLocked}
+                listening={voiceListening}
+                supported={voiceInputSupported}
+                onToggle={toggleVoiceInput}
+              />
+            )}
             <Tooltip
               content={
                 polishingInput
