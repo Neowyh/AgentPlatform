@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """One-shot installer for the bundled SRS 撰写 (需求规格) agent.
 
+Legacy local-development tool: this installer provisions the old per-user
+agent-directory system (copying resources/agents/* into the runtime user dir)
+and is not the official distribution path. Official distribution ships agents
+via the Bundled resource seed (bundled-resources.json + gateway startup
+seeding) instead.
+
 Composes the generic ``install_agent`` flow with the functional wiring the
 agent needs on a local (host-sandbox) deployment:
 
@@ -8,8 +14,12 @@ agent needs on a local (host-sandbox) deployment:
      per-user agent directory and upsert resource_metadata (agent/public).
   2. Register the ``document`` tool group and ``read_document`` tool in
      config.yaml so docx/pdf 任务书 can be parsed.
-  3. Set ``sandbox.allow_host_bash: true`` (explicit opt-in) so officecli can
-     generate .docx artifacts inside the sandbox.
+  3. Only with the explicit ``--host-bash`` opt-in: set
+     ``sandbox.allow_host_bash: true`` so officecli can generate .docx
+     artifacts. This authorizes the agent to execute arbitrary commands on
+     the host machine (授权智能体在宿主机执行任意命令) and should stay off
+     outside a local dev machine; production/container deployments use the
+     in-sandbox officecli mount instead.
   4. Provision an officecli binary on PATH (symlink into ~/.local/bin) so the
      tracked vendor binary is reachable without sudo.
 
@@ -78,9 +88,7 @@ def resolve_owner_id(args: argparse.Namespace) -> Tuple[Optional[str], str]:
         try:
             return _find_super_admin_id(db_path), "super-admin"
         except RuntimeError as exc:
-            raise RuntimeError(
-                f"{exc}; run /initialize first or use --user-id to install for a specific user."
-            ) from exc
+            raise RuntimeError(f"{exc}; run /initialize first or use --user-id to install for a specific user.") from exc
     if args.user_id:
         return args.user_id, "user"
     return None, "shared"
@@ -101,18 +109,14 @@ def _has_read_document_tool(lines: List[str]) -> bool:
     return any(re.match(r"^\s*- name: read_document\s*$", line) for line in lines)
 
 
-def _find_top_level_block(
-    lines: List[str], key: str
-) -> Tuple[Optional[int], int]:
+def _find_top_level_block(lines: List[str], key: str) -> Tuple[Optional[int], int]:
     start: Optional[int] = None
     end = len(lines)
     for index, line in enumerate(lines):
         if re.match(rf"^{re.escape(key)}:\s*$", line):
             start = index
             continue
-        if start is not None and index > start and re.match(
-            r"^[A-Za-z0-9_-]+:", line
-        ):
+        if start is not None and index > start and re.match(r"^[A-Za-z0-9_-]+:", line):
             end = index
             break
     return start, end
@@ -195,10 +199,14 @@ def wire_srs_config(
     config_path: Union[str, Path],
     *,
     enable_doc_tools: bool = True,
-    enable_host_bash: bool = True,
+    enable_host_bash: bool = False,
     dry_run: bool = False,
 ) -> dict:
     """Register SRS agent prerequisites in ``config.yaml`` (idempotent).
+
+    Host bash is opt-in: ``enable_host_bash=True`` sets
+    ``sandbox.allow_host_bash: true`` (the agent may then execute arbitrary
+    commands on the host machine); the default leaves the setting untouched.
 
     Returns ``{config_path, actions, changed, backup_path}``. In dry-run mode
     nothing is written.
@@ -344,11 +352,15 @@ def verify_install(
     owner_id: Optional[str],
     bin_path: Optional[Union[str, Path]] = None,
     require_officecli: bool = True,
+    host_bash_expected: bool = False,
 ) -> dict:
     """Inspect the current runtime state and report what is present.
 
     ``require_officecli=False`` marks the officecli check as not applicable
-    (partial installs with ``--no-officecli``).
+    (partial installs with ``--no-officecli``). ``host_bash_expected`` mirrors
+    the install mode: the default (False) passes when
+    ``sandbox.allow_host_bash`` is false or unset, ``True`` (``--host-bash``)
+    passes only when it is set to true.
     """
     config_path = Path(config_path)
     agent_dir = expected_agent_dir(owner_id)
@@ -362,11 +374,12 @@ def verify_install(
         "config_yaml": yaml_parse_ok(config_path),
         "document_group": _has_document_tool_group(config_lines),
         "read_document_tool": _has_read_document_tool(config_lines),
-        "allow_host_bash": allow_host_bash_value(config_lines) is True,
+        "allow_host_bash": (allow_host_bash_value(config_lines) is True) == host_bash_expected,
         "officecli": officecli_available(officecli) if require_officecli else True,
     }
     return {
         "checks": checks,
+        "host_bash_expected": host_bash_expected,
         "agent_dir": str(agent_dir),
         "config_path": str(config_path),
         "officecli_bin": str(officecli),
@@ -377,6 +390,7 @@ def print_verify_report(report: dict) -> None:
     print(f"Agent directory : {report['agent_dir']}")
     print(f"Config          : {report['config_path']}")
     print(f"officecli       : {report['officecli_bin']}")
+    expect_on = report.get("host_bash_expected")
     for key in (
         "agent_files",
         "config_yaml",
@@ -385,24 +399,31 @@ def print_verify_report(report: dict) -> None:
         "allow_host_bash",
         "officecli",
     ):
+        label = key
+        if key == "allow_host_bash":
+            label = f"{key} (expect {'on' if expect_on else 'off'})"
         status = report["checks"][key]
-        print(f"  - {key:.<20} {'OK' if status else 'MISSING'}")
+        word = "OK" if status else ("UNEXPECTED" if key == "allow_host_bash" else "MISSING")
+        print(f"  - {label:.<28} {word}")
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Install the bundled SRS 撰写智能体 (srs-writing) end-to-end (agent files + read_document tool + host bash + officecli).",
+        description="Install the bundled SRS 撰写智能体 (srs-writing) end-to-end (agent files + read_document tool + officecli; host bash is opt-in via --host-bash).",
+        epilog=(
+            "Legacy local-development tool for the old per-user agent-directory"
+            " system; official distribution ships agents via the Bundled resource seed"
+            " (bundled-resources.json + gateway startup seeding)."
+            " sandbox.allow_host_bash authorizes the agent to execute arbitrary commands"
+            " on the host machine -- keep it disabled except on a local dev machine;"
+            " production/container deployments use the in-sandbox officecli mount instead."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--agent", default=SRS_AGENT, help="Bundled agent name to install."
-    )
+    parser.add_argument("--agent", default=SRS_AGENT, help="Bundled agent name to install.")
     owner = parser.add_mutually_exclusive_group()
-    owner.add_argument(
-        "--owner", choices=("super-admin",), help="Install as the active super_admin."
-    )
-    owner.add_argument(
-        "--user-id", help="Install into this iDeer user's agent directory."
-    )
+    owner.add_argument("--owner", choices=("super-admin",), help="Install as the active super_admin.")
+    owner.add_argument("--user-id", help="Install into this iDeer user's agent directory.")
     parser.add_argument(
         "--skip-agent",
         action="store_true",
@@ -413,10 +434,16 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Do not register the document/read_document tool.",
     )
-    parser.add_argument(
+    host_bash = parser.add_mutually_exclusive_group()
+    host_bash.add_argument(
+        "--host-bash",
+        action="store_true",
+        help="Explicitly enable sandbox.allow_host_bash so officecli can run on the host. WARNING: this authorizes the agent to execute arbitrary commands on the host machine; local development only.",
+    )
+    host_bash.add_argument(
         "--no-host-bash",
         action="store_true",
-        help="Do not enable sandbox.allow_host_bash.",
+        help="Deprecated no-op: host bash is disabled by default; pass --host-bash to opt in.",
     )
     parser.add_argument(
         "--no-officecli",
@@ -428,18 +455,23 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Overwrite a conflicting ~/.local/bin/officecli.",
     )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Report planned changes without writing."
-    )
-    parser.add_argument(
-        "--verify-only", action="store_true", help="Only inspect the current state."
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Report planned changes without writing.")
+    parser.add_argument("--verify-only", action="store_true", help="Only inspect the current state.")
     parser.add_argument(
         "--restart",
         action="store_true",
         help="Restart local services after a successful install.",
     )
     return parser.parse_args(argv)
+
+
+def _print_host_bash_warning() -> None:
+    print(
+        "WARNING: sandbox.allow_host_bash = true authorizes the agent to execute"
+        " arbitrary commands on the host machine (授权智能体在宿主机执行任意命令)。"
+        " Only recommended for local development; production/container deployments"
+        " should keep host bash disabled and use the in-sandbox officecli mount instead."
+    )
 
 
 def _print_config_summary(wire: dict, officecli_status: Optional[str]) -> None:
@@ -463,12 +495,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     config_path = Path(resolve_config_path())
 
     want_doc = not args.no_doc_tools
-    want_host_bash = not args.no_host_bash
+    want_host_bash = args.host_bash
     want_officecli = not args.no_officecli
+
+    if args.no_host_bash:
+        print("Note: --no-host-bash is deprecated and now a no-op: host bash is disabled by default; pass --host-bash to opt in.")
 
     if args.verify_only:
         report = verify_install(
-            config_path, owner_id=owner_id, require_officecli=want_officecli
+            config_path,
+            owner_id=owner_id,
+            require_officecli=want_officecli,
+            host_bash_expected=want_host_bash,
         )
         print_verify_report(report)
         return 0 if all(report["checks"].values()) else 1
@@ -481,11 +519,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not args.skip_agent:
             print(f"   - copy agent files -> {expected_agent_dir(owner_id)}")
         if want_doc:
-            print(
-                "   - register document tool group + read_document tool in config.yaml"
-            )
+            print("   - register document tool group + read_document tool in config.yaml")
         if want_host_bash:
             print("   - set sandbox.allow_host_bash = true")
+            _print_host_bash_warning()
         if want_officecli:
             print(f"   - symlink officecli -> {default_officecli_bin()}")
         return 0
@@ -501,6 +538,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             return code
     else:
         print("   agent: skipped (--skip-agent)")
+
+    if want_host_bash:
+        _print_host_bash_warning()
 
     wire = wire_srs_config(
         config_path,
@@ -522,14 +562,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     _print_config_summary(wire, officecli_status)
 
     report = verify_install(
-        config_path, owner_id=owner_id, require_officecli=want_officecli
+        config_path,
+        owner_id=owner_id,
+        require_officecli=want_officecli,
+        host_bash_expected=want_host_bash,
     )
     print_verify_report(report)
 
     ok = all(report["checks"].values())
     if not ok:
         print(
-            "Some checks are incomplete; review the MISSING items above.",
+            "Some checks are incomplete; review the MISSING/UNEXPECTED items above.",
             file=sys.stderr,
         )
     elif args.restart:
