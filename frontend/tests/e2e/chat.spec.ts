@@ -3,6 +3,7 @@ import { expect, test, type Route } from "@playwright/test";
 import {
   handleRunStream,
   MOCK_THREAD_ID,
+  MOCK_THREAD_ID_2,
   mockLangGraphAPI,
 } from "./utils/mock-api";
 
@@ -213,6 +214,59 @@ test.describe("Chat workspace", () => {
         name: /how can i assist you/i,
       }),
     ).toHaveText("Analyze the latest results");
+  });
+
+  test("keeps text and selected skill isolated while switching conversations", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, {
+      threads: [
+        { thread_id: MOCK_THREAD_ID, title: "Draft conversation A" },
+        { thread_id: MOCK_THREAD_ID_2, title: "Draft conversation B" },
+      ],
+    });
+
+    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
+    const threadList = page.getByTestId("thread-list");
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await textarea.fill("/dat");
+    await textarea.press("Enter");
+    await expect(page.getByText("/data-analysis")).toBeVisible();
+    await page
+      .getByRole("textbox", { name: /how can i assist you/i })
+      .fill("Draft for A");
+
+    await threadList.getByText("Draft conversation B").click();
+    await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID_2));
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "",
+    );
+    await page.getByPlaceholder(/how can i assist you/i).fill("Draft for B");
+
+    await threadList.getByText("Draft conversation A").click();
+    await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID));
+    await expect(page.getByText("/data-analysis")).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: /how can i assist you/i }),
+    ).toHaveText("Draft for A");
+
+    await threadList.getByText("Draft conversation B").click();
+    await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID_2));
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "Draft for B",
+    );
+    await page.getByPlaceholder(/how can i assist you/i).press("Enter");
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await threadList.getByText("Draft conversation A").click();
+    await expect(page.getByText("/data-analysis")).toBeVisible();
+    await threadList.getByText("Draft conversation B").click();
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "",
+    );
   });
 
   test("continues without draft persistence when sessionStorage is blocked", async ({
