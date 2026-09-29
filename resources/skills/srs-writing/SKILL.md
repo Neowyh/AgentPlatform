@@ -65,7 +65,8 @@ allowed-tools:
 - 表格的文档章节号规则（见 references/gjb438c_2021.md）。
 
 ### 5. document_generation 文档生成
-- 产物生成一律用 `officecli`（`/usr/local/bin/officecli`，沙箱已挂载，`OFFICECLI_SKIP_UPDATE=1`），产出 `.docx`。
+- 生成前先探测工具：`command -v officecli`（同时覆盖沙箱挂载与本地安装两种形态，不依赖固定绝对路径；`OFFICECLI_SKIP_UPDATE=1`）。探测失败即按「失败契约」处理：以 `FAILED:` 一句话说明 officecli 缺失，回退提示用 `requirement-catalog.md` 人工整编，不写占位或空文件。
+- 探测通过后，产物生成一律用 `officecli`，产出 `.docx`。
 - 默认模式：用 officecli 从零搭建 GJB438C-2021 标准结构（封面 + 1 引言 / 2 引用文件 / 3 需求 / 4 合格性规定 / 5 需求可追踪性 / 6 注释）。
   - 封面：从任务书提取项目名称、文档编号；单位、密级留空待填。
   - 1 引言 / 2 引用文件：生成草稿（目的、范围、术语、参考标准），引言供用户确认阶段顺带修订，引用文件只放固定标准项 + 留两行人工追加位。
@@ -73,7 +74,11 @@ allowed-tools:
   - 4 合格性规定：从每条需求验证方法字段汇总成表。
   - 5 需求可追踪性：嵌入追踪矩阵（与矩阵文档同一内容）。
   - 6 注释：缩写词表（从任务书抽取），可人工追加。
-- 模板模式：若 `/mnt/skills/srs-writing/templates/` 存在 `*.docx` 模板（单位模板），改为「打开模板 → 在占位符标记处插入生成内容」流程（见 templates/README.md 占位符约定）。
+- 模板模式：若 `/mnt/skills/srs-writing/templates/` 存在 `*.docx` 模板（单位模板），改为「打开模板 → 在占位符标记处插入生成内容」流程（见 templates/README.md 占位符约定）；模板模式的生成同样先过上方探测，成稿后同样走下方视觉自检。
+- 视觉自检（强制）：两份 docx 全部生成后、调用 `present_files` 交付前执行，由智能体自己发现并修复表格断裂、样式问题：
+  1. 布局诊断：对 `srs_document.docx` 与 `traceability-matrix.docx` 分别执行 `officecli view <docx> issues --json`，逐条检查表格断裂、样式与结构问题；
+  2. 渲染抽查：对两份 docx 分别执行 `officecli view <docx> html -o /mnt/user-data/workspace/<文件名>.html`（渲染产物写工作区，不进交付子目录），读取 HTML 核对表格完整性与章节样式；
+  3. 发现问题即用 officecli 修复，修复后重跑布局诊断与渲染抽查复查；复查不通过不得交付（与 review 阶段「校验未通过不得交付」同一门槛），不得调用 `present_files`。
 
 ### 6. review 审阅
 - 输出前自检：需求无遗漏（缺口清单检查）、追踪无断裂（矩阵一致性）、ID 无重复。
@@ -101,7 +106,7 @@ allowed-tools:
 ## 失败契约
 
 - 解析失败 / 阶段无法完成 / 输出缺失时，一句话以 `FAILED:` 开头说明原因，并写明缺失项，严禁写入占位或空文件。
-- 输出 docx 生成失败（officecli 不可用等）时，回退提示用户可先用已生成的 `requirement-catalog.md` 人工整编，并注明 officecli 缺失。
+- 生成前 `command -v officecli` 探测失败或输出 docx 生成失败（officecli 不可用）时，回退提示用户可先用已生成的 `requirement-catalog.md` 人工整编，并注明 officecli 缺失。
 
 ## 参考
 
