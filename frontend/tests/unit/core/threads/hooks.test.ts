@@ -1537,6 +1537,42 @@ describe("useThreadStream", () => {
     expect(options.streamSubgraphs).toBeUndefined();
   });
 
+  it("completes a sent message only after the stream finishes", async () => {
+    const onSent = vi.fn();
+    const onSendCompleted = vi.fn();
+    const mockSubmit = vi.fn().mockResolvedValue(undefined);
+    mockUseStream.mockReturnValue({
+      messages: [] as Message[],
+      isLoading: false,
+      submit: mockSubmit,
+    });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useThreadStream({ threadId: "t1", context: defaultContext }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "t1",
+        { text: "draft before send", files: [] },
+        undefined,
+        { onSent, onSendCompleted },
+      );
+    });
+    expect(onSent).toHaveBeenCalledOnce();
+    expect(onSendCompleted).not.toHaveBeenCalled();
+
+    const streamOptions = Reflect.get(
+      mockUseStream.mock.calls.at(-1) ?? [],
+      0,
+    ) as {
+      onFinish: (state: { values: { messages: Message[] } }) => void;
+    };
+    act(() => streamOptions.onFinish({ values: { messages: [] } }));
+    expect(onSendCompleted).toHaveBeenCalledOnce();
+  });
+
   it("does not send when sendInFlight is true", async () => {
     const mockSubmit = vi
       .fn()

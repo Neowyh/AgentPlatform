@@ -269,6 +269,95 @@ test.describe("Chat workspace", () => {
     );
   });
 
+  test("keeps a conversation draft when sending fails", async ({ page }) => {
+    mockLangGraphAPI(page);
+    await page.route(/\/api\/langgraph\/threads$/, (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({ status: 503, body: "Service unavailable" })
+        : route.fallback(),
+    );
+
+    await page.goto("/workspace/chats/new");
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await textarea.fill("Keep this if delivery fails");
+
+    const failedSend = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/langgraph/threads") &&
+        response.request().method() === "POST" &&
+        response.status() === 503,
+    );
+    await textarea.press("Enter");
+    await failedSend;
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.entries(window.sessionStorage)
+            .filter(([key]) => key.startsWith("deerflow:composer-draft:v1:"))
+            .map(([, value]) => value)
+            .join("\n"),
+        ),
+      )
+      .toContain("Keep this if delivery fails");
+    await page.reload();
+
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "Keep this if delivery fails",
+    );
+  });
+
+  test("a failed stream does not erase another conversation's new draft", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, {
+      threads: [
+        { thread_id: MOCK_THREAD_ID, title: "Failed conversation A" },
+        { thread_id: MOCK_THREAD_ID_2, title: "Active conversation B" },
+      ],
+    });
+    await page.route("**/runs/stream", (route) =>
+      route.fulfill({ status: 503, body: "Service unavailable" }),
+    );
+
+    await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await textarea.fill("Keep A after the failed stream");
+    const failedSend = page.waitForResponse(
+      (response) =>
+        response.url().includes("/runs/stream") && response.status() === 503,
+    );
+    await textarea.press("Enter");
+    await failedSend;
+
+    const threadList = page.getByTestId("thread-list");
+    await threadList.getByText("Active conversation B").click();
+    await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID_2));
+    await page
+      .getByPlaceholder(/how can i assist you/i)
+      .fill("New draft for B");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.entries(window.sessionStorage)
+            .filter(([key]) => key.startsWith("deerflow:composer-draft:v1:"))
+            .map(([, value]) => value)
+            .join("\n"),
+        ),
+      )
+      .toContain("New draft for B");
+
+    await threadList.getByText("Failed conversation A").click();
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "Keep A after the failed stream",
+    );
+    await threadList.getByText("Active conversation B").click();
+    await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
+      "New draft for B",
+    );
+  });
+
   test("continues without draft persistence when sessionStorage is blocked", async ({
     page,
   }) => {

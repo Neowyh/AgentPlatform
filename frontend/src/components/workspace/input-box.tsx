@@ -236,6 +236,8 @@ export type InputBoxSubmitOptions = {
   preuploadedFiles?: ReadonlyMap<File, UploadedFileInfo>;
   traceId?: string;
   onSent?: () => void;
+  onSendFailed?: () => void;
+  onSendCompleted?: () => void;
 };
 
 type VoiceRecognitionStartOptions = {
@@ -530,6 +532,11 @@ export function InputBox({
     key: string;
     draft: { text: string; skillName: string | null };
   } | null>(null);
+  const currentDraftViewRef = useRef<{
+    key: string;
+    text: string;
+    skillName: string | null;
+  }>({ key: "", text: "", skillName: null });
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftSaveGenerationRef = useRef(0);
 
@@ -786,6 +793,12 @@ export function InputBox({
       }),
     [context.agent_name, draftAgentName, draftThreadId, user?.id],
   );
+  currentDraftViewRef.current = {
+    key: draftKey,
+    text: textInput.value ?? "",
+    skillName:
+      selectedSlashSkill?.kind === "skill" ? selectedSlashSkill.name : null,
+  };
   const enabledSkillNames = useMemo(
     () =>
       new Set(
@@ -1275,6 +1288,7 @@ export function InputBox({
         skillName:
           selectedSlashSkill?.kind === "skill" ? selectedSlashSkill.name : null,
       };
+      let sendStarted = false;
       pendingDraftSubmissionKeyRef.current = draftKey;
       if (threadId !== "new" && message.files.length > 0) {
         invalidateDraftSaveTimer();
@@ -1282,7 +1296,7 @@ export function InputBox({
         clearComposerDraft(getSessionComposerDraftStorage(), draftKey);
       }
       const restorePendingDraft = () => {
-        if (pendingDraftSubmissionKeyRef.current !== draftKey) {
+        if (sendStarted || pendingDraftSubmissionKeyRef.current !== draftKey) {
           return;
         }
         pendingDraftSubmissionKeyRef.current = null;
@@ -1307,13 +1321,60 @@ export function InputBox({
         // Clear one-time state only once the send genuinely proceeds. If the
         // send is dropped by the in-flight guard, `onSent` never fires.
         onSent: () => {
+          sendStarted = true;
+          if (pendingDraftSubmissionKeyRef.current === draftKey) {
+            invalidateDraftSaveTimer();
+            latestDraftRef.current = { key: draftKey, draft: pendingDraft };
+            writeComposerDraft(
+              getSessionComposerDraftStorage(),
+              draftKey,
+              pendingDraft,
+            );
+          }
+          sidecar?.clearConversationQuotes(quoteIds);
+        },
+        onSendCompleted: () => {
+          const storage = getSessionComposerDraftStorage();
+          const savedDraft = readComposerDraft(storage, draftKey);
+          const latestDraft = latestDraftRef.current;
+          const visibleDraft = currentDraftViewRef.current;
+          const hasNewDraft =
+            (latestDraft?.key === draftKey &&
+              (latestDraft.draft.text !== pendingDraft.text ||
+                latestDraft.draft.skillName !== pendingDraft.skillName)) ||
+            (visibleDraft.key === draftKey &&
+              Boolean(visibleDraft.text || visibleDraft.skillName) &&
+              (visibleDraft.text !== pendingDraft.text ||
+                visibleDraft.skillName !== pendingDraft.skillName));
+          if (
+            !hasNewDraft &&
+            savedDraft?.text === pendingDraft.text &&
+            savedDraft.skillName === pendingDraft.skillName
+          ) {
+            clearComposerDraft(storage, draftKey);
+          }
           if (pendingDraftSubmissionKeyRef.current === draftKey) {
             pendingDraftSubmissionKeyRef.current = null;
             latestDraftRef.current = null;
             invalidateDraftSaveTimer();
-            clearComposerDraft(getSessionComposerDraftStorage(), draftKey);
           }
-          sidecar?.clearConversationQuotes(quoteIds);
+        },
+        onSendFailed: () => {
+          const visibleDraft = currentDraftViewRef.current;
+          if (pendingDraftSubmissionKeyRef.current === draftKey) {
+            pendingDraftSubmissionKeyRef.current = null;
+            invalidateDraftSaveTimer();
+          }
+          if (
+            visibleDraft.key === draftKey &&
+            !visibleDraft.text &&
+            !visibleDraft.skillName
+          ) {
+            setTextInput(pendingDraft.text);
+            setSelectedSlashSkill(
+              selectedSlashSkill?.kind === "skill" ? selectedSlashSkill : null,
+            );
+          }
         },
       };
 
@@ -1381,6 +1442,7 @@ export function InputBox({
       selectedModel?.supports_thinking,
       sidecar,
       ensurePreuploaded,
+      setTextInput,
       threadId,
       t.inputBox.suggestionPlaceholderRequired,
       textInput.value,

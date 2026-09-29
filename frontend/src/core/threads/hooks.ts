@@ -95,6 +95,8 @@ type SendMessageOptions = {
    * without losing state when a concurrent send is dropped.
    */
   onSent?: () => void;
+  onSendFailed?: () => void;
+  onSendCompleted?: () => void;
 };
 
 type ThreadDeleteClient = {
@@ -1658,6 +1660,8 @@ export function useThreadStream({
   const pendingPreparedReplayRef = useRef<PendingPreparedReplayMask | null>(
     null,
   );
+  const pendingSendFailureRef = useRef<(() => void) | null>(null);
+  const pendingSendCompletionRef = useRef<(() => void) | null>(null);
   const listeners = useRef({
     onSend,
     onStart,
@@ -1917,6 +1921,10 @@ export function useThreadStream({
       }
     },
     onError(error) {
+      const onSendFailed = pendingSendFailureRef.current;
+      pendingSendFailureRef.current = null;
+      pendingSendCompletionRef.current = null;
+      onSendFailed?.();
       setOptimisticMessages([]);
       setOptimisticThreadId(null);
       setLiveMessagesThreadId(null);
@@ -1939,6 +1947,10 @@ export function useThreadStream({
       }
     },
     onFinish(state) {
+      const onSendCompleted = pendingSendCompletionRef.current;
+      pendingSendCompletionRef.current = null;
+      pendingSendFailureRef.current = null;
+      onSendCompleted?.();
       listeners.current.onFinish?.(state.values);
       pendingPreparedReplayRef.current = null;
       pendingUsageBaselineMessageIdsRef.current = new Set(
@@ -2143,6 +2155,8 @@ export function useThreadStream({
         return;
       }
       sendInFlightRef.current = true;
+      pendingSendFailureRef.current = options?.onSendFailed ?? null;
+      pendingSendCompletionRef.current = options?.onSendCompleted ?? null;
 
       // The send has genuinely proceeded past the in-flight guard, so callers
       // can now run one-time cleanup that must not fire on the dropped path.
@@ -2373,6 +2387,10 @@ export function useThreadStream({
           queryKey: INFINITE_THREADS_QUERY_KEY_PREFIX,
         });
       } catch (error) {
+        const onSendFailed = pendingSendFailureRef.current;
+        pendingSendFailureRef.current = null;
+        pendingSendCompletionRef.current = null;
+        onSendFailed?.();
         setOptimisticMessages([]);
         setOptimisticThreadId(null);
         setLiveMessagesThreadId(null);
