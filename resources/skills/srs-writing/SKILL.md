@@ -77,7 +77,7 @@ allowed-tools:
 
 ### 6. review 审阅
 - 输出前自检：需求无遗漏（缺口清单检查）、追踪无断裂（矩阵一致性）、ID 无重复。
-- 提示用户可运行离线校验 `python scripts/validate_srs_outputs.py --outputs-dir <dir>`（配合 skill 的脚本项目可执行）。
+- 自行运行随 skill 包分发的离线校验器：`python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs`，并向用户逐条解读校验结果（通过项与问题项），不要让用户运行该脚本。
 
 ## 输出文件（写入 `/mnt/user-data/outputs/`）
 
@@ -104,4 +104,4 @@ allowed-tools:
 
 - GJB438C-2021 章节结构、需求表述规范、验证方法：`references/gjb438c_2021.md`
 - 模板模式占位符约定：`templates/README.md`
-- 离线校验器：仓库 `scripts/validate_srs_outputs.py`
+- 离线校验器：本 skill 包内 `scripts/validate_srs_outputs.py`（随包挂载为 `/mnt/skills/srs-writing/scripts/validate_srs_outputs.py`，与 skill 内容同版本演进）

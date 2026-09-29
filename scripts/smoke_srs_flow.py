@@ -7,7 +7,8 @@ Simulates the agent pipeline against the sample taskbook:
   3. user confirmation (accepted/modified/rejected + one declared gap)
   4. generate srs_document.docx + traceability-matrix.docx via officecli
   5. write progress.json + requirement-catalog.md
-  6. run validate_srs_outputs.py -> expect exit 0
+  6. run the validator bundled with the skill package
+     (resources/skills/srs-writing/scripts/validate_srs_outputs.py) -> expect exit 0
 
 Usage: python3 smoke_srs_flow.py
 """
@@ -23,6 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 OFFICECLI = REPO / "vendor" / "officecli" / "officecli"
+VALIDATOR = REPO / "resources" / "skills" / "srs-writing" / "scripts" / "validate_srs_outputs.py"
 
 FUNCTIONS = [
     ("F-5.1", "登录与权限管理"),
@@ -151,8 +153,8 @@ def main() -> int:
     for f in sorted(outputs.iterdir()):
         print(f"  {f.name} ({f.stat().st_size} bytes)")
 
-    print("=== running offline validator against generated outputs")
-    print(run([sys.executable, str(REPO / "scripts" / "validate_srs_outputs.py"), "--outputs-dir", str(outputs)]))
+    print("=== running offline validator bundled with the skill package")
+    print(run([sys.executable, str(VALIDATOR), "--outputs-dir", str(outputs)]))
     return 0
 
 

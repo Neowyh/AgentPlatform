@@ -14,7 +14,7 @@ Static checks against a completed (or in-progress) SRS run directory:
 
 Dependencies: stdlib only. Usage:
 
-    python scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs
+    python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs
 
 Exit code 0 when all checks pass.
 """

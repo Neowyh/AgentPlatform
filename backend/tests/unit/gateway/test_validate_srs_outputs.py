@@ -7,12 +7,19 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "validate_srs_outputs.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[4] / "resources" / "skills" / "srs-writing" / "scripts" / "validate_srs_outputs.py"
 SPEC = importlib.util.spec_from_file_location("validate_srs_outputs", SCRIPT_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None
 validator = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(validator)
+# The skill source directory is packaged verbatim into bundled seeds, so
+# loading the validator from it must not drop .pyc files there.
+_dont_write_bytecode = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+try:
+    SPEC.loader.exec_module(validator)
+finally:
+    sys.dont_write_bytecode = _dont_write_bytecode
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +85,10 @@ def test_validator_uses_only_standard_library_imports() -> None:
     assert "yaml" not in imported_modules
     assert "ideer" not in imported_modules
     assert imported_modules <= {"__future__", "argparse", "json", "re", "sys", "zipfile", "pathlib"}
+
+
+def test_loading_validator_does_not_write_pycache_into_skill_source_dir() -> None:
+    assert not (SCRIPT_PATH.parent / "__pycache__").exists()
 
 
 # --- load_progress ---------------------------------------------------------

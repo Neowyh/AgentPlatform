@@ -6,7 +6,7 @@ on:
     paths:
       - "resources/skills/srs-writing/**"
       - "scripts/smoke_srs_flow.py"
-      - "scripts/validate_srs_outputs.py"
+      - "resources/skills/srs-writing/scripts/validate_srs_outputs.py"
       - "vendor/officecli/**"
       - "docs/srs-writing-agent/**"
       - ".github/workflows/srs-writing-offline.yml"
@@ -15,7 +15,7 @@ on:
     paths:
       - "resources/skills/srs-writing/**"
       - "scripts/smoke_srs_flow.py"
-      - "scripts/validate_srs_outputs.py"
+      - "resources/skills/srs-writing/scripts/validate_srs_outputs.py"
       - "vendor/officecli/**"
       - "docs/srs-writing-agent/**"
       - ".github/workflows/srs-writing-offline.yml"
@@ -46,4 +46,4 @@ jobs:
       - name: Run offline SRS smoke (generate + validate)
         run: |
           python3 scripts/smoke_srs_flow.py --outputs-dir /tmp/srs-smoke-outputs
-          python3 scripts/validate_srs_outputs.py --outputs-dir /tmp/srs-smoke-outputs
+          python3 resources/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /tmp/srs-smoke-outputs
