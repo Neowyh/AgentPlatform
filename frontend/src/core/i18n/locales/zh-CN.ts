@@ -129,7 +129,10 @@ export const zhCN: Translations = {
   },
 
   artifactArchive: {
-    downloadCurrent: (count) => `下载当前版本（${count} 个文件）`,
+    downloadSelected: (count) => `下载所选文件（${count} 个）`,
+    selectFile: (fileName) => `将 ${fileName} 加入压缩包`,
+    selectionNotice: "选择要加入压缩包的文件。",
+    selectionLimit: (count) => `最多选择 ${count} 个文件。`,
     currentVersionNotice:
       "文件列表来自此回复；内容为当前版本，可能已发生变化。",
     downloadFailed: "文件压缩包下载失败。",

@@ -111,10 +111,7 @@ def test_archive_download_contains_only_presented_files(tmp_path, monkeypatch) -
     client, _, _ = _archive_app(monkeypatch, outputs, paths=paths)
 
     with client:
-        response = client.post(
-            ARCHIVE_URL,
-            json={"paths": ["/mnt/user-data/outputs/not-presented.txt"]},
-        )
+        response = client.post(ARCHIVE_URL)
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
@@ -146,6 +143,48 @@ def test_archive_manifest_counts_only_verified_delivery_paths(tmp_path, monkeypa
 
     assert response.status_code == 200
     assert response.json() == {"file_count": 2}
+
+
+def test_archive_download_contains_only_user_selected_presented_files(tmp_path, monkeypatch) -> None:
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    (outputs / "report.txt").write_text("report", encoding="utf-8")
+    (outputs / "data.csv").write_text("data", encoding="utf-8")
+    client, _, _ = _archive_app(
+        monkeypatch,
+        outputs,
+        paths=["/mnt/user-data/outputs/report.txt", "/mnt/user-data/outputs/data.csv"],
+    )
+
+    with client:
+        response = client.post(
+            ARCHIVE_URL,
+            json={"paths": ["/mnt/user-data/outputs/data.csv"]},
+        )
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert archive.namelist() == ["data.csv"]
+        assert archive.read("data.csv") == b"data"
+
+
+def test_archive_rejects_user_selected_paths_not_presented_by_the_run(tmp_path, monkeypatch) -> None:
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    (outputs / "report.txt").write_text("report", encoding="utf-8")
+    client, _, _ = _archive_app(
+        monkeypatch,
+        outputs,
+        paths=["/mnt/user-data/outputs/report.txt"],
+    )
+
+    with client:
+        response = client.post(
+            ARCHIVE_URL,
+            json={"paths": ["/mnt/user-data/outputs/not-presented.txt"]},
+        )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(

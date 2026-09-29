@@ -69,6 +69,10 @@ class ArtifactArchiveManifestResponse(BaseModel):
     file_count: int
 
 
+class ArtifactArchiveRequest(BaseModel):
+    paths: list[str] = Field(..., min_length=1)
+
+
 class RegeneratePrepareRequest(BaseModel):
     message_id: str = Field(..., min_length=1, description="Assistant message id to regenerate")
 
@@ -1304,9 +1308,16 @@ async def create_run_artifact_archive(
     thread_id: ThreadId,
     run_id: str,
     request: Request,
+    body: ArtifactArchiveRequest | None = None,
 ) -> StreamingResponse:
-    """Download the current contents of the files presented by one terminal run."""
+    """Download selected current files presented by one terminal run."""
     presented_paths = await _archive_presented_paths(thread_id, run_id, request)
+    if body is not None:
+        verified_paths = set(presented_paths)
+        selected_paths = list(dict.fromkeys(body.paths))
+        if any(path not in verified_paths for path in selected_paths):
+            raise HTTPException(status_code=422, detail="Only files presented by this response can be archived")
+        presented_paths = selected_paths
 
     raw_owner_user_id = get_trusted_internal_owner_user_id(request)
     effective_user_id = make_safe_user_id(raw_owner_user_id) if raw_owner_user_id else get_effective_user_id()

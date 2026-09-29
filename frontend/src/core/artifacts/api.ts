@@ -67,12 +67,16 @@ export async function updateArtifactContent({
 export async function downloadArtifactArchive({
   threadId,
   runId,
+  paths,
 }: {
   threadId: string;
   runId: string;
+  paths: string[];
 }): Promise<ArtifactArchiveDownload> {
   const response = await fetch(urlOfArtifactArchive({ threadId, runId }), {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths }),
   });
   if (!response.ok) {
     throw new ArtifactRequestError(

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { DownloadIcon, LoaderIcon, PackageIcon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -49,8 +49,12 @@ export function ArtifactFileList({
   const isAdmin = user?.system_role === "super_admin";
   const { select: selectArtifact, setOpen } = useArtifacts();
   const [downloadingArchive, setDownloadingArchive] = useState(false);
+  const [selectedArchiveFiles, setSelectedArchiveFiles] = useState(files);
   const [installingFile, setInstallingFile] = useState<string | null>(null);
   const staticWebsiteOnly = isStaticWebsiteOnly();
+  useEffect(() => {
+    setSelectedArchiveFiles(files);
+  }, [files]);
   const { data: archiveManifest } = useQuery({
     queryKey: ["artifact-archive-manifest", threadId, runId],
     queryFn: () => getArtifactArchiveManifest({ threadId, runId: runId! }),
@@ -110,6 +114,7 @@ export function ArtifactFileList({
       const { blob, filename } = await downloadArtifactArchive({
         threadId,
         runId,
+        paths: selectedArchiveFiles,
       });
       objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -129,14 +134,23 @@ export function ArtifactFileList({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       setDownloadingArchive(false);
     }
-  }, [downloadingArchive, runId, t, threadId]);
+  }, [downloadingArchive, runId, selectedArchiveFiles, t, threadId]);
 
   const canDownloadArchive =
     archiveDownloadsEnabled &&
     archiveCount !== undefined &&
     archiveCount > 1 &&
-    archiveCount <= MAX_ARTIFACT_ARCHIVE_FILES &&
     !staticWebsiteOnly;
+  const exceedsArchiveLimit =
+    selectedArchiveFiles.length > MAX_ARTIFACT_ARCHIVE_FILES;
+
+  const toggleArchiveFile = useCallback((filepath: string) => {
+    setSelectedArchiveFiles((selected) =>
+      selected.includes(filepath)
+        ? selected.filter((path) => path !== filepath)
+        : [...selected, filepath],
+    );
+  }, []);
 
   return (
     <div className={cn("flex w-full flex-col gap-4", className)}>
@@ -144,7 +158,11 @@ export function ArtifactFileList({
         <div className="flex flex-col items-start gap-1">
           <Button
             variant="outline"
-            disabled={downloadingArchive}
+            disabled={
+              downloadingArchive ||
+              selectedArchiveFiles.length === 0 ||
+              exceedsArchiveLimit
+            }
             onClick={handleDownloadArchive}
           >
             {downloadingArchive ? (
@@ -152,8 +170,13 @@ export function ArtifactFileList({
             ) : (
               <DownloadIcon className="size-4" />
             )}
-            {t.artifactArchive.downloadCurrent(archiveCount)}
+            {t.artifactArchive.downloadSelected(selectedArchiveFiles.length)}
           </Button>
+          <p className="text-muted-foreground type-compact">
+            {exceedsArchiveLimit
+              ? t.artifactArchive.selectionLimit(MAX_ARTIFACT_ARCHIVE_FILES)
+              : t.artifactArchive.selectionNotice}
+          </p>
           <p className="text-muted-foreground type-compact">
             {t.artifactArchive.currentVersionNotice}
           </p>
@@ -173,7 +196,20 @@ export function ArtifactFileList({
                   {getFileIcon(file, "size-6")}
                 </div>
               </CardTitle>
-              <CardDescription className="min-w-0 pl-8 type-compact">
+              <CardDescription className="type-compact min-w-0 pl-8">
+                {canDownloadArchive && (
+                  <label className="mr-2 inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      aria-label={t.artifactArchive.selectFile(
+                        getFileName(file),
+                      )}
+                      checked={selectedArchiveFiles.includes(file)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => toggleArchiveFile(file)}
+                    />
+                  </label>
+                )}
                 {getFileExtensionDisplayName(file)} file
               </CardDescription>
               <CardAction className="row-span-1 self-center">

@@ -77,11 +77,16 @@ describe("downloadArtifactArchive", () => {
     const result = await downloadArtifactArchive({
       threadId: "thread #1",
       runId: "run/1",
+      paths: ["/mnt/user-data/outputs/report.md"],
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/thread%20%231/runs/run%2F1/artifacts/archive",
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ paths: ["/mnt/user-data/outputs/report.md"] }),
+      }),
     );
     expect(result.filename).toBe("artifacts-run-1.zip");
     expect(await result.blob.text()).toBe("zip");

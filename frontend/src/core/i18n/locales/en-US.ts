@@ -132,8 +132,11 @@ export const enUS: Translations = {
   },
 
   artifactArchive: {
-    downloadCurrent: (count) =>
-      `Download current versions (${count} ${count === 1 ? "file" : "files"})`,
+    downloadSelected: (count) =>
+      `Download selected files (${count} ${count === 1 ? "file" : "files"})`,
+    selectFile: (fileName) => `Include ${fileName} in archive`,
+    selectionNotice: "Choose which files to include in the archive.",
+    selectionLimit: (count) => `Select no more than ${count} files.`,
     currentVersionNotice:
       "The file list comes from this response. Contents are the current versions and may have changed.",
     downloadFailed: "Failed to download artifact archive.",

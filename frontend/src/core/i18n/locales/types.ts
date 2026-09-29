@@ -111,7 +111,10 @@ export interface Translations {
   };
 
   artifactArchive: {
-    downloadCurrent: (count: number) => string;
+    downloadSelected: (count: number) => string;
+    selectFile: (fileName: string) => string;
+    selectionNotice: string;
+    selectionLimit: (count: number) => string;
     currentVersionNotice: string;
     downloadFailed: string;
   };

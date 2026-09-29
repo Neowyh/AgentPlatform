@@ -95,7 +95,7 @@ describe("ArtifactFileList archive download", () => {
 
     expect(
       await screen.findByRole("button", {
-        name: "Download current versions (2 files)",
+        name: "Download selected files (2 files)",
       }),
     ).toBeTruthy();
     expect(archiveState.manifest).toHaveBeenCalledWith({
@@ -103,19 +103,17 @@ describe("ArtifactFileList archive download", () => {
       threadId: "branch-thread",
     });
     expect(
-      screen.getByText(
-        "The file list comes from this response. Contents are the current versions and may have changed.",
-      ),
+      screen.getByText(/The file list comes from this response/),
     ).toBeTruthy();
   });
 
-  it("uses the verified receipt count instead of attempted tool arguments", async () => {
+  it("shows selected listed files even when the verified run has other files", async () => {
     archiveState.manifest.mockResolvedValue({ fileCount: 3 });
     renderList({ runId: "run-1" });
 
     expect(
       await screen.findByRole("button", {
-        name: "Download current versions (3 files)",
+        name: "Download selected files (2 files)",
       }),
     ).toBeTruthy();
   });
@@ -132,7 +130,7 @@ describe("ArtifactFileList archive download", () => {
     });
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
@@ -142,7 +140,7 @@ describe("ArtifactFileList archive download", () => {
 
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
@@ -156,22 +154,32 @@ describe("ArtifactFileList archive download", () => {
     });
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
 
-  it("does not offer an archive above the server file-count limit", async () => {
+  it("allows the user to reduce a selection to the server file-count limit", async () => {
     archiveState.manifest.mockResolvedValue({ fileCount: 51 });
-    renderList({ runId: "run-1" });
+    const manyFiles = Array.from(
+      { length: 51 },
+      (_, index) => `/mnt/user-data/outputs/file-${index}.txt`,
+    );
+    renderList({ files: manyFiles, runId: "run-1" });
 
-    await waitFor(() => {
-      expect(archiveState.manifest).toHaveBeenCalled();
+    const download = await screen.findByRole("button", {
+      name: "Download selected files (51 files)",
     });
+    expect(download.getAttribute("disabled")).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Include file-0.txt in archive" }),
+    );
     expect(
-      screen.queryByRole("button", {
-        name: /Download current versions/,
-      }),
+      screen
+        .getByRole("button", {
+          name: "Download selected files (50 files)",
+        })
+        .getAttribute("disabled"),
     ).toBeNull();
   });
 
@@ -180,7 +188,7 @@ describe("ArtifactFileList archive download", () => {
 
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
@@ -189,14 +197,14 @@ describe("ArtifactFileList archive download", () => {
     archiveState.manifest.mockResolvedValue({ fileCount: 2 });
     const { rerenderList } = renderList({ runId: "run-1" });
     await screen.findByRole("button", {
-      name: "Download current versions (2 files)",
+      name: "Download selected files (2 files)",
     });
 
     rerenderList({ archiveDownloadsEnabled: false });
 
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
@@ -215,7 +223,7 @@ describe("ArtifactFileList archive download", () => {
     });
     expect(
       screen.queryByRole("button", {
-        name: /Download current versions/,
+        name: /Download selected files/,
       }),
     ).toBeNull();
   });
@@ -241,7 +249,7 @@ describe("ArtifactFileList archive download", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Download current versions (2 files)",
+        name: "Download selected files (2 files)",
       }),
     );
 
@@ -249,10 +257,45 @@ describe("ArtifactFileList archive download", () => {
       expect(archiveState.download).toHaveBeenCalledWith({
         runId: "run-1",
         threadId: "thread-1",
+        paths: files,
       });
       expect(downloadedFilename).toBe("artifacts-run-1.zip");
       expect(createObjectURL).toHaveBeenCalledWith(blob);
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:archive");
+    });
+  });
+
+  it("downloads only the files selected in the artifact list", async () => {
+    archiveState.manifest.mockResolvedValue({ fileCount: 2 });
+    archiveState.download.mockResolvedValue({
+      blob: new Blob(["zip"]),
+      filename: "artifacts-run-1.zip",
+    });
+    rs.spyOn(URL, "createObjectURL").mockReturnValue("blob:archive");
+    rs.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    rs.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      () => undefined,
+    );
+    renderList({ runId: "run-1" });
+
+    const report = await screen.findByRole("checkbox", {
+      name: "Include report.md in archive",
+    });
+    expect((report as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(report);
+    expect(artifactState.select).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Download selected files (1 file)",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(archiveState.download).toHaveBeenCalledWith({
+        runId: "run-1",
+        threadId: "thread-1",
+        paths: [files[1]],
+      });
     });
   });
 
@@ -263,7 +306,7 @@ describe("ArtifactFileList archive download", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Download current versions (2 files)",
+        name: "Download selected files (2 files)",
       }),
     );
 
@@ -286,7 +329,7 @@ describe("ArtifactFileList archive download", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Download current versions (2 files)",
+        name: "Download selected files (2 files)",
       }),
     );
 
