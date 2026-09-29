@@ -72,6 +72,11 @@ class _FakeSession:
     async def __aexit__(self, *exc):
         return False
 
+    async def execute(self, _query):
+        # Latest-version lookup of _resolve_launch_workflow: a plain (no
+        # result_contract) definition keeps these tests on the plain path.
+        return SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(content={"name": "plain"}))
+
 
 def _run_with_files_route(inputs: dict, files: list, stored_manifest) -> tuple[dict, list[dict]]:
     """Drive the with-files route with its collaborators stubbed.
@@ -99,7 +104,7 @@ def _run_with_files_route(inputs: dict, files: list, stored_manifest) -> tuple[d
         return stored_manifest, [f.filename or "" for f in files]
 
     async def _resolve_for_use(resource_id):
-        return SimpleNamespace(type="workflow")
+        return SimpleNamespace(type="workflow", id=resource_id, slug="plain", latest_version=1)
 
     resource_service = patch.object(resources, "ResourceService")
     with (
@@ -185,10 +190,15 @@ def test_workflow_run_route_never_honors_user_supplied_evidence_mode():
             created_inputs.append(dict(inputs))
             return SimpleNamespace(run_id=run_id, status="queued", workflow_resource_id=resource_id, model_name=None)
 
+    async def _resolve_for_use(resource_id):
+        return SimpleNamespace(type="workflow", id=resource_id, slug="plain", latest_version=1)
+
     with (
         patch.object(resources, "_factory", lambda: lambda: _FakeSession()),
+        patch.object(resources, "ResourceService") as service,
         patch.object(resources, "WorkflowV2Store", _FakeStore),
     ):
+        service.return_value.resolve_for_use = _resolve_for_use
         asyncio.run(
             resources.create_workflow_run(
                 resource_id="wf-resource",

@@ -53,6 +53,26 @@ def test_recovery_snapshot_update_preserves_run_evidence() -> None:
     assert merged == {"state": {"step": "done"}, "run_evidence": evidence}
 
 
+def test_recovery_snapshot_update_preserves_kernel_pinned_keys() -> None:
+    """Kernel snapshot keys (unified-kernel tickets 02/03) survive worker
+    recovery merges: a resumed run must still be judged with its intake
+    record and pinned contract version, not as a run without intake."""
+    existing = {
+        "run_evidence": {"resource_snapshots": []},
+        "evidence_intake": {"status": "execute", "missing": []},
+        "contract_version": "1.0.0",
+        "entry": "workflow",
+    }
+
+    merged = _merge_recovery_snapshot(existing, {"state": {"step": "done"}, "outputs": {}})
+
+    assert merged["run_evidence"] == existing["run_evidence"]
+    assert merged["evidence_intake"] == existing["evidence_intake"]
+    assert merged["contract_version"] == "1.0.0"
+    assert merged["entry"] == "workflow"
+    assert merged["state"] == {"step": "done"}
+
+
 def test_workflow_worker_binds_persisted_evidence_for_runtime_execution() -> None:
     run = SimpleNamespace(
         created_by="caller",

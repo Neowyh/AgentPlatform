@@ -12,6 +12,7 @@ nothing about what the artifacts mean — the validator carries the semantics
 from __future__ import annotations
 
 import importlib
+import inspect
 import re
 from collections.abc import Callable
 from typing import Any
@@ -106,12 +107,38 @@ def run_artifact_root(
     return host or ""
 
 
+def _invoke_validator(
+    validator: Callable[..., Any],
+    outputs_dir: str,
+    run_snapshot: Any,
+    emit_event: Callable[[str, dict[str, Any]], None] | None,
+) -> Any:
+    """Call the declared validator, injecting ``emit_event`` when it accepts one.
+
+    The engine never interprets the events a validator emits — it only
+    shuttles opaque ``(event_type, payload)`` pairs into the run's event log,
+    so a validator (e.g. a shared kernel gate) can leave its own audit trail
+    while the engine stays business-ignorant.  Validators with the plain
+    two-argument signature are unaffected.
+    """
+
+    if emit_event is not None:
+        try:
+            accepts_emit = "emit_event" in inspect.signature(validator).parameters
+        except (TypeError, ValueError):
+            accepts_emit = False
+        if accepts_emit:
+            return validator(outputs_dir, run_snapshot, emit_event=emit_event)
+    return validator(outputs_dir, run_snapshot)
+
+
 def enforce_result_contract(
     workflow: WorkflowV2,
     *,
     run_inputs: dict[str, Any],
     run_snapshot: Any,
     resolver: Callable[[str], str | None],
+    emit_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> WorkflowRunError | None:
     """Evaluate a declared result contract after graph success.
 
@@ -127,7 +154,7 @@ def enforce_result_contract(
     try:
         validator = load_result_contract_validator(spec.validator)
         outputs_dir = run_artifact_root(workflow, run_inputs=run_inputs, run_snapshot=run_snapshot, resolver=resolver)
-        violations = validator(outputs_dir, run_snapshot)
+        violations = _invoke_validator(validator, outputs_dir, run_snapshot, emit_event)
     except Exception as exc:
         return WorkflowResultContractValidatorError(spec.validator, str(exc))
     if violations is None or violations == []:

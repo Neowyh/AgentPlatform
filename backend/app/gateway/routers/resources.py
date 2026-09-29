@@ -24,7 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
-from app.agentplatform.fault_zeroing.intake import assess_evidence_intake
+from app.agentplatform.fault_zeroing.intake import INTERRUPT_TYPE, assess_evidence_intake
+from app.agentplatform.fault_zeroing.kernel import (
+    ConfirmationStaleError,
+    EvidenceIntakeRejected,
+    FaultZeroingKernel,
+)
 from app.agentplatform.knowledge import models as knowledge_models  # noqa: F401 - register knowledge tables
 from app.agentplatform.knowledge.documents import KnowledgeDocumentService
 from app.agentplatform.knowledge.eval_cases import KnowledgeEvalCaseService
@@ -2067,6 +2072,74 @@ async def unfavorite_resource(
         await session.commit()
 
 
+def _is_evidence_confirmation_pause(run: WorkflowV2RunRow) -> bool:
+    """Whether the run is parked by the kernel's hybrid evidence intake.
+
+    Graph-driven pauses carry a langgraph interrupt value; the kernel pause
+    carries the ``evidence_confirmation`` interrupt payload written at
+    creation time.
+    """
+
+    if run.status != "paused":
+        return False
+    interrupt = run.snapshot.get("interrupt") if isinstance(run.snapshot, dict) else None
+    return isinstance(interrupt, list) and bool(interrupt) and isinstance(interrupt[0], dict) and interrupt[0].get("type") == INTERRUPT_TYPE
+
+
+async def _resolve_launch_workflow(resource_id: str, actor) -> tuple[Resource, dict[str, Any] | None]:
+    """RBAC-checked workflow lookup for the launch endpoints.
+
+    Reuses the gateway's existing use-permission chain (``resolve_for_use``)
+    — routing to the kernel must not bypass or weaken RBAC.  Returns the
+    resource and its latest published definition (``None`` when the version
+    has no readable content).
+    """
+
+    async with _factory()() as session:
+        resource = await ResourceService(session, actor).resolve_for_use(resource_id)
+        if resource.type != "workflow":
+            raise ValueError("Resource is not a Workflow")
+        version = (
+            await session.execute(
+                select(ResourceVersion).where(
+                    ResourceVersion.resource_id == resource.id,
+                    ResourceVersion.version == resource.latest_version,
+                )
+            )
+        ).scalar_one_or_none()
+        content = version.content if version is not None else None
+        return resource, content if isinstance(content, dict) else None
+
+
+def _kernel_launch_response(resource_id: str, result, model_name: str | None) -> dict[str, Any]:
+    """Response payload for a kernel-routed launch: run identity plus the
+    intake decision (missing-side information for the paused path)."""
+
+    return {
+        "run_id": result.run_id,
+        "status": result.status,
+        "workflow_resource_id": resource_id,
+        "model_name": model_name,
+        "evidence_mode": result.intake.evidence_mode,
+        "missing_evidence_sides": list(result.intake.missing),
+        "reason_code": result.reason_code,
+    }
+
+
+def _intake_rejection(exc: EvidenceIntakeRejected) -> HTTPException:
+    """Double-missing evidence: 4xx with the reason code, no Run created."""
+
+    sides = "、".join(exc.decision.missing)
+    return HTTPException(
+        422,
+        detail={
+            "code": exc.reason_code,
+            "message": f"缺少全部证据侧（{sides}），无法发起归零工作流 Run；请至少提供一侧证据。",
+            "missing_evidence_sides": list(exc.decision.missing),
+        },
+    )
+
+
 @router.post("/{resource_id}/workflow-runs", status_code=201)
 @_translate_resource_errors
 async def create_workflow_run(
@@ -2081,12 +2154,38 @@ async def create_workflow_run(
     # evidence_mode is a derived system result, never a user input: drop any
     # client-supplied value so the definition's derived default applies.
     body.inputs.pop("evidence_mode", None)
+    actor = _resource_actor(current_user)
+    workflow, definition = await _resolve_launch_workflow(resource_id, actor)
+    if definition is not None and definition.get("result_contract") is not None:
+        # Contract-declared (fault-zeroing) workflow: the launch goes through
+        # the shared kernel's canonical creation path — hybrid evidence
+        # intake decides queue vs pause vs reject before any Run is usable.
+        try:
+            result = await FaultZeroingKernel(WorkflowV2Store(_factory())).start_run(
+                workflow_name=workflow.slug,
+                definition_version=workflow.latest_version,
+                inputs=body.inputs,
+                created_by=str(current_user.id),
+                workflow_resource_id=resource_id,
+                actor=actor,
+                entry="workflow",
+                model_name=body.model_name,
+                user_concurrency=runtime.user_concurrency,
+                department_concurrency=runtime.department_concurrency,
+            )
+        except EvidenceIntakeRejected as exc:
+            raise _intake_rejection(exc) from exc
+        except RuntimeError as exc:
+            if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
+                raise HTTPException(429, str(exc)) from exc
+            raise
+        return _kernel_launch_response(resource_id, result, body.model_name)
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
             str(uuid.uuid4()),
             resource_id,
             body.inputs,
-            _resource_actor(current_user),
+            actor,
             model_name=body.model_name,
             user_concurrency=runtime.user_concurrency,
             department_concurrency=runtime.department_concurrency,
@@ -2148,6 +2247,39 @@ async def create_workflow_run_with_files(
     ).evidence_mode
 
     runtime = get_app_config().workflow_runtime
+    workflow, definition = await _resolve_launch_workflow(resource_id, actor)
+    if definition is not None and definition.get("result_contract") is not None:
+        # Contract-declared (fault-zeroing) workflow: the launch goes through
+        # the shared kernel's canonical creation path.  The kernel derives the
+        # evidence mode itself from the three evidence fields, so the
+        # pre-computed value above stays a plain-path concern only.
+        kernel_inputs = {key: value for key, value in submitted.items() if key != "evidence_mode"}
+        try:
+            result = await FaultZeroingKernel(WorkflowV2Store(_factory())).start_run(
+                workflow_name=workflow.slug,
+                definition_version=workflow.latest_version,
+                inputs=kernel_inputs,
+                created_by=user_id,
+                workflow_resource_id=resource_id,
+                actor=actor,
+                entry="workflow",
+                model_name=model_name,
+                user_concurrency=runtime.user_concurrency,
+                department_concurrency=runtime.department_concurrency,
+            )
+        except EvidenceIntakeRejected as exc:
+            _cleanup_run_user_data(run_id, user_id)
+            raise _intake_rejection(exc) from exc
+        except RuntimeError as exc:
+            _cleanup_run_user_data(run_id, user_id)
+            if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
+                raise HTTPException(429, str(exc)) from exc
+            raise
+        # Same response shape as the plain with-files path: the stored code
+        # package manifest rides along so the upload flow can render it.
+        response = _kernel_launch_response(resource_id, result, model_name)
+        response["code_package"] = source_manifest.as_dict() if source_manifest is not None else None
+        return response
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
             run_id,
@@ -2421,6 +2553,27 @@ async def submit_canonical_workflow_command(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     run = await _get_canonical_run(resource_id, run_id, current_user)
+    if body.type == "resume" and _is_evidence_confirmation_pause(run):
+        # Evidence-intake pause (unified-kernel ticket 03): the resume command
+        # is validated and submitted by the kernel — bound to the input
+        # snapshot hash the confirmer saw — through the same command chain.
+        try:
+            confirmation = await FaultZeroingKernel(WorkflowV2Store(_factory())).confirm_evidence(
+                run_id,
+                payload=body.payload,
+                confirmed_by=str(current_user.id),
+                command_id=body.command_id,
+            )
+        except ConfirmationStaleError as exc:
+            raise HTTPException(409, detail={"code": exc.reason_code, "message": str(exc)}) from exc
+        return {
+            "command_id": confirmation["command_id"],
+            "run_id": run_id,
+            "type": body.type,
+            "accepted": True,
+            "missing_evidence_sides": confirmation["missing_evidence_sides"],
+            "input_snapshot_hash": confirmation["input_snapshot_hash"],
+        }
     if body.type == "resume" and run.status == "failed":
         checkpointer = getattr(request.app.state, "checkpointer", None)
         if checkpointer is not None:

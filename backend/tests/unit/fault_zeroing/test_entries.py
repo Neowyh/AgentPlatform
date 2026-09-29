@@ -266,3 +266,86 @@ def test_workflow_contract_adapter_fails_closed_on_malformed_intake(tmp_path: Pa
 
     with pytest.raises(Exception, match="intake"):
         entries_mod.evaluate_workflow_contract(outputs, {"evidence_intake": {"status": "paused"}})
+
+
+# ---------------------------------------------------------------------------
+# Unified completion judgment (unified-kernel ticket 03): with an intake
+# record the adapter delegates to the kernel judgment and shuttles its event
+# trail; the snapshot-pinned contract version governs the evaluation.
+# ---------------------------------------------------------------------------
+
+
+def test_workflow_contract_adapter_emits_kernel_contract_events(tmp_path: Path) -> None:
+    """The kernel contract event trail rides the emitted (type, payload) pairs."""
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+
+    # Undisclosed missing side: the kernel failure event precedes the violations.
+    events: list[tuple[str, dict]] = []
+    violations = entries_mod.evaluate_workflow_contract(
+        outputs,
+        _intake_snapshot(["code_evidence_package"]),
+        emit_event=lambda event_type, payload: events.append((event_type, payload)),
+    )
+    assert violations
+    assert [event_type for event_type, _ in events] == ["kernel_contract_failed"]
+    assert events[0][1]["code"] == "contract_failed"
+    assert "hybrid_disclosure_missing" in events[0][1]["reason_codes"]
+
+    # Disclosed missing side: a legitimate completion through the kernel gate.
+    report = contract_tests.valid_report()
+    report = report.replace(
+        "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |",
+        "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |\n| 代码证据包 | 未提供 | — | 代码证据包未提供，代码侧结论保持 pending_verification |",
+    )
+    report = report.replace(
+        "暂无缺失资料风险；BE-02 仍待验证。",
+        "暂无其他缺失资料风险；代码证据包未提供，代码侧结论保持 pending_verification；BE-02 仍待验证。",
+    )
+    (outputs / "zeroing_report.md").write_text(report, encoding="utf-8")
+    events.clear()
+    violations = entries_mod.evaluate_workflow_contract(
+        outputs,
+        _intake_snapshot(["code_evidence_package"]),
+        emit_event=lambda event_type, payload: events.append((event_type, payload)),
+    )
+    assert violations == []
+    assert [event_type for event_type, _ in events] == ["kernel_contract_evaluated"]
+    assert events[0][1]["code"] == "contract_passed"
+    assert events[0][1]["pending_verification_disclosed"] is True
+
+
+def test_workflow_contract_adapter_judges_by_the_pinned_contract_version(tmp_path: Path) -> None:
+    """跨票遗留 P2: the snapshot's pinned contract_version governs the judgment."""
+
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+    snapshot = {**_intake_snapshot([]), "contract_version": "9.9.9"}
+
+    events: list[tuple[str, dict]] = []
+    violations = entries_mod.evaluate_workflow_contract(
+        outputs,
+        snapshot,
+        emit_event=lambda event_type, payload: events.append((event_type, payload)),
+    )
+
+    assert any("9.9.9" in item for item in violations)
+    assert events[0][1]["contract_version"] == "9.9.9"
+    assert "contract_version_unsupported" in events[0][1]["reason_codes"]
+
+
+def test_workflow_contract_adapter_without_intake_never_emits(tmp_path: Path) -> None:
+    """Runs without an intake record keep the plain engine gate: no events."""
+
+    contract_tests, entries_mod = _gate_fixtures()
+    outputs = contract_tests.write_outputs(tmp_path)
+    events: list[tuple[str, dict]] = []
+
+    violations = entries_mod.evaluate_workflow_contract(
+        outputs,
+        {"inputs": {}, "state": {}, "outputs": {}},
+        emit_event=lambda event_type, payload: events.append((event_type, payload)),
+    )
+
+    assert violations == []
+    assert events == []

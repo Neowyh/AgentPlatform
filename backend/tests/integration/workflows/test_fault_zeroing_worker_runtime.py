@@ -121,12 +121,14 @@ class RecordingAgent:
         fail_nodes: set[str] | None = None,
         confirmed_root_causes: bool = True,
         contract_violation: bool = False,
+        disclose_missing_code_side: bool = False,
     ) -> None:
         self.calls = calls
         self.write_artifacts = write_artifacts
         self.fail_nodes = fail_nodes or set()
         self.confirmed_root_causes = confirmed_root_causes
         self.contract_violation = contract_violation
+        self.disclose_missing_code_side = disclose_missing_code_side
 
     async def run(self, context, params):
         self.calls.append(context.node_id)
@@ -160,10 +162,21 @@ class RecordingAgent:
                         encoding="utf-8",
                     )
                 elif path.name == "zeroing_report.md":
-                    path.write_text(
-                        "# 归零报告\n" if self.contract_violation else fixtures.valid_report(),
-                        encoding="utf-8",
-                    )
+                    if self.contract_violation:
+                        path.write_text("# 归零报告\n", encoding="utf-8")
+                    elif self.disclose_missing_code_side:
+                        report = fixtures.valid_report()
+                        report = report.replace(
+                            "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |",
+                            "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |\n| 代码证据包 | 未提供 | — | 代码证据包未提供，代码侧结论保持 pending_verification |",
+                        )
+                        report = report.replace(
+                            "暂无缺失资料风险；BE-02 仍待验证。",
+                            "暂无其他缺失资料风险；代码证据包未提供，代码侧结论保持 pending_verification；BE-02 仍待验证。",
+                        )
+                        path.write_text(report, encoding="utf-8")
+                    else:
+                        path.write_text(fixtures.valid_report(), encoding="utf-8")
                 elif path.name == "fault_tree.svg":
                     path.write_text("<svg><rect/><text>fault tree</text></svg>", encoding="utf-8")
                 elif path.name == "analysis_process.svg":
@@ -200,6 +213,8 @@ async def _run_worker_once(
     *,
     run_id: str,
     monkeypatch: pytest.MonkeyPatch,
+    pinned_kernel_snapshot: dict | None = None,
+    slug: str = "fault-zeroing",
 ) -> None:
     # deerflow's skills host path defaults to the upstream `skills/` tree; the
     # enterprise skill bundle (fault-zeroing templates) lives in resources/skills.
@@ -220,7 +235,18 @@ async def _run_worker_once(
             "problem_description": "top event",
             "output_base_dir": "/mnt/user-data/outputs",
         },
+        name=slug,
     )
+    if pinned_kernel_snapshot:
+        # Simulate the kernel's canonical creation pins (evidence intake
+        # record, contract version, entry label) the way start_run writes
+        # them onto the run row before the worker claims the task.
+        async with durable_store.session_factory() as session:
+            from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
+
+            run = await session.get(WorkflowV2RunRow, run_id)
+            run.snapshot = {**(run.snapshot or {}), **pinned_kernel_snapshot}
+            await session.commit()
     registry = ActionAdapterRegistry({("agent", "fault-zeroing"): agent})
     config = _make_config(tmp_path)
     monkeypatch.setattr("app.workflow_worker.build_canonical_registry", AsyncMock(return_value=registry))
@@ -682,3 +708,110 @@ async def test_fault_zeroing_contract_violation_fails_run_and_keeps_artifacts(
     assert outputs_host is not None
     for name in ("fault_tree.json", "fault_tree.svg", "bottom_event_assessment.md", "analysis_process.svg", "zeroing_report.md"):
         assert (outputs_host / name).is_file(), f"artifact {name} must be preserved"
+
+
+def _intake_pin(missing: list[str]) -> dict:
+    return {
+        "evidence_intake": {
+            "status": "paused",
+            "evidence_mode": "hybrid",
+            "missing": missing,
+            "reason_code": "intake_confirmation_required",
+            "input_snapshot": {},
+            "input_snapshot_hash": "hash-1",
+        },
+        "contract_version": "1.0.0",
+        "entry": "workflow",
+    }
+
+
+@pytest.mark.asyncio
+async def test_kernel_pinned_intake_record_drives_worker_completion_judgment(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """统一完成判定：worker 契约门经内核评估——快照带 intake 记录时，未披露缺侧
+    的 Run 失败并留 kernel_contract_failed 事件；已披露的合法完成留
+    kernel_contract_evaluated 事件（pending_verification 语义经内核留痕）。"""
+
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+
+    # Undisclosed missing code side: the run must fail through the kernel gate.
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True),
+        run_id="run-kernel-intake-undisclosed",
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=_intake_pin(["code_evidence_package"]),
+    )
+    failed = await durable_store.get_run("run-kernel-intake-undisclosed")
+    assert failed is not None and failed.status == "failed"
+    events = await durable_store.list_events(failed.run_id)
+    kernel_failed = [event for event in events if event.event_type == "kernel_contract_failed"]
+    assert len(kernel_failed) == 1
+    assert kernel_failed[0].payload["code"] == "contract_failed"
+    assert "hybrid_disclosure_missing" in kernel_failed[0].payload["reason_codes"]
+    assert events[-1].event_type == "run_failed"
+
+    # Disclosed missing code side: a legitimate completion with the kernel event.
+    calls_disclosed: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls_disclosed, write_artifacts=True, disclose_missing_code_side=True),
+        run_id="run-kernel-intake-disclosed",
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=_intake_pin(["code_evidence_package"]),
+        slug="fault-zeroing-disclosed",
+    )
+    completed = await durable_store.get_run("run-kernel-intake-disclosed")
+    assert completed is not None and completed.status == "completed"
+    events = await durable_store.list_events(completed.run_id)
+    kernel_evaluated = [event for event in events if event.event_type == "kernel_contract_evaluated"]
+    assert len(kernel_evaluated) == 1
+    assert kernel_evaluated[0].payload["code"] == "contract_passed"
+    assert kernel_evaluated[0].payload["contract_version"] == "1.0.0"
+    assert kernel_evaluated[0].payload["pending_verification_disclosed"] is True
+    assert events[-1].event_type == "run_completed"
+    # The pins survive the worker's recovery snapshot merges.
+    assert completed.snapshot["evidence_intake"]["missing"] == ["code_evidence_package"]
+    assert completed.snapshot["contract_version"] == "1.0.0"
+    assert completed.snapshot["entry"] == "workflow"
+
+
+@pytest.mark.asyncio
+async def test_worker_gate_uses_the_contract_version_pinned_on_the_run(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """跨票遗留 P2：完成判定按 Run 快照钉扎的 contract_version 执行。"""
+
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    calls: list[str] = []
+    pin = _intake_pin([])
+    pin["contract_version"] = "9.9.9"
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True),
+        run_id="run-kernel-pinned-version",
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=pin,
+    )
+
+    run = await durable_store.get_run("run-kernel-pinned-version")
+    assert run is not None and run.status == "failed"
+    events = await durable_store.list_events(run.run_id)
+    kernel_failed = [event for event in events if event.event_type == "kernel_contract_failed"]
+    assert len(kernel_failed) == 1
+    assert kernel_failed[0].payload["contract_version"] == "9.9.9"
+    assert any("contract_version_unsupported" in code for code in kernel_failed[0].payload["reason_codes"])
+    # The unsupported pin surfaces in the terminal event's violation list
+    # (ticket 01 error contract: short summary on run.error, messages on the
+    # run_failed payload).
+    failed_event = next(event for event in events if event.event_type == "run_failed")
+    assert any("9.9.9" in str(violation) for violation in failed_event.payload["violations"])

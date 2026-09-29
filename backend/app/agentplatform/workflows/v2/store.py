@@ -109,13 +109,23 @@ async def _frozen_knowledge_scope(session, snapshots, actor) -> dict[str, str]:
     )
 
 
+# Kernel-pinned snapshot keys (unified-kernel tickets 02/03): immutable at
+# run creation and must survive every worker recovery merge, or a resumed
+# run's completion judgment would treat it as a run without intake.
+KERNEL_SNAPSHOT_KEYS = ("evidence_intake", "contract_version", "entry")
+
+
 def _merge_recovery_snapshot(existing: dict | None, recovery: dict) -> dict:
     """Merge mutable checkpoint state without dropping immutable run evidence."""
 
-    preserved = existing.get("run_evidence") if isinstance(existing, dict) else None
+    preserved_run_evidence = existing.get("run_evidence") if isinstance(existing, dict) else None
     merged = dict(recovery)
-    if preserved is not None:
-        merged["run_evidence"] = preserved
+    if preserved_run_evidence is not None:
+        merged["run_evidence"] = preserved_run_evidence
+    for key in KERNEL_SNAPSHOT_KEYS:
+        preserved = existing.get(key) if isinstance(existing, dict) else None
+        if preserved is not None:
+            merged[key] = preserved
     return merged
 
 
@@ -342,8 +352,15 @@ class WorkflowV2Store:
         model_name: str | None = None,
         user_concurrency: int | None = None,
         department_concurrency: int | None = None,
+        intake_snapshot: dict | None = None,
     ) -> WorkflowV2RunRow:
-        """Freeze a canonical dependency closure before making the Run claimable."""
+        """Freeze a canonical dependency closure before making the Run claimable.
+
+        ``intake_snapshot`` carries kernel-pinned keys (evidence intake record,
+        contract version, entry label) that must land with the run row itself:
+        before a worker claims the task no lease exists, so a post-creation
+        snapshot update would be silently dropped.
+        """
 
         from app.agentplatform.resource_models import Resource, ResourceVersion
         from app.agentplatform.resources.service import ResourceConflict, ResourceService
@@ -415,7 +432,7 @@ class WorkflowV2Store:
                 status="queued",
                 inputs=inputs,
                 model_name=model_name,
-                snapshot={"run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
+                snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
                 department_id=actor.department_id,
@@ -434,6 +451,23 @@ class WorkflowV2Store:
             await session.commit()
             return run
 
+    async def update_paused_run_snapshot(self, run_id: str, snapshot: dict) -> bool:
+        """Persist a kernel snapshot update while the run is parked paused.
+
+        The evidence confirmation records the confirmed intake onto the run
+        before any worker lease exists (the paired task is paused), so this
+        write is guarded by the paused status instead of a lease.  Once the
+        run leaves ``paused`` the lease-guarded :meth:`update_snapshot` is the
+        only snapshot writer again.
+        """
+
+        async with self.session_factory() as session:
+            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, WorkflowV2RunRow.status == "paused").values(snapshot=snapshot))
+            if result.rowcount != 1:
+                return False
+            await session.commit()
+            return True
+
     async def create_canonical_paused_run(
         self,
         run_id: str,
@@ -442,6 +476,7 @@ class WorkflowV2Store:
         actor,
         *,
         intake_snapshot: dict | None = None,
+        model_name: str | None = None,
     ) -> WorkflowV2RunRow:
         """Freeze a canonical dependency closure but park the run paused.
 
@@ -451,7 +486,9 @@ class WorkflowV2Store:
         (so the worker only ever consumes the snapshot), but the paired task is
         parked in ``paused``. Inputs are stored as submitted without
         creation-time root validation: a paused run is precisely the case where
-        a declared evidence root may not exist yet.
+        a declared evidence root may not exist yet.  ``model_name`` is pinned
+        like on the queued path so the later resume executes with the model
+        the caller selected at launch.
         """
 
         from app.agentplatform.resource_models import Resource, ResourceVersion
@@ -489,6 +526,7 @@ class WorkflowV2Store:
                 checkpoint_thread_id=f"wf-{run_id}",
                 status="paused",
                 inputs=dict(inputs),
+                model_name=model_name,
                 snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
