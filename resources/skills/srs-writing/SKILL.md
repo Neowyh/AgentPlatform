@@ -77,7 +77,7 @@ allowed-tools:
 
 ### 6. review 审阅
 - 输出前自检：需求无遗漏（缺口清单检查）、追踪无断裂（矩阵一致性）、ID 无重复。
-- 自行运行随 skill 包分发的离线校验器：`python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs`，并向用户逐条解读校验结果（通过项与问题项），不要让用户运行该脚本。
+- 自行运行随 skill 包分发的离线校验器：`python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs`，并向用户逐条解读校验结果（通过项与问题项），不要让用户运行该脚本。校验未通过（存在 error）时不得交付最终文档，须修复后重跑校验直至通过；warning 项仅向用户提示、不阻塞交付。
 
 ## 输出文件（写入 `/mnt/user-data/outputs/`）
 

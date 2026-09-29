@@ -11,12 +11,22 @@ Static checks against a completed (or in-progress) SRS run directory:
     explicitly declared in the ``gaps`` list.
   - Final .docx artifacts exist and are non-empty; rejected requirement IDs
     do not leak into the generated SRS document.
+  - Every accepted requirement ID appears in both final .docx artifacts
+    (SRS body and traceability matrix).
+  - ``requirement-catalog.md`` exists and its requirement-ID set matches
+    progress.json exactly.
+  - A finished run (stage ``review``/``complete``) leaves no pending
+    (non-terminal) requirements.
+
+Findings are graded: errors (``fail``) block delivery and decide the exit
+code; warnings (``warn``, e.g. vague wording like 及时/适当/高效/尽量 in
+accepted requirement descriptions) are reported but never block.
 
 Dependencies: stdlib only. Usage:
 
     python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs
 
-Exit code 0 when all checks pass.
+Exit code 0 when there are no errors (warnings do not affect it).
 """
 
 from __future__ import annotations
@@ -29,12 +39,26 @@ import zipfile
 from pathlib import Path
 
 REQ_ID_RE = re.compile(r"^F-\d+(?:\.\d+)*-\d+$")
+CATALOG_ID_RE = re.compile(r"F-\d+(?:\.\d+)*-\d+")
+
+# GJB438C-2021 需求表述规范：避免「及时、适当、高效、尽量」等无量化约束的歧义词。
+VAGUE_WORDS: tuple[str, ...] = ("及时", "适当", "高效", "尽量")
+
+# Terminal requirement statuses; anything else counts as pending (undecided).
+TERMINAL_STATUSES = frozenset({"accepted", "modified", "rejected"})
+# Finished-run stages: a run in one of these stages must not leave pending items.
+FINAL_STAGES = frozenset({"review", "complete"})
 
 CHECK_FAILURES: list[str] = []
+WARNINGS: list[str] = []
 
 
 def fail(msg: str) -> None:
     CHECK_FAILURES.append(msg)
+
+
+def warn(msg: str) -> None:
+    WARNINGS.append(msg)
 
 
 def ok(msg: str) -> None:
@@ -106,6 +130,20 @@ def check_traceability(data: dict) -> None:
         fail(f"function items with no accepted requirement (undeclared gaps): {sorted(uncovered)}")
 
 
+def check_vague_words(data: dict) -> None:
+    """Warn (non-blocking) when accepted/modified descriptions use vague wording."""
+    for req in _accepted_reqs(data.get("requirements", [])):
+        rid = str(req.get("id") or req.get("ID") or "").strip()
+        description = str(req.get("description", ""))
+        hits = [word for word in VAGUE_WORDS if word in description]
+        if hits:
+            warn(f"requirement {rid} description contains vague wording: {', '.join(hits)}")
+
+
+# Known limitations of matching IDs against the raw XML text (accepted for
+# now, not fixed here): IDs inside XML comments, attributes, or bookmark names
+# also count as "present", and Word re-editing can split one ID across several
+# <w:t> runs, causing a false "missing" report.
 def _docx_text(path: Path) -> str:
     try:
         with zipfile.ZipFile(path) as zf:
@@ -133,6 +171,67 @@ def check_artifacts(outputs: Path, data: dict) -> None:
             fail(f"rejected requirement IDs appear in srs_document.docx: {present}")
 
 
+def check_id_presence(outputs: Path, data: dict) -> None:
+    """Every accepted requirement ID must appear in both final .docx artifacts."""
+    texts: dict[str, str] = {}
+    for name in ("srs_document.docx", "traceability-matrix.docx"):
+        path = outputs / name
+        # Files that are missing or zero-byte are already reported by
+        # check_artifacts; only artifacts past those checks are inspected here.
+        if path.exists() and path.stat().st_size:
+            text = _docx_text(path)
+            if text:
+                texts[name] = text
+            else:
+                # A valid zip with zero body text must not be skipped silently:
+                # every ID check below would otherwise pass vacuously.
+                fail(f"no readable text in {name}")
+    for req in _accepted_reqs(data.get("requirements", [])):
+        rid = str(req.get("id") or req.get("ID") or "").strip()
+        if not rid:
+            continue
+        for name, text in texts.items():
+            if rid not in text:
+                fail(f"accepted requirement {rid} does not appear in {name}")
+
+
+def check_requirement_catalog(outputs: Path, data: dict) -> None:
+    """requirement-catalog.md must exist and its ID set must match progress.json."""
+    catalog = outputs / "requirement-catalog.md"
+    if not catalog.exists():
+        fail("missing requirement-catalog.md")
+        return
+    try:
+        text = catalog.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        fail(f"cannot read requirement-catalog.md: {exc}")
+        return
+    progress_ids = {str(r.get("id") or r.get("ID") or "").strip() for r in data.get("requirements", [])}
+    progress_ids.discard("")
+    catalog_ids = set(CATALOG_ID_RE.findall(text))
+    missing = sorted(progress_ids - catalog_ids)
+    if missing:
+        fail(f"requirement-catalog.md is missing requirement IDs: {missing}")
+    unknown = sorted(catalog_ids - progress_ids)
+    if unknown:
+        fail(f"requirement-catalog.md contains IDs not in progress.json: {unknown}")
+
+
+def check_pending_requirements(data: dict) -> None:
+    """A finished run (review/complete stage) must not leave pending requirements."""
+    stage = str(data.get("stage", "")).strip().lower()
+    if stage not in FINAL_STAGES:
+        return
+    pending = [
+        str(r.get("id") or r.get("ID") or "").strip()
+        for r in data.get("requirements", [])
+        if str(r.get("status", "")).strip().lower() not in TERMINAL_STATUSES
+    ]
+    pending = [rid for rid in pending if rid]
+    if pending:
+        fail(f"stage {stage!r} still has pending requirements (not accepted/modified/rejected): {pending}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate SRS-writing agent outputs.")
     parser.add_argument("--outputs-dir", default="/mnt/user-data/outputs", help="Directory holding the SRS outputs")
@@ -154,7 +253,17 @@ def main() -> int:
     check_traceability(data)
     print("Checking generated .docx artifacts...")
     check_artifacts(outputs, data)
+    check_id_presence(outputs, data)
+    print("Checking requirement catalog consistency...")
+    check_requirement_catalog(outputs, data)
+    check_pending_requirements(data)
+    print("Checking requirement wording...")
+    check_vague_words(data)
 
+    if WARNINGS:
+        print("\nWarnings (do not affect the exit code):")
+        for item in WARNINGS:
+            print(f"  [warn] {item}")
     if CHECK_FAILURES:
         print("\nFAILED with the following issues:")
         for item in CHECK_FAILURES:
