@@ -77,9 +77,11 @@ allowed-tools:
 
 ### 6. review 审阅
 - 输出前自检：需求无遗漏（缺口清单检查）、追踪无断裂（矩阵一致性）、ID 无重复。
-- 自行运行随 skill 包分发的离线校验器：`python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs`，并向用户逐条解读校验结果（通过项与问题项），不要让用户运行该脚本。校验未通过（存在 error）时不得交付最终文档，须修复后重跑校验直至通过；warning 项仅向用户提示、不阻塞交付。
+- 自行运行随 skill 包分发的离线校验器：`python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs/srs-<当前任务书子目录>`，并向用户逐条解读校验结果（通过项与问题项），不要让用户运行该脚本。校验未通过（存在 error）时不得交付最终文档，须修复后重跑校验直至通过；warning 项仅向用户提示、不阻塞交付。全库巡检（父目录 `/mnt/user-data/outputs`）仅在确需检查全部任务时使用，解读时按子目录分段归属各任务。
 
-## 输出文件（写入 `/mnt/user-data/outputs/`）
+## 输出文件（写入 `/mnt/user-data/outputs/srs-<任务书>/`）
+
+每份任务书使用独立子目录 `srs-<任务书文件名规范化>/`，并行处理多份任务书时各写各的子目录、互不覆盖。子目录命名规则：取任务书主文件名（不含扩展名）转小写，仅保留 ASCII 的 `a-z 0-9 _ . -`，其余字符（含空格与中文等全部非 ASCII 字符）替换为 `-`，连续 `-` 合并，去除首尾 `-`，整名截断到 48 字符（截断产生的尾随 `-` 一并去除）；规范化结果为空（如纯中文任务书名）时，用 `srs-<原文件名（含扩展名）sha256 前 8 位十六进制>` 兜底，保证不同任务书仍互不覆盖。子目录内文件：
 
 1. `srs_document.docx` — 需求规格说明书（GJB438C-2021 结构）
 2. `traceability-matrix.docx` — 功能/需求双向追踪矩阵（正向+逆向两张表）
@@ -90,10 +92,11 @@ allowed-tools:
 
 ## 进度与恢复规则
 
-- `progress.json` 每轮用户决策后**立即更新**（阶段、当前功能项序号/数量、每条需求 ID/状态/内容、映射表、章节映射表）。
-- 同一对话线程中：检测到 `progress.json` 存在且阶段未完成 → 主动询问「检测到未完成任务书，是否继续」，继续优先恢复。
+- `progress.json` 每轮用户决策后**立即更新**（阶段、当前功能项序号/数量、每条需求 ID/状态/内容、映射表、章节映射表），写入该任务书自己的 `srs-*` 子目录。`stage` 字段取值依次为 `task_book_parsing`、`requirement_analysis`、`interactive_confirmation`、`matrix_generation`、`document_generation`、`review`，全部交付完成后写 `complete`。
+- 同一对话线程中：检测到任一 `srs-*/progress.json` 存在且阶段未完成 → 列出各未完成任务书名，主动询问「检测到未完成任务书，继续哪一份」；被选中的那份优先恢复，其余任务书目录保持原样不动。
+- 恢复仅限同一对话线程 + 同一任务书：只读取并续写该任务书 `srs-*` 子目录内的进度，不得把一份任务的进度写入另一份的子目录。
 - 阶段未完成时**不**产出最终文档；未确认的需求不得进入最终文档。
-- 新对话线程（uploads 目录不同）不自动恢复，提示从头开始。
+- 新对话线程（uploads 目录不同）或新任务书不自动恢复，提示从头开始。
 
 ## 失败契约
 

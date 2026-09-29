@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
 """End-to-end smoke test for the SRS-writing agent flow (offline simulation).
 
-Simulates the agent pipeline against the sample taskbook:
+Simulates the agent pipeline against three sample task books in parallel:
   1. parse taskbook (via officecli view) -> function item list
   2. candidate requirements per function item
   3. user confirmation (accepted/modified/rejected + one declared gap)
   4. generate srs_document.docx + traceability-matrix.docx via officecli
-  5. write progress.json + requirement-catalog.md
+  5. write progress.json + requirement-catalog.md into each task book's own
+     srs-<normalized taskbook name>/ subdirectory
   6. run the validator bundled with the skill package
-     (resources/skills/srs-writing/scripts/validate_srs_outputs.py) -> expect exit 0
+     (resources/skills/srs-writing/scripts/validate_srs_outputs.py) against
+     the parent outputs dir -> expect every per-task-book subdirectory to
+     pass independently (directory isolation between the task books,
+     including the purely non-ASCII one, which normalizes to srs-<hash8>)
 
-Usage: python3 smoke_srs_flow.py
+Usage: python3 smoke_srs_flow.py [--outputs-dir DIR]
+
+The directory passed as --outputs-dir is wiped (rmtree) and rebuilt from
+scratch on every run.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -72,6 +82,42 @@ REQUIREMENTS = [
 
 GAPS = [{"function_id": "F-6.1", "reason": "任务书第6章交付文档要求为交付物，不构成软件运行需求"}]
 
+FUNCTIONS_B = [
+    ("F-4.1", "系统自检"),
+    ("F-4.2", "固件升级"),
+]
+
+REQUIREMENTS_B = [
+    ("F-4.1-1", "accepted", "F-4.1", "4.1", "软件上电后应自动完成自检，自检通过后方可进入工作状态"),
+    ("F-4.2-1", "modified", "F-4.2", "4.2", "软件应支持通过串口升级固件，升级失败应自动回滚（终稿）"),
+    ("F-4.2-2", "rejected", "F-4.2", "4.2", "远程网络升级（用户拒绝：设备无网络接口）"),
+]
+
+GAPS_B: list[dict[str, str]] = []
+
+FUNCTIONS_C = [
+    ("F-3.1", "告警管理"),
+    ("F-3.2", "报表统计"),
+]
+
+REQUIREMENTS_C = [
+    ("F-3.1-1", "accepted", "F-3.1", "3.1", "软件应在检测指标超限时生成本地声光告警，并支持手动消音"),
+    ("F-3.1-2", "modified", "F-3.1", "3.1", "告警记录应保留至少90天（终稿）"),
+    ("F-3.2-1", "accepted", "F-3.2", "3.2", "软件应按日/月统计检测数量并生成报表"),
+    ("F-3.2-2", "rejected", "F-3.2", "3.2", "报表自动邮件推送（用户拒绝：内网环境无邮件服务）"),
+]
+
+GAPS_C: list[dict[str, str]] = []
+
+# Task books run in parallel; each gets its own srs-* subdirectory. The third
+# one has a purely non-ASCII name: per the SKILL.md rule it must normalize to
+# the sha256 fallback form srs-<8 hex digits> and stay isolated from the rest.
+RUNS = [
+    ("taskbook_detection_management.docx", FUNCTIONS, REQUIREMENTS, GAPS),
+    ("Alpha Navigation TaskBook.docx", FUNCTIONS_B, REQUIREMENTS_B, GAPS_B),
+    ("某系统任务书.docx", FUNCTIONS_C, REQUIREMENTS_C, GAPS_C),
+]
+
 
 def run(cmd: list[str]) -> str:
     with tempfile.NamedTemporaryFile("w+", suffix=".log", delete=False, encoding="utf-8") as tf:
@@ -83,12 +129,12 @@ def run(cmd: list[str]) -> str:
             tf.close()
 
 
-def build_progress() -> dict:
+def build_progress(taskbook: str, functions: list[tuple[str, str]], requirements: list[tuple[str, str, str, str, str]], gaps: list[dict[str, str]]) -> dict:
     return {
         "stage": "complete",
-        "taskbook": "taskbook_detection_management.docx",
+        "taskbook": taskbook,
         "current_function": None,
-        "functions": [{"id": fid, "name": name} for fid, name in FUNCTIONS],
+        "functions": [{"id": fid, "name": name} for fid, name in functions],
         "requirements": [
             {
                 "id": rid,
@@ -100,12 +146,50 @@ def build_progress() -> dict:
                 "priority": "高",
                 "verification": "评审/测试",
             }
-            for rid, status, src, ch, desc in REQUIREMENTS
+            for rid, status, src, ch, desc in requirements
         ],
-        "gaps": GAPS,
-        "declared_gaps": [g["function_id"] for g in GAPS],
+        "gaps": gaps,
+        "declared_gaps": [g["function_id"] for g in gaps],
         "srs_sections": {},
     }
+
+
+def run_subdir(outputs: Path, taskbook: str) -> Path:
+    """Per-task-book subdirectory named srs-<normalized stem>, following the
+    SKILL.md rule: lowercase, keep only ASCII ``a-z 0-9 _ . -`` (everything
+    else, including all non-ASCII characters, becomes '-'), collapse runs of
+    '-', strip leading and trailing '-', truncate to 48 characters. A name
+    that normalizes to empty (e.g. a purely Chinese task-book name) falls
+    back to ``srs-<sha256(original filename)[:8]>`` so such task books stay
+    isolated instead of collapsing into one shared ``srs-`` directory."""
+    stem = Path(taskbook).stem.lower()
+    safe = re.sub(r"[^0-9a-z_.]+", "-", stem).strip("-")[:48].rstrip("-")
+    if not safe:
+        digest = hashlib.sha256(taskbook.encode("utf-8")).hexdigest()[:8]
+        return outputs / f"srs-{digest}"
+    return outputs / f"srs-{safe}"
+
+
+def write_taskbook_outputs(
+    run_dir: Path,
+    taskbook: str,
+    functions: list[tuple[str, str]],
+    requirements: list[tuple[str, str, str, str, str]],
+    gaps: list[dict[str, str]],
+) -> None:
+    """Write one task book's complete artifact set into its own subdirectory."""
+    run_dir.mkdir(parents=True)
+    accepted = [r for r in requirements if r[1] != "rejected"]
+    build_docx(run_dir / "srs_document.docx", "软件需求规格说明书（GJB438C-2021）", [f"{rid} {desc}" for rid, _, _, _, desc in accepted])
+    build_docx(run_dir / "traceability-matrix.docx", "需求追踪矩阵", [f"{rid} <- {src} ({ch})" for rid, _, src, ch, _ in accepted])
+
+    progress = build_progress(taskbook, functions, requirements, gaps)
+    (run_dir / "progress.json").write_text(json.dumps(progress, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    catalog_lines = ["| ID | 状态 | 来源功能项 | 来源章节 | 描述 |", "|---|---|---|---|---|"]
+    for rid, status, src, ch, desc in requirements:
+        catalog_lines.append(f"| {rid} | {status} | {src} | {ch} | {desc} |")
+    (run_dir / "requirement-catalog.md").write_text("\n".join(catalog_lines) + "\n", encoding="utf-8")
 
 
 def build_docx(path: Path, title: str, body_paras: list[str]) -> None:
@@ -133,28 +217,33 @@ def main() -> int:
     parser.add_argument("--outputs-dir", default="/tmp/srs-smoke-outputs", help="Temp dir holding generated outputs")
     args = parser.parse_args()
     outputs = Path(args.outputs_dir)
+    # Fixtures always start from a clean directory so leftover runs cannot
+    # mask the nested-layout scenario.
+    shutil.rmtree(outputs, ignore_errors=True)
     outputs.mkdir(parents=True, exist_ok=True)
-    progress = build_progress()
 
-    accepted = [r for r in REQUIREMENTS if r[1] != "rejected"]
-    srs_body = [f"{rid} {desc}" for rid, _, _, _, desc in accepted]
-    matrix_body = [f"{rid} <- {src} ({ch})" for rid, _, src, ch, _ in accepted]
-    build_docx(outputs / "srs_document.docx", "软件需求规格说明书（GJB438C-2021）", srs_body)
-    build_docx(outputs / "traceability-matrix.docx", "需求追踪矩阵", matrix_body)
+    run_dirs = []
+    for taskbook, functions, requirements, gaps in RUNS:
+        run_dir = run_subdir(outputs, taskbook)
+        write_taskbook_outputs(run_dir, taskbook, functions, requirements, gaps)
+        run_dirs.append(run_dir)
 
-    (outputs / "progress.json").write_text(json.dumps(progress, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    catalog_lines = ["| ID | 状态 | 来源功能项 | 来源章节 | 描述 |", "|---|---|---|---|---|"]
-    for rid, status, src, ch, desc in REQUIREMENTS:
-        catalog_lines.append(f"| {rid} | {status} | {src} | {ch} | {desc} |")
-    (outputs / "requirement-catalog.md").write_text("\n".join(catalog_lines) + "\n", encoding="utf-8")
+    # Isolation: the purely non-ASCII task book must land in the sha256
+    # fallback form srs-<hash8> (not a collapsed shared "srs-" directory),
+    # and no two task books may share a subdirectory.
+    non_ascii_dir = run_dirs[-1]
+    assert re.fullmatch(r"srs-[0-9a-f]{8}", non_ascii_dir.name), f"non-ASCII task-book subdir {non_ascii_dir.name!r} is not srs-<hash8>"
+    assert len({d.name for d in run_dirs}) == len(run_dirs), "task-book subdirectories are not isolated"
 
     print("=== outputs generated under", outputs)
-    for f in sorted(outputs.iterdir()):
-        print(f"  {f.name} ({f.stat().st_size} bytes)")
+    for run_dir in run_dirs:
+        print(f"  {run_dir.name}/")
+        for f in sorted(run_dir.iterdir()):
+            print(f"    {f.name} ({f.stat().st_size} bytes)")
 
-    print("=== running offline validator bundled with the skill package")
+    print("=== running offline validator bundled with the skill package (parent dir, per-task-book subdirectories)")
     print(run([sys.executable, str(VALIDATOR), "--outputs-dir", str(outputs)]))
+    print(f"=== smoke summary: {len(run_dirs)} task-book runs, all validated in isolated subdirectories")
     return 0
 
 

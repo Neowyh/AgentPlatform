@@ -26,6 +26,10 @@ Dependencies: stdlib only. Usage:
 
     python /mnt/skills/srs-writing/scripts/validate_srs_outputs.py --outputs-dir /mnt/user-data/outputs
 
+When the outputs directory has no progress.json of its own, each one-level
+subdirectory holding one is validated as an independent per-task-book run
+(any failing run fails the whole validation).
+
 Exit code 0 when there are no errors (warnings do not affect it).
 """
 
@@ -232,30 +236,37 @@ def check_pending_requirements(data: dict) -> None:
         fail(f"stage {stage!r} still has pending requirements (not accepted/modified/rejected): {pending}")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate SRS-writing agent outputs.")
-    parser.add_argument("--outputs-dir", default="/mnt/user-data/outputs", help="Directory holding the SRS outputs")
-    args = parser.parse_args()
+def discover_run_dirs(outputs: Path) -> list[Path]:
+    """Run directories to validate under ``outputs``.
 
-    outputs = Path(args.outputs_dir)
-    print(f"Validating outputs under {outputs}")
-    if not outputs.is_dir():
-        print("FAILED: outputs directory not found")
-        return 1
+    Flat layout first: when ``outputs`` holds progress.json itself, it is the
+    only run. Otherwise each one-level-deep subdirectory holding a
+    progress.json is one per-task-book run; anything deeper is ignored.
+    An empty result means no progress file anywhere.
+    """
+    if (outputs / "progress.json").exists():
+        return [outputs]
+    return sorted(p.parent for p in outputs.glob("*/progress.json"))
 
-    data = load_progress(outputs)
+
+def validate_run(run_dir: Path) -> bool:
+    """Run every check for one run directory and print the findings.
+
+    False when progress.json is unreadable or any check failed.
+    """
+    data = load_progress(run_dir)
     if not data:
         print("FAILED: could not load progress.json")
-        return 1
+        return False
 
     print("Checking requirement catalog integrity...")
     check_id_uniqueness(data.get("requirements", []))
     check_traceability(data)
     print("Checking generated .docx artifacts...")
-    check_artifacts(outputs, data)
-    check_id_presence(outputs, data)
+    check_artifacts(run_dir, data)
+    check_id_presence(run_dir, data)
     print("Checking requirement catalog consistency...")
-    check_requirement_catalog(outputs, data)
+    check_requirement_catalog(run_dir, data)
     check_pending_requirements(data)
     print("Checking requirement wording...")
     check_vague_words(data)
@@ -268,8 +279,47 @@ def main() -> int:
         print("\nFAILED with the following issues:")
         for item in CHECK_FAILURES:
             print(f"  - {item}")
-        return 1
+        return False
     print("\nALL CHECKS PASSED")
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate SRS-writing agent outputs.")
+    parser.add_argument("--outputs-dir", default="/mnt/user-data/outputs", help="Directory holding the SRS outputs")
+    args = parser.parse_args()
+
+    outputs = Path(args.outputs_dir)
+    print(f"Validating outputs under {outputs}")
+    if not outputs.is_dir():
+        print("FAILED: outputs directory not found")
+        return 1
+
+    run_dirs = discover_run_dirs(outputs)
+    if not run_dirs:
+        # Neither the directory itself nor a one-level task-book subdirectory
+        # holds progress.json: keep the flat-layout failure semantics.
+        load_progress(outputs)
+        print("FAILED: could not load progress.json")
+        return 1
+    if len(run_dirs) == 1:
+        # Flat layout and single-task-book subdirectory behave identically.
+        return 0 if validate_run(run_dirs[0]) else 1
+
+    # Several task books ran in parallel: validate each subdirectory in turn,
+    # labeling the findings with the directory name; any failure fails all.
+    passed = 0
+    for run_dir in run_dirs:
+        CHECK_FAILURES.clear()
+        WARNINGS.clear()
+        print(f"\n--- {run_dir.name} ---")
+        if validate_run(run_dir):
+            passed += 1
+    failed = len(run_dirs) - passed
+    if failed:
+        print(f"\nFAILED: {failed} of {len(run_dirs)} task-book runs failed validation")
+        return 1
+    print(f"\nAll {len(run_dirs)} task-book runs passed validation")
     return 0
 
 

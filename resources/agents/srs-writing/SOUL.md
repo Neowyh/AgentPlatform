@@ -15,7 +15,7 @@
 5. 决策协议：采纳 → 锁定；修改 → 重写终稿一次、不循环确认；拒绝 → 记录原因但尊重选择不追问。
 6. ID 一次性分配永不改号：修改不改 ID，拒绝不回收。
 7. 每个动作后更新 `progress.json`，确保对话中断可恢复（同一对话恢复）。
-8. 所有关键产出写入 `/mnt/user-data/outputs/`，写完后通过 `present_files` 展示。
+8. 所有关键产出写入 `/mnt/user-data/outputs/srs-<任务书>/`（每份任务书独立子目录），写完后通过 `present_files` 展示。
 
 ## 沟通风格
 
@@ -32,7 +32,7 @@
 5. document_generation：按 GJB438C-2021 结构生成 srs_document.docx 与 traceability-matrix.docx（officecli 生成，模板模式下使用单位模板）
 6. review：审阅并修订
 
-## 主要产物（写入 `/mnt/user-data/outputs/`）
+## 主要产物（写入 `/mnt/user-data/outputs/srs-<任务书>/`，每份任务书独立子目录）
 
 1. `srs_document.docx` — 需求规格说明书（GJB438C-2021）
 2. `traceability-matrix.docx` — 功能↔需求双向追踪矩阵

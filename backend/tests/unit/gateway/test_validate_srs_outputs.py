@@ -78,11 +78,12 @@ def make_outputs_dir(
     tmp_path: Path,
     data: dict,
     *,
+    dir_name: str = "outputs",
     rejected_in_docx: list[str] | None = None,
     srs_texts: list[str] | None = None,
     matrix_texts: list[str] | None = None,
 ) -> Path:
-    outputs = tmp_path / "outputs"
+    outputs = tmp_path / dir_name
     outputs.mkdir()
     (outputs / "progress.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     present_ids = [r["id"] for r in data["requirements"] if r["status"] != "rejected"]
@@ -593,6 +594,37 @@ def test_main_complete_stage_with_pending_requirement_exits_nonzero(tmp_path: Pa
     assert "still has pending requirements" in capsys.readouterr().out
 
 
+# --- discover_run_dirs -------------------------------------------------------
+
+
+def test_discover_run_dirs_flat_layout_returns_outputs_dir_itself(tmp_path: Path) -> None:
+    outputs = make_outputs_dir(tmp_path, make_data())
+
+    assert validator.discover_run_dirs(outputs) == [outputs]
+
+
+def test_discover_run_dirs_returns_single_taskbook_subdir(tmp_path: Path) -> None:
+    run_dir = make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-alpha")
+
+    assert validator.discover_run_dirs(tmp_path) == [run_dir]
+
+
+def test_discover_run_dirs_returns_all_taskbook_subdirs_sorted(tmp_path: Path) -> None:
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-beta")
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-alpha")
+
+    assert validator.discover_run_dirs(tmp_path) == [tmp_path / "srs-taskbook-alpha", tmp_path / "srs-taskbook-beta"]
+
+
+def test_discover_run_dirs_entries_without_progress_json_are_ignored(tmp_path: Path) -> None:
+    parent = tmp_path / "outputs"
+    parent.mkdir()
+    (parent / "srs-empty").mkdir()
+    (parent / "notes.txt").write_text("not a run", encoding="utf-8")
+
+    assert validator.discover_run_dirs(parent) == []
+
+
 # --- main ------------------------------------------------------------------
 
 
@@ -624,6 +656,55 @@ def test_main_outputs_dir_missing_returns_nonzero(tmp_path: Path, monkeypatch: p
     assert validator.main() == 1
 
     assert "outputs directory not found" in capsys.readouterr().out
+
+
+def test_main_single_taskbook_subdir_is_validated_and_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-alpha")
+    monkeypatch.setattr(sys, "argv", ["validate_srs_outputs.py", "--outputs-dir", str(tmp_path)])
+
+    assert validator.main() == 0
+
+    assert "ALL CHECKS PASSED" in capsys.readouterr().out
+
+
+def test_main_without_progress_json_anywhere_keeps_missing_progress_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    parent = tmp_path / "outputs"
+    parent.mkdir()
+    (parent / "srs-taskbook-alpha").mkdir()
+    monkeypatch.setattr(sys, "argv", ["validate_srs_outputs.py", "--outputs-dir", str(parent)])
+
+    assert validator.main() == 1
+
+    captured = capsys.readouterr().out
+    assert "could not load progress.json" in captured
+    assert "ALL CHECKS PASSED" not in captured
+
+
+def test_main_multiple_taskbook_subdirs_all_pass_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-beta")
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-alpha")
+    monkeypatch.setattr(sys, "argv", ["validate_srs_outputs.py", "--outputs-dir", str(tmp_path)])
+
+    assert validator.main() == 0
+
+    captured = capsys.readouterr().out
+    assert "srs-taskbook-alpha" in captured
+    assert "srs-taskbook-beta" in captured
+    assert captured.count("ALL CHECKS PASSED") == 2
+
+
+def test_main_multiple_taskbook_subdirs_any_failure_exits_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-alpha")
+    broken = make_outputs_dir(tmp_path, make_data(), dir_name="srs-taskbook-beta")
+    (broken / "requirement-catalog.md").unlink()
+    monkeypatch.setattr(sys, "argv", ["validate_srs_outputs.py", "--outputs-dir", str(tmp_path)])
+
+    assert validator.main() == 1
+
+    captured = capsys.readouterr().out
+    assert "missing requirement-catalog.md" in captured
+    assert "srs-taskbook-alpha" in captured
+    assert "srs-taskbook-beta" in captured
 
 
 # --- severity grading -------------------------------------------------------
