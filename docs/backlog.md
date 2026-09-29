@@ -15,5 +15,6 @@
 | DOC-03 | 前端组件开发和数据模型参考 | engineering maintainers | planned | 新开发者可从入口定位类型、组件和示例 |
 | PERM-01 | 补齐权限模型剩余 API/UI 差异 | security and platform maintainers | planned | 每项有 contract test、实现链接和验收命令 |
 | PERM-02 | 权限审计日志与错误码持续核对 | security maintainers | planned | 审计报告与当前代码、矩阵和测试保持一致 |
+| SRS-01 | 平台级 SRS Result Contract 立项：Run 完成前由平台强制执行版本化 SRS 产物契约，替代 Skill 内校验器保底（已立项未排期，权衡与重评触发条件见 [ADR-0006](adr/0006-srs-validation-defers-result-contract.md)） | platform maintainers | planned | Run 完成前平台强制校验 SRS 产物，契约版本随 Run 固定；重评触发条件命中 ADR-0006 任一条即启动 |
 
 已完成事项不在本表重复列为缺口；需要追溯时使用归档索引和对应历史文件。
