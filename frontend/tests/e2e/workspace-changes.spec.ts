@@ -106,6 +106,9 @@ test.describe("Workspace changes", () => {
     await expect(page.getByText("Edited 2 files")).toHaveCount(1);
     await expect(page.getByText("outputs/report.md")).toBeVisible();
     await expect(page.getByText("notes.txt")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /workspace changes/i }),
+    ).toHaveCount(0);
     expect(includeDiffValues).toContain("false");
 
     await page.getByRole("button", { name: "View changes" }).click();
@@ -120,6 +123,67 @@ test.describe("Workspace changes", () => {
     expect(includeDiffValues).toContain("true");
     await expect(page.getByText("+Ready")).toBeVisible();
     await expect(page.getByText("-Draft")).toBeVisible();
+  });
+
+  test("does not show a review entry or panel when the run changed no files", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, {
+      threads: [
+        {
+          thread_id: THREAD_ID,
+          title: "Workspace changes",
+          updated_at: "2026-07-04T10:00:00Z",
+          messages: [
+            {
+              type: "human",
+              id: "msg-human-no-workspace-changes",
+              content: [{ type: "text", text: "Explain this" }],
+              run_id: RUN_ID,
+            },
+            {
+              type: "ai",
+              id: "msg-ai-no-workspace-changes",
+              content: "Here is the explanation.",
+              run_id: RUN_ID,
+            },
+          ],
+        },
+      ],
+    });
+    await page.route(
+      `**/api/threads/${THREAD_ID}/runs/${RUN_ID}/workspace-changes?*`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            available: true,
+            version: 1,
+            summary: {
+              created: 0,
+              modified: 0,
+              deleted: 0,
+              symlink_created: 0,
+              additions: 0,
+              deletions: 0,
+              truncated: false,
+            },
+            files: [],
+            limits: {},
+          }),
+        });
+      },
+    );
+
+    await page.goto(`/workspace/chats/${THREAD_ID}`);
+
+    await expect(
+      page.getByRole("button", { name: "View changes" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /workspace changes/i }),
+    ).toHaveCount(0);
   });
 
   test("renders one badge for a run that ends in two assistant bubbles", async ({
