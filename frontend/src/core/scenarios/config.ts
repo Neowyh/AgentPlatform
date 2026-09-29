@@ -318,6 +318,33 @@ export const SCENARIOS: ScenarioTab[] = [
         ],
       },
       {
+        agentSlug: "code-audit",
+        label: "代码审计",
+        chips: [
+          {
+            taskId: "code-audit-changes",
+            label: "变更缺陷审计",
+            skillName: "open-code-review",
+            promptTemplate:
+              "请对当前代码变更执行缺陷审计（完整引擎）。评审范围：[工作区改动/提交区间/单提交，留空默认工作区]；业务背景：[需求或变更意图]；重点关注：[内存安全/注入/并发/错误处理]。请按严重程度输出带文件行号与代码证据的审计报告。",
+          },
+          {
+            taskId: "code-audit-full",
+            label: "存量代码体检",
+            skillName: "open-code-review",
+            promptTemplate:
+              "请对存量代码执行全量体检。目标目录或模块：[路径]；语言：[C/C++/Python 等]；重点关注：[内存越界/资源泄漏/空指针/注入]。请按严重程度输出带文件行号与代码证据的审计报告。",
+          },
+          {
+            taskId: "code-audit-delegate",
+            label: "委托模式审计",
+            skillName: "open-code-review-delegate",
+            promptTemplate:
+              "请以委托模式对代码变更执行缺陷审计（ocr 只做文件筛选与规则解析，由你自行评审）。评审范围：[工作区改动/提交区间/单提交]；业务背景：[需求或变更意图]；重点关注：[内存安全/注入/并发/错误处理]。请按严重程度输出带覆盖率与代码证据的审计报告。",
+          },
+        ],
+      },
+      {
         agentSlug: "srs-writing",
         label: "软件需求规格编写",
         chips: [

@@ -41,6 +41,7 @@ def _offline_env() -> dict[str, str]:
             ("-m pip", "subprocess", "INSTALL spatial", "fetchdf", "st_read"),
         ),
         ("ppt-generation/scripts/generate.py", ("-m pip", "subprocess")),
+        ("open-code-review/scripts/render_report.py", ("-m pip", "subprocess", "urllib", "socket")),
     ],
 )
 def test_skill_scripts_have_no_runtime_network_calls(skill: str, forbidden: tuple[str, ...]) -> None:

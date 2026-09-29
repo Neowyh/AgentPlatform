@@ -34,6 +34,8 @@ translate                    # 多语言互译，格式约束自检，纯 LLM �
 tdd                          # 测试驱动开发方法论（750K 安装，mattpocock，纯 LLM）
 improve-codebase-architecture # 代码架构重构建议（776K 安装，mattpocock，纯 LLM）
 code-review                  # 代码审查方法论（397K 安装，mattpocock，纯 LLM）
+open-code-review             # AI 代码评审完整引擎（alibaba ocr CLI，需内网预装二进制；完整引擎另需内网 provider）
+open-code-review-delegate    # AI 代码评审委托模式（ocr 只做文件筛选与规则解析，模型走平台，无需 provider）
 diagnosing-bugs              # Bug 诊断流程（457K 安装，mattpocock，纯 LLM）
 domain-modeling               # 领域建模（477K 安装，mattpocock，纯 LLM）
 ask-matt                     # 技能选择助手

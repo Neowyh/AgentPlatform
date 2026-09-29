@@ -584,6 +584,30 @@
       "display_name": "论文评审专家",
       "visibility": "public",
       "source": "resources/agents/paper-review"
+    },
+    {
+      "id": "96bf7d00-ef22-5c00-b2a9-36b544f6011d",
+      "type": "skill",
+      "slug": "open-code-review",
+      "display_name": "AI 代码评审（完整引擎）",
+      "visibility": "public",
+      "source": "resources/skills/open-code-review"
+    },
+    {
+      "id": "aa1f5e9a-16bc-58e5-817c-a6b25061f7bf",
+      "type": "skill",
+      "slug": "open-code-review-delegate",
+      "display_name": "AI 代码评审（委托模式）",
+      "visibility": "public",
+      "source": "resources/skills/open-code-review-delegate"
+    },
+    {
+      "id": "fc50c28d-a9d9-5672-8117-b4f5d684ec66",
+      "type": "agent",
+      "slug": "code-audit",
+      "display_name": "代码审计专家",
+      "visibility": "public",
+      "source": "resources/agents/code-audit"
     }
   ]
 }

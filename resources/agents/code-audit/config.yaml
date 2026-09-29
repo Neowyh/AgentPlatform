@@ -1,0 +1,10 @@
+name: code-audit
+description: 代码审计专家，基于 open-code-review 引擎对 Git 变更执行行级缺陷审计，产出带证据的中文审计报告
+tool_groups:
+  - file:read
+  - file:write
+  - bash
+  - document
+skills:
+  - open-code-review
+  - open-code-review-delegate

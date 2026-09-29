@@ -57,13 +57,13 @@ describe("SCENARIOS config", () => {
 
   it("keeps the complete scenario entry inventory aligned with the release", () => {
     expect(SCENARIOS.flatMap((scenario) => scenario.agentPills)).toHaveLength(
-      15,
+      16,
     );
     expect(
       SCENARIOS.flatMap((scenario) =>
         scenario.agentPills.flatMap((pill) => pill.chips ?? []),
       ),
-    ).toHaveLength(43);
+    ).toHaveLength(46);
   });
 
   it("assigns a unique task ID to every task entry", () => {
