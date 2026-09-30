@@ -111,6 +111,15 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
 # Install Docker CLI (for DooD: allows starting sandbox containers via host Docker socket)
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
+# Static-analysis scanners for the code toolgroup (analyze_code_evidence).
+# Pinned to the Debian bookworm stable versions so scanner_status versions
+# are reproducible; rebuild the image to pick them up.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        clang-tidy=1:14.0-55.7~deb12u1 \
+        cppcheck=2.10-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv (source image overridable via UV_IMAGE build arg)
 COPY --from=uv-source /uv /uvx /usr/local/bin/
 

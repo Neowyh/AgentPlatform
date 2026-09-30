@@ -725,6 +725,9 @@ tool_groups:
   - name: knowledge
   # 归零执行内核的聊天闭环工具组：仅注册给声明本组的归零 Expert。
   - name: fault-zeroing
+  # 代码证据工具组：归零代码包静态分析（analyze_code_evidence）与
+  # 沙箱代码执行（code_interpreter）。
+  - name: code
 
 # ============================================================================
 # Tools Configuration
@@ -747,6 +750,26 @@ tools:
   - name: check_zeroing_run
     group: fault-zeroing
     use: app.agentplatform.tools.zeroing_run_tool:check_zeroing_run_tool
+
+  # 归零代码证据静态分析（ticket 01）：analyze_code_evidence 只接受本会话的
+  # 代码证据包根 /mnt/user-data/code-evidence/<package_id>，工具内部自带路径
+  # 约束（包外结构化拒绝），按语言分发只读扫描器（C/C++: clang-tidy+cppcheck；
+  # Python: ruff+bandit），产物写入包内 analysis/。扫描器不可用时如实披露
+  # scanner_status，不会把“没扫”伪装成“扫过无发现”。
+  - name: analyze_code_evidence
+    group: code
+    use: app.agentplatform.tools.analyze_code_evidence_tool:analyze_code_evidence_tool
+
+  # 沙箱代码解释器（ticket 01 接线，不改执行语义）：沿用模块既有三重上限
+  # 300s 超时 / 20k 字符输出 / 1MB 代码体积。
+  - name: code_interpreter
+    group: code
+    use: app.agentplatform.community.code_interpreter.tools:code_interpreter_tool
+
+  # 结构化数据分析（只读）：仅可读取 /mnt/user-data 与 /tmp 下的文件。
+  - name: data_analyzer
+    group: knowledge
+    use: app.agentplatform.community.data_analyzer.tools:data_analyzer_tool
 
   # RAGFlow knowledge retrieval (read-only). Uncomment this single entry.
   # `datasets` is optional. Omit it to list every tenant-visible dataset at
