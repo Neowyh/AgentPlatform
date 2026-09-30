@@ -762,7 +762,37 @@ describe("ChatPage", () => {
     expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([
       "skill-resource-id",
     ]);
-    expect(mockLastInputBoxProps.current.skillInvocationEnabled).toBe(false);
+    // The expert session keeps the slash skill entry available; the Agent
+    // closure in `allowedSkillNames` is what limits which skills are offered.
+    expect(
+      mockLastInputBoxProps.current.skillInvocationEnabled,
+    ).toBeUndefined();
+  });
+
+  test("treats a selected Agent without skills as an empty skill closure", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "office-docs", resource_id: "agent-resource-id" }],
+    });
+    mockUseAgent.mockReturnValue({ agent: { skills: null } });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    act(() => screen.getByRole("tab", { name: "日常办公" }).click());
+    act(() => screen.getByTestId("scenario-cascade-bar").click());
+
+    // A loaded Agent with no Skill dependencies owns an empty closure: the
+    // backend rejects any skill invocation (skill_outside_agent_closure).
+    expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([]);
   });
 
   test("passes canonical Agent and Skill resource IDs in the selection context", () => {

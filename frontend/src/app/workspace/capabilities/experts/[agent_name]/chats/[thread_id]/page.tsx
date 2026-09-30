@@ -467,6 +467,12 @@ export default function AgentChatPage() {
                     context={{
                       ...settings.context,
                     }}
+                    // The expert session's slash skill panel only offers the
+                    // Agent's dependency closure (the published config's Skill
+                    // list); the backend rejects anything else with
+                    // skill_outside_agent_closure. Unfiltered while the
+                    // details load — same fallback as the workspace chat page.
+                    allowedSkillNames={agent ? (agent.skills ?? []) : undefined}
                     disabled={
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
                       isUploading ||

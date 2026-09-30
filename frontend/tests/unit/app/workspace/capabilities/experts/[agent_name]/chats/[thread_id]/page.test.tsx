@@ -292,6 +292,34 @@ describe("AgentChatPage", () => {
     expect(screen.getByTestId("input-box")).toBeInTheDocument();
   });
 
+  test("filters the slash skill panel to the agent's closure skills", () => {
+    mockUseAgent.mockReturnValue({
+      agent: {
+        name: "test-agent",
+        skills: ["docx-helper", "skill-resource-id"],
+      },
+    });
+    render(<AgentChatPage />);
+    expect(lastInputBoxProps.allowedSkillNames).toEqual([
+      "docx-helper",
+      "skill-resource-id",
+    ]);
+  });
+
+  test("treats an agent without skills as an empty skill closure", () => {
+    mockUseAgent.mockReturnValue({
+      agent: { name: "test-agent", skills: null },
+    });
+    render(<AgentChatPage />);
+    expect(lastInputBoxProps.allowedSkillNames).toEqual([]);
+  });
+
+  test("leaves skills unfiltered while agent details are loading", () => {
+    mockUseAgent.mockReturnValue({ agent: null });
+    render(<AgentChatPage />);
+    expect(lastInputBoxProps.allowedSkillNames).toBeUndefined();
+  });
+
   test("renders thread title", () => {
     render(<AgentChatPage />);
     expect(screen.getByTestId("thread-title")).toBeInTheDocument();

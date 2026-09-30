@@ -363,7 +363,10 @@ export function InputBox({
   allowedSkillNames?: readonly string[];
   /**
    * Whether the composer offers skill invocation at all (the "/" picker and
-   * the Skill trigger). Chat pages hide it while a scenario pill is selected.
+   * the Skill trigger). On by default: expert (Agent-scoped) sessions keep the
+   * entry available and limit what it offers through `allowedSkillNames`, so
+   * this only remains as an explicit opt-out for callers that must hide the
+   * entry entirely.
    */
   skillInvocationEnabled?: boolean;
   /** Scenario/agent tags pinned to the composer (inline agent tag). */

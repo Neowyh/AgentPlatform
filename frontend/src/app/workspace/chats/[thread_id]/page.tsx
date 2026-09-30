@@ -215,12 +215,14 @@ export default function ChatPage() {
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
-    const agent = selectedAgentDetails;
-    return (
-      agent?.skills ??
-      getChipsByPill(selectedPill.scenarioId, selectedPill.agentSlug).map(
-        (chip) => chip.skillName,
-      )
+    // The selected Agent's dependency closure: the published config lists its
+    // Skill dependencies (name/slug/resource id all match). While the details
+    // are still loading, fall back to the scenario chips; a loaded Agent with
+    // no Skill dependencies owns an empty closure — the backend rejects any
+    // other skill with skill_outside_agent_closure.
+    if (selectedAgentDetails) return selectedAgentDetails.skills ?? [];
+    return getChipsByPill(selectedPill.scenarioId, selectedPill.agentSlug).map(
+      (chip) => chip.skillName,
     );
   }, [selectedAgentDetails, selectedPill]);
 
@@ -656,7 +658,6 @@ export default function ChatPage() {
                         }
                         context={selectionContext}
                         allowedSkillNames={allowedSkillNames}
-                        skillInvocationEnabled={!selectedPill}
                         pendingTemplate={pendingTemplate}
                         clearInjectedTemplateKey={templateResetKey}
                         onPendingTemplateConsumed={() =>
