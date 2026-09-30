@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -51,13 +54,14 @@ async def _snapshot_agent(
     source: Path,
     *,
     lifecycle_status: str = "active",
+    resource_id: str = "7e011a72-7e02-4df2-a881-babb18565bd3",
+    slug: str = "writer",
 ) -> Resource:
-    resource_id = "7e011a72-7e02-4df2-a881-babb18565bd3"
     published = storage.publish_staged(storage.stage_directory("agent", resource_id, source), version=1)
     resource = Resource(
         id=resource_id,
         type="agent",
-        slug="writer",
+        slug=slug,
         display_name="Writer",
         owner_id="owner",
         visibility="public",
@@ -74,7 +78,7 @@ async def _snapshot_agent(
         [
             resource,
             ResourceVersion(
-                id="agent-version",
+                id=f"agent-version-{resource_id}",
                 resource_id=resource.id,
                 version=1,
                 content_hash=published.content_hash,
@@ -83,7 +87,7 @@ async def _snapshot_agent(
                 created_by="owner",
             ),
             RunResourceSnapshot(
-                id="agent-snapshot",
+                id=f"agent-snapshot-{resource_id}",
                 run_id="run-1",
                 root_resource_id=resource.id,
                 resource_id=resource.id,
@@ -289,3 +293,223 @@ async def test_agent_skills_missing_reference_fails_closed(
 
     with pytest.raises(ResourceRuntimeError, match="unresolved Skill dependencies"):
         await CanonicalResourceLoader(session, storage).load_agent_skills("run-1", agent.id)
+
+
+@pytest.mark.asyncio
+async def test_agent_skills_missing_uuid_reference_fails_closed(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A declared skill UUID outside the Run's closure must fail closed.
+
+    Silently dropping the unresolvable entry would turn a declared skill into
+    an undeclared one — the allowlist would be narrower than the author
+    intended without any signal — so the missing entry must raise instead.
+    """
+    missing_skill_id = "b7e2c9a4-1111-4ccc-8333-400000000004"
+    agent_source = tmp_path / "agent-with-missing-uuid-skill"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text(f"name: writer\nskills: [{missing_skill_id}]\n")
+    storage = ResourceStorage(tmp_path)
+    agent = await _snapshot_agent(session, storage, agent_source)
+
+    with pytest.raises(ResourceRuntimeError, match="unresolved Skill dependencies"):
+        await CanonicalResourceLoader(session, storage).load_agent_skills("run-1", agent.id)
+
+
+async def _snapshot_skill_dependency(
+    session: AsyncSession,
+    storage: ResourceStorage,
+    agent: Resource,
+    skill_source: Path,
+    *,
+    skill_id: str,
+    skill_slug: str,
+    run_id: str = "run-1",
+) -> None:
+    from app.agentplatform.resource_models import ResourceDependency
+
+    skill_published = storage.publish_staged(storage.stage_directory("skill", skill_id, skill_source), version=1)
+    session.add_all(
+        [
+            Resource(
+                id=skill_id,
+                type="skill",
+                slug=skill_slug,
+                display_name=skill_slug,
+                owner_id="owner",
+                visibility="public",
+                scope_department_id=None,
+                lifecycle_status="active",
+                latest_version=1,
+                draft_revision=0,
+                storage_kind="filesystem",
+                storage_key=f"skills/{skill_id}",
+                system_owned=False,
+                authz_revision=1,
+            ),
+            ResourceVersion(
+                id=f"skill-version-{skill_id}",
+                resource_id=skill_id,
+                version=1,
+                content_hash=skill_published.content_hash,
+                storage_key=skill_published.storage_key,
+                scan_result={},
+                created_by="owner",
+            ),
+            ResourceDependency(id=f"agent-skill-{skill_id}", source_resource_id=agent.id, target_resource_id=skill_id),
+            RunResourceSnapshot(
+                id=f"skill-snapshot-{skill_id}",
+                run_id=run_id,
+                root_resource_id=agent.id,
+                resource_id=skill_id,
+                version=1,
+                content_hash=skill_published.content_hash,
+                authz_revision=1,
+            ),
+        ]
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_canonical_load_translates_frozen_skill_uuids_to_skill_names(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """The canonical load seam exposes config.skills as skill names.
+
+    Bundled seeding and draft saves normalize declared skills to resource
+    UUIDs in the frozen config, but every downstream consumer (prompt
+    rendering, activation whitelist, thread skill projection) matches by
+    skill name. After the canonical load seam the in-memory config must
+    carry names while the frozen snapshot semantics stay untouched.
+    """
+    skill_id = "951d48c2-c528-41ac-b188-5636ca425f70"
+    agent_source = tmp_path / "agent-with-uuid-skill"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text(f"name: writer\nskills: [{skill_id}]\n")
+    skill_source = tmp_path / "skill"
+    skill_source.mkdir()
+    (skill_source / "SKILL.md").write_text("---\nname: research\ndescription: Research carefully\n---\n# Research\n")
+    storage = ResourceStorage(tmp_path)
+    agent = await _snapshot_agent(session, storage, agent_source)
+    await _snapshot_skill_dependency(session, storage, agent, skill_source, skill_id=skill_id, skill_slug="research")
+
+    loader = CanonicalResourceLoader(session, storage)
+    definition = await loader.load_agent("run-1", agent.id)
+    skill_definitions = await loader.load_agent_skill_definitions("run-1", agent.id, definition=definition)
+
+    assert [item.skill.name for item in skill_definitions] == ["research"]
+    assert definition.config.skills == ["research"]
+
+    # Idempotent: a translated (slug-keyed) config passes through unchanged.
+    await loader.load_agent_skill_definitions("run-1", agent.id, definition=definition)
+    assert definition.config.skills == ["research"]
+
+
+@pytest.mark.asyncio
+async def test_canonical_load_keeps_none_and_empty_skill_lists_passthrough(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """`skills: None` and `skills: []` keep their unrestricted / disabled semantics."""
+    storage = ResourceStorage(tmp_path)
+    unrestricted_source = tmp_path / "agent-unrestricted"
+    unrestricted_source.mkdir()
+    (unrestricted_source / "config.yaml").write_text("name: unrestricted\n")
+    unrestricted = await _snapshot_agent(
+        session,
+        storage,
+        unrestricted_source,
+        resource_id="2f4c9a10-1111-4ccc-8333-100000000001",
+        slug="unrestricted",
+    )
+
+    disabled_source = tmp_path / "agent-disabled"
+    disabled_source.mkdir()
+    (disabled_source / "config.yaml").write_text("name: disabled\nskills: []\n")
+    disabled = await _snapshot_agent(
+        session,
+        storage,
+        disabled_source,
+        resource_id="2f4c9a10-2222-4ccc-8333-200000000002",
+        slug="disabled",
+    )
+
+    loader = CanonicalResourceLoader(session, storage)
+    loaded: dict[str, Any] = {}
+    for agent in (unrestricted, disabled):
+        definition = await loader.load_agent("run-1", agent.id)
+        await loader.load_agent_skill_definitions("run-1", agent.id, definition=definition)
+        loaded[agent.slug] = definition
+    assert loaded["unrestricted"].config.skills is None
+    assert loaded["disabled"].config.skills == []
+
+
+FROZEN_SKILL_CONTENT = "---\nname: research\ndescription: Research carefully\n---\n# Research\n"
+
+
+@pytest.mark.asyncio
+async def test_frozen_uuid_skill_reaches_thread_sandbox_projection_after_canonical_load(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Regression (issue 09): frozen UUID config.skills must reach /mnt/skills.
+
+    Spans the two production seams of a conversational canonical run: the
+    canonical load (which must expose skill names) and
+    ``ensure_thread_skill_projection`` — the exact call SandboxMiddleware feeds
+    ``allowed_skills`` into. Before the translation layer, the UUID-keyed
+    allowlist matched no user-installed skill name and cleared all four
+    projection categories, leaving the sandbox /mnt/skills empty.
+    """
+    from deerflow.config.extensions_config import ExtensionsConfig
+    from deerflow.config.paths import Paths
+    from deerflow.skills.projection import ensure_thread_skill_projection
+    from deerflow.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+
+    skill_id = "951d48c2-c528-41ac-b188-5636ca425f70"
+    agent_source = tmp_path / "agent-with-uuid-skill"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text(f"name: writer\nskills: [{skill_id}]\n")
+    skill_source = tmp_path / "skill"
+    skill_source.mkdir()
+    (skill_source / "SKILL.md").write_text(FROZEN_SKILL_CONTENT, encoding="utf-8")
+    resource_storage = ResourceStorage(tmp_path)
+    agent = await _snapshot_agent(session, resource_storage, agent_source)
+    await _snapshot_skill_dependency(session, resource_storage, agent, skill_source, skill_id=skill_id, skill_slug="research")
+
+    # The caller's installed copy of the same skill, keyed by skill name.
+    skills_root = tmp_path / "skills"
+    (skills_root / "public").mkdir(parents=True)
+    (skills_root / "custom").mkdir()
+    installed = skills_root / "custom" / "research" / "SKILL.md"
+    installed.parent.mkdir(parents=True)
+    installed.write_text(FROZEN_SKILL_CONTENT, encoding="utf-8")
+
+    paths = Paths(base_dir=tmp_path)
+    app_config = SimpleNamespace(
+        skills=SimpleNamespace(
+            get_skills_path=lambda: skills_root,
+            container_path="/mnt/skills",
+            use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage",
+        )
+    )
+    extensions = ExtensionsConfig()
+
+    loader = CanonicalResourceLoader(session, resource_storage)
+    with (
+        patch("deerflow.config.paths.get_paths", return_value=paths),
+        patch("deerflow.config.extensions_config.ExtensionsConfig.from_file", return_value=extensions),
+        patch("deerflow.config.extensions_config.get_extensions_config", return_value=extensions),
+    ):
+        definition = await loader.load_agent("run-1", agent.id)
+        await loader.load_agent_skill_definitions("run-1", agent.id, definition=definition)
+
+        user_storage = UserScopedSkillStorage("owner", host_path=str(skills_root), app_config=app_config)
+        view = ensure_thread_skill_projection(user_storage, "thread-regression", set(definition.config.skills))
+        assert view is not None
+        hits = [p for p in view.public.parent.rglob("research") if p.is_dir() and (p / "SKILL.md").is_file()]
+        assert hits, "the declared skill must be projected into the thread sandbox view"
+        assert hits[0].joinpath("SKILL.md").read_text(encoding="utf-8") == FROZEN_SKILL_CONTENT

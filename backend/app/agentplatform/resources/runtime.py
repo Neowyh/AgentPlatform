@@ -67,6 +67,27 @@ def resource_memory_key(runner_id: str, agent_resource_id: str) -> tuple[str, st
     return runner_id, agent_resource_id
 
 
+def _translate_requested_skills_to_names(
+    config: AgentConfig,
+    definitions: list[CanonicalSkillDefinition],
+) -> None:
+    """Translate the in-memory ``config.skills`` from resource UUIDs to skill names.
+
+    Bundled seeding and draft saves normalize declared skills to resource UUIDs
+    before the frozen config is written, but every downstream consumer of
+    ``config.skills`` (prompt ``<available_skills>`` rendering, skill activation
+    whitelist, thread skill projection) matches by skill name. Translation runs
+    on the in-memory copy only — the frozen config on disk and the
+    ResourceVersion-pinned snapshot stay untouched. Entries that are already
+    skill names (legacy agents, previously translated configs) pass through
+    unchanged, which makes the translation idempotent.
+    """
+    if not config.skills:
+        return
+    names_by_resource_id = {definition.resource_id: definition.skill.name for definition in definitions}
+    config.skills = [names_by_resource_id.get(entry, entry) for entry in config.skills]
+
+
 def _contains_credentials(value: object) -> bool:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -248,7 +269,9 @@ class CanonicalResourceLoader:
         missing = [] if requested is None else [name for name in requested if _match(name) is None]
         if missing:
             raise ResourceRuntimeError(f"Agent {agent_resource_id} has unresolved Skill dependencies: {', '.join(missing)}")
-        return [await self.load_skill(run_id, target.id) for target in selected]
+        definitions = [await self.load_skill(run_id, target.id) for target in selected]
+        _translate_requested_skills_to_names(definition.config, definitions)
+        return definitions
 
     async def load_agent_skills(self, run_id: str, agent_resource_id: str) -> list[Skill]:
         definitions = await self.load_agent_skill_definitions(run_id, agent_resource_id)
