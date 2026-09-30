@@ -2756,7 +2756,6 @@ export function InputBox({
         <PromptInputFooter className="flex flex-wrap gap-2 sm:flex-nowrap">
           <PromptInputTools className="min-w-0 flex-1 flex-wrap">
             <AddAttachmentsButton
-              className="px-2!"
               disabled={composerLocked}
               uploadLimits={uploadLimits}
             />
@@ -2783,7 +2782,7 @@ export function InputBox({
                     ? t.inputBox.inputPolishUndo
                     : t.inputBox.inputPolish
                 }
-                className="px-2!"
+                className="min-h-10 min-w-10 px-0!"
                 data-testid="polish-input-button"
                 disabled={inputPolishDisabled}
                 onClick={
@@ -2793,11 +2792,11 @@ export function InputBox({
                 }
               >
                 {polishingInput ? (
-                  <Loader2Icon className="size-3 animate-spin" />
+                  <Loader2Icon className="size-4 animate-spin" />
                 ) : inputPolishUndoAvailable ? (
-                  <Undo2Icon className="size-3" />
+                  <Undo2Icon className="size-4" />
                 ) : (
-                  <SparklesIcon className="size-3" />
+                  <SparklesIcon className="size-4" />
                 )}
               </PromptInputButton>
             </Tooltip>
@@ -2831,7 +2830,7 @@ export function InputBox({
                   </div>
                   <div
                     className={cn(
-                      "type-compact truncate font-normal",
+                      "type-body truncate font-normal",
                       context.mode === "ultra" ? "golden-text" : "",
                     )}
                   >
@@ -2982,7 +2981,7 @@ export function InputBox({
                   className="hidden gap-1! px-2! sm:inline-flex"
                   disabled={composerLocked}
                 >
-                  <div className="type-compact font-normal">
+                  <div className="type-body font-normal">
                     {t.inputBox.reasoningEffort}:
                     {context.reasoning_effort === "minimal" &&
                       " " + t.inputBox.reasoningEffortMinimal}
@@ -3128,7 +3127,7 @@ export function InputBox({
                   disabled={composerLocked}
                 >
                   <div className="flex min-w-0 flex-col text-left">
-                    <ModelSelectorName className="type-compact font-normal">
+                    <ModelSelectorName className="type-body font-normal">
                       {selectedModel?.display_name}
                     </ModelSelectorName>
                   </div>
@@ -3168,7 +3167,7 @@ export function InputBox({
                   onClick={handleSkillPickerOpen}
                 >
                   <SparklesIcon className="size-4" />
-                  <span className="type-compact font-normal">
+                  <span className="type-body font-normal">
                     {t.inputBox.skill}
                   </span>
                 </PromptInputButton>
@@ -3263,7 +3262,7 @@ function VoiceInputButton({
         aria-label={label}
         aria-pressed={listening}
         className={cn(
-          "px-2!",
+          "min-h-10 min-w-10 px-0!",
           listening && "text-primary bg-primary/10 hover:bg-primary/15",
         )}
         data-testid="voice-input-button"
@@ -3271,9 +3270,9 @@ function VoiceInputButton({
         onClick={onToggle}
       >
         {listening ? (
-          <SquareIcon className="size-3 fill-current" />
+          <SquareIcon className="size-4 fill-current" />
         ) : (
-          <MicIcon className="size-3" />
+          <MicIcon className="size-4" />
         )}
       </PromptInputButton>
     </Tooltip>
@@ -3342,11 +3341,9 @@ function SuggestionList({
 }
 
 function AddAttachmentsButton({
-  className,
   disabled,
   uploadLimits,
 }: {
-  className?: string;
   disabled?: boolean;
   uploadLimits?: UploadLimits;
 }) {
@@ -3363,12 +3360,12 @@ function AddAttachmentsButton({
     <Tooltip content={<span className="block max-w-80">{tooltipContent}</span>}>
       <PromptInputButton
         aria-label={t.inputBox.addAttachments}
-        className={cn("px-2!", className)}
+        className="min-h-10 min-w-10 px-0!"
         data-testid="add-attachments-button"
         disabled={disabled}
         onClick={() => attachments.openFileDialog()}
       >
-        <PaperclipIcon className="size-3" />
+        <PaperclipIcon className="size-4" />
       </PromptInputButton>
     </Tooltip>
   );
