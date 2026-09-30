@@ -457,19 +457,55 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
     await expect(chips).toHaveCount(3);
   });
 
-  test("disables skill invocation while an Agent Pill is selected", async ({
+  test("keeps closure-filtered skill invocation while an Agent Pill is selected", async ({
     page,
   }) => {
-    mockLangGraphAPI(page);
+    // The pill resolves to the ppt-web canonical agent. Seed its closure
+    // (anthropic-pptx) plus an out-of-closure skill to prove the panel only
+    // offers what the expert owns (skill_outside_agent_closure otherwise).
+    mockLangGraphAPI(page, {
+      agents: [
+        {
+          name: "ppt-web",
+          description: "PPT agent",
+          skills: ["anthropic-pptx"],
+        },
+      ],
+      skills: [
+        {
+          name: "anthropic-pptx",
+          description: "Create PPT decks.",
+          category: "public" as const,
+          enabled: true,
+        },
+        {
+          name: "data-analysis",
+          description: "Analyze structured data and produce charts.",
+          category: "public" as const,
+          enabled: true,
+        },
+      ],
+    });
     await page.goto("/workspace/chats/new");
-    await selectAgent(page, /Creative Design/, /PPT 制作/);
+    await page.getByRole("tab", { name: /Creative Design/ }).click();
+    await expect(page.getByTestId("agent-pill-bar")).toBeVisible();
+    // The published agent detail carries the closure the panel filters by.
+    const publishedDetail = page.waitForResponse((response) =>
+      /\/api\/resources\/.+\/published/.test(response.url()),
+    );
+    await page.getByRole("tab", { name: /PPT 制作/ }).click();
+    await publishedDetail;
 
-    await expect(page.getByTestId("skill-selector-trigger")).not.toBeVisible();
+    // The entry stays available inside the expert session...
+    await expect(page.getByTestId("skill-selector-trigger")).toBeVisible();
     const textarea = page.getByTestId("chat-input");
-    await textarea.fill("/");
-    await textarea.press("Space");
-    await textarea.press("Backspace");
-    await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
+    await textarea.click();
+    await textarea.pressSequentially("/");
+
+    // ...and the panel opens showing only the Agent closure's skills.
+    await expect(page.getByTestId("slash-overlay")).toBeVisible();
+    await expect(page.getByTestId("slash-option-anthropic-pptx")).toBeVisible();
+    await expect(page.getByTestId("slash-option-data-analysis")).toHaveCount(0);
   });
 
   test("keeps the caret after newly typed text when an Agent Pill is selected", async ({
