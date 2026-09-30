@@ -40,6 +40,82 @@ async function expectWithinViewport(
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
 }
 
+async function readWelcomeLayout(page: Page) {
+  const selectors = {
+    hero: '[data-testid="workbench-home"] .type-page-title',
+    quickEntries: '[data-testid="workbench-quick-entry-module"]',
+    scenarioTabs: '[data-testid="scenario-tabs"]',
+    agentEntries: '[data-testid="agent-pill-bar"]',
+    taskEntries: '[data-testid="task-chip-bar"]',
+    composer: '[data-testid="input-box"]',
+    recentTasks: ".workbench-recent-tasks",
+    disclaimer: '[data-testid="workbench-disclaimer"]',
+  };
+  const layout: Record<string, number[] | null> = {};
+  for (const [name, selector] of Object.entries(selectors)) {
+    const locator = page.locator(selector);
+    if (
+      (name === "agentEntries" || name === "taskEntries") &&
+      !(await locator.count())
+    ) {
+      layout[name] = null;
+      continue;
+    }
+    await expect(locator).toBeVisible();
+    layout[name] = await locator.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      let x = rect.x + window.scrollX;
+      let y = rect.y + window.scrollY;
+      let ancestor = element.parentElement;
+      while (ancestor) {
+        x += ancestor.scrollLeft;
+        y += ancestor.scrollTop;
+        ancestor = ancestor.parentElement;
+      }
+      return [x, y, rect.width, rect.height].map(
+        (value) => Math.round(value * 10) / 10,
+      );
+    });
+  }
+  return layout;
+}
+
+async function expectWelcomeLayoutUnchanged(
+  page: Page,
+  initialLayout: Record<string, number[] | null>,
+  state: string,
+) {
+  const currentLayout = await readWelcomeLayout(page);
+  for (const [module, initialBounds] of Object.entries(initialLayout)) {
+    const currentBounds = currentLayout[module];
+    if (!initialBounds || !currentBounds) continue;
+    for (const [index, value] of currentBounds.entries()) {
+      expect(
+        value,
+        `${module} geometry changed after ${state}: initial=${initialBounds.join(",")} current=${currentBounds.join(",")}`,
+      ).toBeCloseTo(initialBounds[index]!, 0);
+    }
+  }
+  await expectDisclaimerAtPageBottom(page);
+}
+
+async function expectDisclaimerAtPageBottom(page: Page) {
+  const bottomGap = await page
+    .getByTestId("workbench-disclaimer")
+    .evaluate((disclaimer) => {
+      const main = disclaimer.closest(".workbench-conversation-main");
+      if (!main) throw new Error("Welcome disclaimer is outside the main page");
+      const mainRect = main.getBoundingClientRect();
+      const disclaimerRect = disclaimer.getBoundingClientRect();
+      return (
+        main.scrollHeight -
+        (disclaimerRect.bottom - mainRect.top + main.scrollTop)
+      );
+    });
+  expect(bottomGap).toBeGreaterThanOrEqual(-1);
+  expect(bottomGap).toBeLessThanOrEqual(1);
+}
+
 test.describe("@smoke WorkBuddy cascade bar", () => {
   test("shows three scenario tabs in welcome mode", async ({ page }) => {
     // No seeded history: the retirements must hold on a blank account too.
@@ -185,6 +261,171 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
       }
     }
   });
+
+  async function verifyComposerChoiceLayout(
+    page: Page,
+    viewport: { width: number; height: number },
+  ) {
+    mockRecentThreads(page, 3);
+    await page.route("**/api/models", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          models: [
+            {
+              id: "model-alpha",
+              name: "model-alpha",
+              model: "alpha",
+              display_name: "Model Alpha",
+            },
+            {
+              id: "model-bravo",
+              name: "model-bravo",
+              model: "bravo",
+              display_name: "Model Bravo",
+            },
+          ],
+          token_usage: { enabled: false },
+        }),
+      }),
+    );
+    await page.addInitScript(() => {
+      class MockSpeechRecognition {
+        continuous = false;
+        interimResults = false;
+        lang = "en-US";
+        maxAlternatives = 1;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        onresult: (() => void) | null = null;
+        start() {}
+        stop() {
+          this.onend?.();
+        }
+        abort() {
+          this.onend?.();
+        }
+      }
+      Object.defineProperty(window, "SpeechRecognition", {
+        configurable: true,
+        value: MockSpeechRecognition,
+      });
+    });
+
+    await page.setViewportSize(viewport);
+    await page.goto("/workspace/chats/new");
+    await expect(page.locator(".workbench-recent-tasks")).toBeVisible();
+    const initialLayout = await readWelcomeLayout(page);
+    await expectDisclaimerAtPageBottom(page);
+
+    const modelTrigger = page.getByTestId("model-selector-trigger");
+    await modelTrigger.focus();
+    await modelTrigger.press("Enter");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expectWelcomeLayoutUnchanged(
+      page,
+      initialLayout,
+      "keyboard model picker",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expectWelcomeLayoutUnchanged(
+      page,
+      initialLayout,
+      "closing model picker",
+    );
+
+    const currentModel = await modelTrigger.innerText();
+    const nextModel = currentModel.includes("Model Alpha")
+      ? "Model Bravo"
+      : "Model Alpha";
+    await modelTrigger.click();
+    await page.getByRole("option", { name: new RegExp(nextModel) }).click();
+    await expect(modelTrigger).toContainText(nextModel);
+    await expectWelcomeLayoutUnchanged(page, initialLayout, "model selection");
+
+    const skillTrigger = page.getByTestId("skill-selector-trigger");
+    await skillTrigger.click();
+    await expect(page.getByTestId("slash-overlay")).toBeVisible();
+    await expectWelcomeLayoutUnchanged(
+      page,
+      initialLayout,
+      "skill picker overlay",
+    );
+    await page
+      .getByTestId("slash-overlay")
+      .getByTestId("slash-option-frontend-design")
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Remove /frontend-design" }),
+    ).toBeVisible();
+    await expectWelcomeLayoutUnchanged(
+      page,
+      initialLayout,
+      "mouse skill selection",
+    );
+    await page.getByRole("button", { name: "Remove /frontend-design" }).click();
+
+    const keyboardInput = page.getByTestId("chat-input");
+    await keyboardInput.fill("/data");
+    await expect(page.getByTestId("slash-option-data-analysis")).toBeVisible();
+    await keyboardInput.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Remove /data-analysis" }),
+    ).toBeVisible();
+    const composerText = page.getByTestId("input-box").getByRole("textbox");
+    await expectWelcomeLayoutUnchanged(
+      page,
+      initialLayout,
+      "keyboard skill selection",
+    );
+    await page.getByRole("button", { name: "Remove /data-analysis" }).click();
+    await composerText.fill("");
+
+    await page.getByRole("tab", { name: /Creative Design/ }).click();
+    await expect(page.getByTestId("agent-pill-bar")).toBeVisible();
+    await expectWelcomeLayoutUnchanged(page, initialLayout, "scenario change");
+
+    const agentPill = page
+      .getByTestId("agent-pill-bar")
+      .getByRole("tab")
+      .first();
+    await agentPill.click();
+    await expect(page.getByTestId("task-chip-bar")).toBeVisible();
+    await expectWelcomeLayoutUnchanged(page, initialLayout, "agent selection");
+    const agentSelectedLayout = await readWelcomeLayout(page);
+
+    await page.getByTestId("task-chip-bar").getByRole("tab").first().click();
+    await composerText.fill("");
+    await expectWelcomeLayoutUnchanged(
+      page,
+      agentSelectedLayout,
+      "task selection",
+    );
+    const taskSelectedLayout = await readWelcomeLayout(page);
+
+    const voiceInput = page.getByTestId("voice-input-button");
+    await expect(voiceInput).toBeVisible();
+    await voiceInput.click();
+    await expect(voiceInput).toHaveAttribute("aria-pressed", "true");
+    await expectWelcomeLayoutUnchanged(page, taskSelectedLayout, "voice input");
+    await voiceInput.click();
+
+    await composerText.fill("A focused draft");
+    await expectWelcomeLayoutUnchanged(page, taskSelectedLayout, "input focus");
+  }
+
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 375, height: 812 },
+  ]) {
+    test(`keeps welcome modules stable at ${viewport.width}px while composer choices change`, async ({
+      page,
+    }) => {
+      await verifyComposerChoiceLayout(page, viewport);
+    });
+  }
 
   test("keeps the full conversation list working", async ({ page }) => {
     // Criterion 4: besides the sidebar, the full list page must keep

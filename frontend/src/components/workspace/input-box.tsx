@@ -2608,6 +2608,9 @@ export function InputBox({
           </div>
         )}
         <PromptInputHeader className="flex-wrap px-3 pt-3 pb-0 empty:hidden">
+          {isWelcomeMode && selectedTags.length === 0 && (
+            <div aria-hidden="true" className="h-8 w-full" />
+          )}
           {selectedTags.length > 0 && onRemoveTag && (
             <div
               className="flex flex-wrap items-center gap-1"
@@ -3166,6 +3169,19 @@ export function InputBox({
                   </span>
                 </PromptInputButton>
               </Tooltip>
+            )}
+            {isWelcomeMode && !skillInvocationEnabled && (
+              <PromptInputButton
+                aria-hidden="true"
+                className="pointer-events-none invisible"
+                disabled
+                tabIndex={-1}
+              >
+                <SparklesIcon className="size-4" />
+                <span className="type-body font-normal">
+                  {t.inputBox.skill}
+                </span>
+              </PromptInputButton>
             )}
             <PromptInputSubmit
               className="rounded-full"
