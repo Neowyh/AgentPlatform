@@ -1,9 +1,10 @@
-"""The ``code`` toolgroup loads its three tools from config.example.yaml.
+"""The ``code`` toolgroup loads its tools from config.example.yaml.
 
 Ticket 01: ``analyze_code_evidence``, ``code_interpreter`` (group ``code``)
 and ``data_analyzer`` (group ``knowledge``) are declared through the config
 ``tools[]`` mechanism, so agents that declare the groups get them without any
-hard-coded tool list.
+hard-coded tool list.  Ticket 03 adds ``read_binary_hex`` (group ``code``)
+for the whitelisted binary evidence.
 """
 
 from __future__ import annotations
@@ -29,7 +30,14 @@ def test_code_group_declares_analyze_code_evidence_and_code_interpreter(config_e
     tools = get_available_tools(groups=["code"], include_mcp=False, app_config=config_example)
     names = {tool.name for tool in tools}
 
-    assert {"analyze_code_evidence", "code_interpreter"} <= names
+    assert {"analyze_code_evidence", "code_interpreter", "read_binary_hex"} <= names
+
+
+def test_read_binary_hex_exposes_only_file_path_and_paging_parameters(config_example: AppConfig) -> None:
+    tools = get_available_tools(groups=["code"], include_mcp=False, app_config=config_example)
+    read_hex = next(tool for tool in tools if tool.name == "read_binary_hex")
+
+    assert set(read_hex.args) == {"file_path", "offset", "length"}
 
 
 def test_knowledge_group_declares_data_analyzer(config_example: AppConfig) -> None:

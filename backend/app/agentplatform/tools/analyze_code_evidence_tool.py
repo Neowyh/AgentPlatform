@@ -19,14 +19,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
-from pathlib import Path
 from typing import Any
 
 from langchain.tools import tool
 
-from app.agentplatform.code_evidence import package_root as code_evidence_package_root
-from deerflow.runtime.user_context import resolve_runtime_user_id
+from app.agentplatform.tools.code_evidence_access import (
+    CODE_EVIDENCE_VIRTUAL_ROOT,
+    PackageAccessRejected,
+    get_thread_id,
+    resolve_package_dir,
+)
 from deerflow.tools.types import Runtime
 from deerflow.uploads.code_analysis import (
     detect_language,
@@ -36,45 +38,7 @@ from deerflow.uploads.code_analysis import (
 
 logger = logging.getLogger(__name__)
 
-CODE_EVIDENCE_VIRTUAL_ROOT = "/mnt/user-data/code-evidence"
-_ALLOWED_PACKAGE_ROOT = re.compile(rf"^{re.escape(CODE_EVIDENCE_VIRTUAL_ROOT)}/[^/]+(/source)?$")
 _FINDINGS_PREVIEW_LIMIT = 20
-
-
-class _PackageRejected(ValueError):
-    """The declared package root is outside the allowed closure or unknown."""
-
-    def __init__(self, reason_code: str, message: str) -> None:
-        super().__init__(message)
-        self.reason_code = reason_code
-
-
-def _get_thread_id(runtime: Runtime) -> str | None:
-    thread_id = runtime.context.get("thread_id") if runtime.context else None
-    if thread_id:
-        return thread_id
-    runtime_config = getattr(runtime, "config", None) or {}
-    return runtime_config.get("configurable", {}).get("thread_id")
-
-
-def _resolve_package_dir(runtime: Runtime, declared_root: str, thread_id: str) -> tuple[Path, str]:
-    declared = (declared_root or "").strip()
-    normalized = declared.rstrip("/")
-    if normalized.endswith("/source"):
-        normalized = normalized[: -len("/source")]
-    if not (_ALLOWED_PACKAGE_ROOT.match(declared) or _ALLOWED_PACKAGE_ROOT.match(normalized)):
-        raise _PackageRejected(
-            "package_path_rejected",
-            f"analyze_code_evidence 只接受本会话的代码证据包根 {CODE_EVIDENCE_VIRTUAL_ROOT}/<package_id>，收到: {declared or '<空>'}",
-        )
-    package_id = normalized[len(CODE_EVIDENCE_VIRTUAL_ROOT) + 1 :]
-    try:
-        root = code_evidence_package_root(thread_id, package_id, user_id=resolve_runtime_user_id(runtime))
-    except ValueError as exc:
-        raise _PackageRejected("package_path_rejected", f"代码证据包 id 不合法: {package_id}（{exc}）") from exc
-    if not root.is_dir():
-        raise _PackageRejected("package_not_found", f"本会话不存在该代码证据包: {package_id}")
-    return root, package_id
 
 
 def _next_action(result_overall: str, language: str | None) -> str:
@@ -86,12 +50,12 @@ def _next_action(result_overall: str, language: str | None) -> str:
 
 
 def _analyze_code_evidence_sync(runtime: Runtime, declared_root: str) -> str:
-    thread_id = _get_thread_id(runtime)
+    thread_id = get_thread_id(runtime)
     if not thread_id:
         return json.dumps({"error": "当前会话缺少 thread 上下文，无法分析代码证据包", "reason_code": "thread_context_missing"}, ensure_ascii=False)
     try:
-        package_dir, package_id = _resolve_package_dir(runtime, declared_root, thread_id)
-    except _PackageRejected as exc:
+        package_dir, package_id = resolve_package_dir(runtime, declared_root, thread_id)
+    except PackageAccessRejected as exc:
         return json.dumps(
             {
                 "error": str(exc),

@@ -68,13 +68,67 @@ def test_preflight_rejects_file_directory_conflict_in_either_order():
             _preflight(archive)
 
 
-def test_preflight_reports_binary_targets_as_rejected():
-    archive = make_zip([("build/app.o", b"binary", None), ("src/app.o", b"binary", None)])
+def test_preflight_accepts_whitelisted_binary_suffixes():
+    archive = make_zip(
+        [
+            ("build/app.o", b"binary", None),
+            ("src/app.o", b"\x7fELF", None),
+            ("firmware.bin", b"\x00\x01", None),
+            ("listing.hex", b":10000000", None),
+            ("symbols.map", b"Archive member included", None),
+            ("libfoo.a", b"!<arch>", None),
+            ("app.exe", b"MZ", None),
+        ]
+    )
 
-    _, excluded, rejected, _ = _preflight(archive)
+    accepted, excluded, rejected, _ = _preflight(archive)
 
     assert excluded == ["build/app.o"]
-    assert rejected == [{"path": "src/app.o", "reason": "Binary target is not accepted"}]
+    assert rejected == []
+    assert [path.as_posix() for _, path in accepted] == [
+        "src/app.o",
+        "firmware.bin",
+        "listing.hex",
+        "symbols.map",
+        "libfoo.a",
+        "app.exe",
+    ]
+
+
+def test_preflight_rejects_oversized_binary_with_size_limit_reason(tmp_path, monkeypatch):
+    monkeypatch.setattr(code_evidence, "BINARY_EVIDENCE_MAX_BYTES", 4)
+    archive = make_zip([("src/app.o", b"0123456789", None)])
+
+    _, _, rejected, _ = _preflight(archive)
+
+    assert rejected == [{"path": "src/app.o", "reason": "Binary evidence exceeds the 4 bytes per-file limit"}]
+
+
+def test_preflight_still_accepts_unknown_suffixes_as_text():
+    archive = make_zip([("notes.dat", b"plain text", None)])
+
+    accepted, excluded, rejected, _ = _preflight(archive)
+
+    assert [path.as_posix() for _, path in accepted] == ["notes.dat"]
+    assert excluded == []
+    assert rejected == []
+
+
+def test_accept_package_records_binary_flags_and_bytes_in_manifest():
+    payload = b"\x7fELF-firmware"
+    source = io.BytesIO()
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("src/main.c", b"int main(void) { return 0; }")
+        archive.writestr("firmware.bin", payload)
+    source.seek(0)
+
+    manifest, root = code_evidence.accept_package(source, thread_id="thread-1", original_filename="evidence.zip")
+
+    by_path = {entry["path"]: entry for entry in manifest.accepted}
+    assert by_path["src/main.c"] == {"path": "src/main.c", "binary": False, "bytes": 28}
+    assert by_path["firmware.bin"] == {"path": "firmware.bin", "binary": True, "bytes": len(payload)}
+    assert manifest.as_dict()["accepted"] == list(manifest.accepted)
+    assert (root / "source" / "firmware.bin").read_bytes() == payload
 
 
 def test_accept_package_bounds_actual_extracted_bytes(tmp_path, monkeypatch):

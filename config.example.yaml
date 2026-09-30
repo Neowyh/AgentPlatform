@@ -764,6 +764,14 @@ tools:
     group: code
     use: app.agentplatform.tools.analyze_code_evidence_tool:analyze_code_evidence_tool
 
+  # 归零二进制证据查看（ticket 03）：read_binary_hex 只读输出代码包 source/ 内
+  # 白名单二进制证据（固件/编译产物）的十六进制+ASCII 视图，仅接受包内路径
+  # /mnt/user-data/code-evidence/<package_id>/source/<file>，offset/length 翻页，
+  # 单文件上限与白名单和管道同源；非二进制文件结构化拒绝并提示改用 read_file。
+  - name: read_binary_hex
+    group: code
+    use: app.agentplatform.tools.read_binary_hex_tool:read_binary_hex_tool
+
   # 沙箱代码解释器（ticket 01 接线，不改执行语义）：沿用模块既有三重上限
   # 300s 超时 / 20k 字符输出 / 1MB 代码体积。
   - name: code_interpreter

@@ -26,7 +26,14 @@ MAX_EXPANDED_SIZE = 1024 * 1024 * 1024
 MAX_MEMBERS = 20_000
 MAX_COMPRESSION_RATIO = 200
 _EXCLUDED_PARTS = {".git", ".svn", "node_modules", "__pycache__", "build", "dist", "target", ".cache"}
-_BINARY_SUFFIXES = {".a", ".so", ".dll", ".dylib", ".o", ".obj", ".exe", ".bin", ".elf"}
+# Whitelisted binary evidence suffixes (ticket 03): firmware images and build
+# artifacts are accepted per-file up to BINARY_EVIDENCE_MAX_BYTES instead of
+# being rejected outright.  ``.hex``/``.map`` are text but routinely misfiled
+# as binaries, so they are listed explicitly to keep the whitelist
+# unambiguous.  The read_binary_hex tool reads the same constants from this
+# module — single source of truth for both sides.
+BINARY_EVIDENCE_SUFFIXES = frozenset({".bin", ".elf", ".o", ".obj", ".a", ".so", ".dll", ".dylib", ".exe", ".lib", ".axf", ".map", ".hex"})
+BINARY_EVIDENCE_MAX_BYTES = 10 * 1024 * 1024
 
 
 class CodeEvidencePackageError(ValueError):
@@ -37,7 +44,10 @@ class CodeEvidencePackageError(ValueError):
 class PackageManifest:
     package_id: str
     original_filename: str
-    accepted: tuple[str, ...]
+    # New packages record one ``{"path", "binary", "bytes"}`` entry per
+    # accepted file; manifests materialized from legacy JSON keep the string
+    # paths they were written with.
+    accepted: tuple[dict[str, object] | str, ...]
     excluded: tuple[str, ...]
     rejected: tuple[dict[str, str], ...]
     compressed_size: int
@@ -66,6 +76,10 @@ def package_root(thread_id: str, package_id: str, *, user_id: str | None = None)
         raise ValueError("Invalid package id")
     owner = user_id if user_id is not None else get_effective_user_id()
     return get_paths().thread_dir(thread_id, user_id=owner) / "user-data" / "code-evidence" / package_id
+
+
+def _is_binary_evidence(path: PurePosixPath) -> bool:
+    return path.suffix.lower() in BINARY_EVIDENCE_SUFFIXES
 
 
 def _member_path(info: zipfile.ZipInfo) -> PurePosixPath:
@@ -109,8 +123,8 @@ def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, Pu
             raise CodeEvidencePackageError(f"Archive expands beyond {MAX_EXPANDED_SIZE} bytes")
         if info.is_dir() or any(part in _EXCLUDED_PARTS for part in path.parts):
             excluded.append(path.as_posix())
-        elif path.suffix.lower() in _BINARY_SUFFIXES:
-            rejected.append({"path": path.as_posix(), "reason": "Binary target is not accepted"})
+        elif _is_binary_evidence(path) and info.file_size > BINARY_EVIDENCE_MAX_BYTES:
+            rejected.append({"path": path.as_posix(), "reason": f"Binary evidence exceeds the {BINARY_EVIDENCE_MAX_BYTES} bytes per-file limit"})
         else:
             files.add(key)
             accepted.append((info, path))
@@ -143,16 +157,26 @@ def accept_package(source: BinaryIO, *, thread_id: str, original_filename: str, 
             source_root = temporary / "source"
             source_root.mkdir()
             extracted = 0
+            manifest_entries: list[dict[str, object]] = []
             for info, path in accepted:
                 destination = source_root.joinpath(*path.parts)
                 destination.parent.mkdir(parents=True, exist_ok=True)
+                written = 0
                 with archive.open(info) as source_file, destination.open("wb") as target:
                     while chunk := source_file.read(1024 * 1024):
+                        written += len(chunk)
                         extracted += len(chunk)
                         if extracted > MAX_EXPANDED_SIZE:
                             raise CodeEvidencePackageError(f"Archive expanded beyond {MAX_EXPANDED_SIZE} bytes")
                         target.write(chunk)
-            manifest = PackageManifest(package_id, original_filename, tuple(p.as_posix() for _, p in accepted), tuple(excluded), tuple(rejected), total, expanded)
+                manifest_entries.append(
+                    {
+                        "path": path.as_posix(),
+                        "binary": _is_binary_evidence(path),
+                        "bytes": written,
+                    }
+                )
+            manifest = PackageManifest(package_id, original_filename, tuple(manifest_entries), tuple(excluded), tuple(rejected), total, expanded)
             _write_manifest(temporary, manifest)
         final_root = thread_root / package_id
         os.replace(temporary, final_root)
