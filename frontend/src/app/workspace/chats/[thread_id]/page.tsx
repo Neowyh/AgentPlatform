@@ -572,13 +572,17 @@ export default function ChatPage() {
               <div
                 className={cn(
                   "relative z-30 flex shrink-0 justify-center px-4",
-                  // pt-12 keeps the welcome content clear of the fixed
-                  // h-12 header when the auto margins collapse to zero on
-                  // tall homes (history strip included).
-                  isWelcomeMode ? "my-auto pt-12 pb-0" : "pb-4",
+                  // Keep welcome content clear of the fixed header and center
+                  // its inner stack in the flex-growing composer row.
+                  isWelcomeMode ? "flex-1 pt-12 pb-0" : "pb-4",
                 )}
               >
-                <div className="relative w-full max-w-(--container-width-md)">
+                <div
+                  className={cn(
+                    "relative w-full max-w-(--container-width-md)",
+                    isWelcomeMode && "my-auto",
+                  )}
+                >
                   {isWelcomeMode && (
                     <div
                       className="workbench-home flex flex-col items-center"
@@ -640,6 +644,7 @@ export default function ChatPage() {
                       <InputBox
                         className="workbench-input-surface bg-background/5 w-full"
                         isWelcomeMode={isWelcomeMode}
+                        showDisclaimer={!isWelcomeMode}
                         threadId={threadId}
                         autoFocus={isWelcomeMode}
                         status={
@@ -688,6 +693,14 @@ export default function ChatPage() {
                   )}
                 </div>
               </div>
+              {isWelcomeMode && (
+                <p
+                  className="text-muted-foreground type-compact z-10 mt-auto px-4 pb-4 text-center leading-4"
+                  data-testid="workbench-disclaimer"
+                >
+                  {t.inputBox.disclaimer}
+                </p>
+              )}
             </main>
           </div>
         </ChatBox>

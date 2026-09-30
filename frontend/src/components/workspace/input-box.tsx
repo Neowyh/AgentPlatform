@@ -302,6 +302,7 @@ export function InputBox({
   context,
   extraHeader,
   isWelcomeMode,
+  showDisclaimer = true,
   threadId,
   draftThreadId = threadId,
   draftAgentName,
@@ -332,6 +333,7 @@ export function InputBox({
     reasoning_effort?: "minimal" | "low" | "medium" | "high";
   };
   extraHeader?: React.ReactNode;
+  showDisclaimer?: boolean;
   /**
    * Whether to render the input in welcome layout (vertically centered,
    * with hero + quick action suggestions).  This is purely a visual flag,
@@ -3169,14 +3171,16 @@ export function InputBox({
         <div className="bg-background absolute right-0 -bottom-[17px] left-0 z-0 h-4"></div>
       )}
 
-      <p
-        className={cn(
-          "text-muted-foreground type-compact z-10 px-4 text-center leading-4",
-          !isWelcomeMode && "absolute top-full right-0 left-0",
-        )}
-      >
-        {t.inputBox.disclaimer}
-      </p>
+      {showDisclaimer && (
+        <p
+          className={cn(
+            "text-muted-foreground type-compact z-10 px-4 text-center leading-4",
+            !isWelcomeMode && "absolute top-full right-0 left-0",
+          )}
+        >
+          {t.inputBox.disclaimer}
+        </p>
+      )}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

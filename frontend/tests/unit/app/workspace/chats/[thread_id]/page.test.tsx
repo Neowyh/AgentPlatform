@@ -13,6 +13,7 @@ const {
   mockUseAgents,
   mockUseAgent,
   mockUseSkills,
+  mockUseThreads,
 } = vi.hoisted(() => ({
   mockUseThreadChat: vi.fn().mockReturnValue({
     threadId: "test-thread",
@@ -47,6 +48,7 @@ const {
   mockUseAgents: vi.fn().mockReturnValue({ agents: [] }),
   mockUseAgent: vi.fn().mockReturnValue({ agent: null }),
   mockUseSkills: vi.fn().mockReturnValue({ skills: [] }),
+  mockUseThreads: vi.fn().mockReturnValue({ data: [] }),
 }));
 
 let mockSearchParams = new URLSearchParams();
@@ -71,6 +73,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         loading: "Loading...",
         notAvailableInDemoMode: "Not available in demo",
       },
+      inputBox: { disclaimer: "内容由AI生成，重要信息请务必核查" },
       sidebar: { scheduledTasks: "Scheduled tasks" },
       scenarios: {
         daily: "日常办公",
@@ -109,11 +112,16 @@ vi.mock("@/components/workspace/input-box", () => ({
   InputBox: (props: any) => {
     mockLastInputBoxProps.current = props;
     return (
-      <div
-        data-testid="input-box"
-        data-welcome-mode={String(props.isWelcomeMode)}
-        data-disabled={String(props.disabled)}
-      ></div>
+      <div>
+        <div
+          data-testid="input-box"
+          data-welcome-mode={String(props.isWelcomeMode)}
+          data-disabled={String(props.disabled)}
+        />
+        {props.showDisclaimer !== false && (
+          <p data-testid="input-disclaimer">内容由AI生成，重要信息请务必核查</p>
+        )}
+      </div>
     );
   },
 }));
@@ -181,7 +189,7 @@ vi.mock("@/core/threads/hooks", () => ({
   useThreadMetadata: () => ({ data: null }),
   useThreadStream: (...args: any[]) => mockUseThreadStream(...args),
   useThreadTokenUsage: () => ({ data: null }),
-  useThreads: () => ({ data: [] }),
+  useThreads: () => mockUseThreads(),
   useBranchThread: () => ({
     mutateAsync: vi.fn().mockResolvedValue({ thread_id: "branch-thread" }),
     isPending: false,
@@ -207,6 +215,9 @@ vi.mock("@/core/threads/token-usage", () => ({
 
 vi.mock("@/core/threads/utils", () => ({
   textOfMessage: (...args: any[]) => mockTextOfMessage(...args),
+  pathOfThread: (thread: { thread_id: string }) =>
+    `/workspace/chats/${thread.thread_id}`,
+  titleOfThread: (thread: { thread_id: string }) => thread.thread_id,
 }));
 
 vi.mock("@/env", () => ({
@@ -258,6 +269,7 @@ describe("ChatPage", () => {
     mockLastScenarioCascadeProps.current = null;
     mockTextOfMessage.mockReturnValue("");
     mockUseSkills.mockReturnValue({ skills: [] });
+    mockUseThreads.mockReturnValue({ data: [] });
   });
 
   test("renders chat box", () => {
@@ -1479,5 +1491,66 @@ describe("ChatPage", () => {
     );
     expect(screen.queryByTestId("welcome")).not.toBeInTheDocument();
     expect(mockLastInputBoxProps.current.isWelcomeMode).toBe(false);
+  });
+
+  test("places the welcome disclaimer after recent tasks and keeps it without history", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseThreads.mockReturnValue({
+      data: [
+        {
+          thread_id: "recent-thread",
+          values: { messages: [] },
+          metadata: { title: "Recent task" },
+          context: {},
+        },
+      ],
+    });
+
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+
+    const recentTasks = screen.getByRole("region", { name: "最近任务" });
+    const disclaimer = screen.getByText("内容由AI生成，重要信息请务必核查");
+    expect(recentTasks.compareDocumentPosition(disclaimer)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      screen.getByTestId("workbench-home").closest("main")?.lastElementChild,
+    ).toBe(screen.getByTestId("workbench-disclaimer"));
+    expect(screen.getByRole("link", { name: /recent-thread/ })).toHaveAttribute(
+      "href",
+      "/workspace/chats/recent-thread",
+    );
+    expect(
+      screen.queryByTestId("workbench-recent-chats"),
+    ).not.toBeInTheDocument();
+
+    mockUseThreads.mockReturnValue({ data: [] });
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.queryByRole("region", { name: "最近任务" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("内容由AI生成，重要信息请务必核查"),
+    ).toBeInTheDocument();
   });
 });

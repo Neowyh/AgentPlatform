@@ -282,6 +282,26 @@ test.describe("Chat workspace", () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
+  test("keeps the welcome disclaimer at the bottom on a tall viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+    await page.goto("/workspace/chats/new");
+    await page.evaluate(() => {
+      document.cookie = "locale=zh-CN; path=/; SameSite=Lax";
+    });
+    await page.reload();
+
+    const disclaimer = page.getByText("内容由AI生成，重要信息请务必核查", {
+      exact: true,
+    });
+    await expect(disclaimer).toBeVisible({ timeout: 15_000 });
+    const bounds = await disclaimer.boundingBox();
+
+    expect(bounds).not.toBeNull();
+    expect(1200 - (bounds!.y + bounds!.height)).toBeLessThan(48);
+  });
+
   test("can type a message in the input box", async ({ page }) => {
     await page.goto("/workspace/chats/new");
 
