@@ -309,6 +309,22 @@ describe("getMatchingSkillSuggestions", () => {
     expect(result.every((s) => s.kind === "skill")).toBe(true);
   });
 
+  it("applies the allowed skill names before showing slash suggestions", () => {
+    const skills = [
+      makeSkill("research"),
+      { ...makeSkill("restricted"), slug: "private-research" },
+    ];
+
+    const result = getMatchingSkillSuggestions(
+      skills,
+      "",
+      [],
+      ["private-research"],
+    );
+
+    expect(result.map((suggestion) => suggestion.name)).toEqual(["restricted"]);
+  });
+
   it("includes matching builtin commands after skills", () => {
     const result = getMatchingSkillSuggestions(
       [makeSkill("goal-helper")],

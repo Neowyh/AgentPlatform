@@ -108,10 +108,15 @@ async function expectComposerReadable(
   }
   for (const locator of textControls) {
     await expect(locator).toBeVisible();
-    const fontSize = await locator.evaluate((element) =>
-      parseFloat(getComputedStyle(element).fontSize),
-    );
-    expect(fontSize).toBeGreaterThanOrEqual(bodyFontSize);
+    await expect
+      .poll(
+        () =>
+          locator.evaluate((element) =>
+            parseFloat(getComputedStyle(element).fontSize),
+          ),
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThanOrEqual(bodyFontSize);
   }
 
   if (options.selectMode) {

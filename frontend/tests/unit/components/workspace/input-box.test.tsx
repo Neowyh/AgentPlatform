@@ -1832,7 +1832,12 @@ describe("InputBox", () => {
         error: null,
       });
 
-      render(<InputBox {...defaultProps()} />);
+      render(
+        <InputBox
+          {...defaultProps()}
+          threadId="skill-toolbar-selection-test"
+        />,
+      );
 
       const skillButton = screen
         .getAllByTestId("skill-selector-trigger")
@@ -1845,7 +1850,10 @@ describe("InputBox", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
       await user.click(screen.getByTestId("slash-option-research"));
-      expect(mockSetInput).toHaveBeenCalledWith("/research ");
+      expect(
+        screen.getByRole("button", { name: "Remove /research" }),
+      ).toBeInTheDocument();
+      expect(mockSetInput).toHaveBeenCalledWith("");
     });
   });
 
@@ -1873,6 +1881,49 @@ describe("InputBox", () => {
       const overlay = screen.getByTestId("slash-overlay");
       expect(overlay).toHaveClass("left-0", "right-0", "w-full", "mb-2");
       expect(overlay).not.toHaveClass("w-auto", "max-w-none");
+    });
+
+    test("uses the same allowed skills for slash and toolbar selection", async () => {
+      const user = userEvent.setup();
+      const skills = [
+        skill,
+        {
+          ...skill,
+          name: "restricted",
+          slug: "private-research",
+        },
+      ];
+      (useSkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        skills,
+        isLoading: false,
+        error: null,
+      });
+      mockTextInputContext.value = "/";
+
+      const props = {
+        ...defaultProps(),
+        threadId: "allowed-skill-filter-test",
+        allowedSkillNames: ["research"],
+      };
+      const { rerender } = render(<InputBox {...props} />);
+      fireEvent.focus(screen.getByTestId("chat-input"));
+
+      expect(screen.getByTestId("slash-option-research")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("slash-option-restricted"),
+      ).not.toBeInTheDocument();
+
+      mockTextInputContext.value = "";
+      rerender(<InputBox {...props} />);
+      const skillButton = screen
+        .getAllByTestId("skill-selector-trigger")
+        .find((element) => element.tagName === "BUTTON");
+      await user.click(skillButton!);
+
+      expect(screen.getByTestId("slash-option-research")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("slash-option-restricted"),
+      ).not.toBeInTheDocument();
     });
 
     test("hides the skill button and ignores slash invocation when disabled", async () => {

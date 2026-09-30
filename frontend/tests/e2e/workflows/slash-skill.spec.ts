@@ -263,10 +263,165 @@ test.describe("Slash skill invocation", () => {
 
       await page.getByTestId("slash-option-deep-research").click();
 
-      await expect(page.getByTestId("chat-input")).toHaveValue(
-        /\/deep-research\s/,
-      );
+      await expect(
+        page.getByRole("button", { name: "Remove /deep-research" }),
+      ).toBeVisible();
+      await expect(page.getByTestId("chat-input")).not.toBeVisible();
       await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
+    });
+
+    test("keyboard and mouse selection use the same invocation and submit text", async ({
+      page,
+    }) => {
+      const submittedMessages: string[] = [];
+      page.on("request", (request) => {
+        if (
+          request.method() !== "POST" ||
+          !request.url().endsWith("/runs/stream")
+        ) {
+          return;
+        }
+        const body = request.postDataJSON() as {
+          input?: { messages?: Array<{ content?: unknown }> };
+        };
+        const content = body.input?.messages?.[0]?.content;
+        submittedMessages.push(
+          typeof content === "string"
+            ? content
+            : Array.isArray(content)
+              ? content
+                  .map((part) =>
+                    typeof part === "object" &&
+                    part !== null &&
+                    "text" in part &&
+                    typeof part.text === "string"
+                      ? part.text
+                      : "",
+                  )
+                  .join("")
+              : "",
+        );
+      });
+
+      await gotoChat(page);
+      const textarea = page.getByTestId("chat-input");
+      await textarea.pressSequentially("/");
+      await expect(page.getByTestId("slash-overlay")).toBeVisible();
+      await textarea.press("Enter");
+
+      const skillChip = page.getByRole("button", {
+        name: "Remove /deep-research",
+      });
+      await expect(skillChip).toBeVisible();
+      const keyboardInput = page.locator(
+        '[data-slot="input-group-control"][contenteditable="true"]',
+      );
+      await keyboardInput.pressSequentially("compare available sources");
+      const keyboardText = await keyboardInput.textContent();
+      const keyboardCaret = await keyboardInput.evaluate((element) => {
+        const selection = window.getSelection();
+        return selection?.anchorNode === element.firstChild
+          ? selection.anchorOffset
+          : null;
+      });
+      await keyboardInput.press("Enter");
+      await expect
+        .poll(() => submittedMessages.length, { timeout: 10_000 })
+        .toBe(1);
+
+      await gotoChat(page);
+      await page.getByTestId("skill-selector-trigger").click();
+      await expect(page.getByTestId("slash-overlay")).toBeVisible();
+      await page.getByTestId("slash-option-deep-research").click();
+      await expect(skillChip).toBeVisible();
+
+      const mouseInput = page.locator(
+        '[data-slot="input-group-control"][contenteditable="true"]',
+      );
+      await mouseInput.pressSequentially("compare available sources");
+      expect(await mouseInput.textContent()).toBe(keyboardText);
+      expect(
+        await mouseInput.evaluate((element) => {
+          const selection = window.getSelection();
+          return selection?.anchorNode === element.firstChild
+            ? selection.anchorOffset
+            : null;
+        }),
+      ).toBe(keyboardCaret);
+      await mouseInput.press("Enter");
+      await expect
+        .poll(() => submittedMessages.length, { timeout: 10_000 })
+        .toBe(2);
+
+      expect(submittedMessages[1]).toBe(submittedMessages[0]);
+      expect(submittedMessages[0]).toBe(
+        "/deep-research compare available sources",
+      );
+    });
+
+    test("skill changes keep the new-chat composer dimensions stable", async ({
+      page,
+    }) => {
+      await gotoChat(page);
+      await page.addStyleTag({
+        content:
+          "*, *::before, *::after { transition: none !important; animation: none !important; }",
+      });
+      const form = page.getByTestId("input-box").locator("form");
+      const initial = await form.boundingBox();
+      expect(initial).not.toBeNull();
+
+      const expectStableDimensions = async () => {
+        const current = await form.boundingBox();
+        expect(current).not.toBeNull();
+        expect(Math.abs(current!.width - initial!.width)).toBeLessThanOrEqual(
+          1,
+        );
+        expect(Math.abs(current!.height - initial!.height)).toBeLessThanOrEqual(
+          1,
+        );
+      };
+
+      const textarea = page.getByTestId("chat-input");
+
+      await textarea.fill(
+        Array.from({ length: 10 }, (_, index) => `Line ${index + 1}`).join(
+          "\n",
+        ),
+      );
+      const multiline = await form.boundingBox();
+      expect(multiline).not.toBeNull();
+      expect(multiline!.height).toBeGreaterThan(initial!.height + 20);
+      await textarea.fill("");
+
+      await textarea.pressSequentially("/");
+      await textarea.press("Enter");
+      await expect(
+        page.getByRole("button", { name: "Remove /deep-research" }),
+      ).toBeVisible();
+      await expectStableDimensions();
+
+      const skillInput = page.locator(
+        '[data-slot="input-group-control"][contenteditable="true"]',
+      );
+      await skillInput.pressSequentially("/");
+      await expect(page.getByTestId("slash-option-web-search")).toBeVisible();
+      await page.getByTestId("slash-option-web-search").click();
+      await expect(
+        page.getByRole("button", { name: "Remove /web-search" }),
+      ).toBeVisible();
+      await expectStableDimensions();
+
+      await page.getByRole("button", { name: "Remove /web-search" }).click();
+      await expect(page.getByTestId("chat-input")).toBeVisible();
+      await expectStableDimensions();
+
+      await page.getByTestId("skill-selector-trigger").click();
+      await page.getByTestId("slash-option-deep-research").click();
+      await expect(
+        page.getByRole("button", { name: "Remove /deep-research" }),
+      ).toBeVisible();
+      await expectStableDimensions();
     });
   });
 });

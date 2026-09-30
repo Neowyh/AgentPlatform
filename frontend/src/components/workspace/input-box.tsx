@@ -1594,6 +1594,7 @@ export function InputBox({
       skills,
       slashSkillQuery,
       builtinSlashCommands,
+      allowedSkillNames,
     );
     // Builtin commands own the whole composer line, so they cannot be combined
     // with a skill activation: `/goal` behind a selected skill would submit as
@@ -1604,7 +1605,13 @@ export function InputBox({
     return selectedSlashSkill
       ? matches.filter(({ kind }) => kind === "skill")
       : matches;
-  }, [builtinSlashCommands, selectedSlashSkill, skills, slashSkillQuery]);
+  }, [
+    allowedSkillNames,
+    builtinSlashCommands,
+    selectedSlashSkill,
+    skills,
+    slashSkillQuery,
+  ]);
   // A selected skill does not close the catalog: `/` reopens it so a skill can
   // be found by browsing and swapped without first clearing the chip.
   const showSkillSuggestions =
@@ -1832,11 +1839,13 @@ export function InputBox({
     setSkillSuggestionIndex(0);
   }, [slashSkillQuery, skillSuggestions.length]);
 
-  const applySkillSuggestion = useCallback(
-    (suggestion: SlashSuggestion) => {
+  const activateSkill = useCallback(
+    (suggestion: SlashSuggestion, clearInput: boolean) => {
       if (suggestion.kind === "skill") {
         setSelectedSlashSkill(suggestion);
-        textInput.setInput("");
+        if (clearInput) {
+          textInput.setInput("");
+        }
         setDismissedSkillSuggestionValue(null);
         requestAnimationFrame(() => {
           focusContentEditableEnd(inlineSkillTextRef.current);
@@ -1857,6 +1866,11 @@ export function InputBox({
       });
     },
     [textInput],
+  );
+
+  const applySkillSuggestion = useCallback(
+    (suggestion: SlashSuggestion) => activateSkill(suggestion, true),
+    [activateSkill],
   );
 
   const handleSkillSuggestionKeyDown = useCallback(
@@ -1921,26 +1935,6 @@ export function InputBox({
     textareaRef.current?.focus();
   }, [skillInvocationEnabled]);
 
-  // The trigger picker inserts `/skill ` at the cursor so the invocation
-  // travels with the message text, matching the "/" typing flow's contract.
-  const insertSkillAtCursor = useCallback(
-    (skillName: string) => {
-      const value = textInput.value ?? "";
-      const textarea = textareaRef.current;
-      const start = textarea?.selectionStart ?? value.length;
-      const end = textarea?.selectionEnd ?? start;
-      const nextValue = `${value.slice(0, start)}/${skillName} ${value.slice(end)}`;
-      textInput.setInput(nextValue);
-      closeSkillPicker();
-      requestAnimationFrame(() => {
-        const caret = start + skillName.length + 2;
-        textarea?.focus();
-        textarea?.setSelectionRange(caret, caret);
-      });
-    },
-    [closeSkillPicker, textInput],
-  );
-
   const handleSkillPickerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!skillPickerOpen || skillPickerSuggestions.length === 0) {
@@ -1973,7 +1967,15 @@ export function InputBox({
         const selected =
           skillPickerSuggestions[skillPickerIndex] ?? skillPickerSuggestions[0];
         if (selected) {
-          insertSkillAtCursor(selected.name);
+          activateSkill(
+            {
+              name: selected.name,
+              description: selected.description,
+              kind: "skill",
+            },
+            false,
+          );
+          closeSkillPicker();
         }
         return;
       }
@@ -1985,7 +1987,7 @@ export function InputBox({
     },
     [
       closeSkillPicker,
-      insertSkillAtCursor,
+      activateSkill,
       skillPickerIndex,
       skillPickerOpen,
       skillPickerSuggestions,
@@ -2657,7 +2659,10 @@ export function InputBox({
         <div className="relative min-h-16 w-full min-w-0 px-3 py-3">
           {selectedSlashSkill ? (
             <div
-              className="type-body max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto leading-6 break-all whitespace-pre-wrap md:text-[length:var(--text-supporting)]"
+              className={cn(
+                "type-body max-h-48 w-full min-w-0 cursor-text overflow-y-auto leading-6 break-all whitespace-pre-wrap md:text-[length:var(--text-supporting)]",
+                isWelcomeMode ? "min-h-40" : "min-h-6",
+              )}
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   focusContentEditableEnd(inlineSkillTextRef.current);
@@ -2727,7 +2732,17 @@ export function InputBox({
               query=""
               activeIndex={skillPickerIndex}
               title={t.inputBox.skill}
-              onSelect={(skill) => insertSkillAtCursor(skill.name)}
+              onSelect={(skill) => {
+                activateSkill(
+                  {
+                    name: skill.name,
+                    description: skill.description,
+                    kind: "skill",
+                  },
+                  false,
+                );
+                closeSkillPicker();
+              }}
               onClose={closeSkillPicker}
             />
           )}

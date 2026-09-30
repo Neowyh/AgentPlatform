@@ -1,4 +1,6 @@
 import { RESERVED_SLASH_SKILL_NAMES, type Skill } from "@/core/skills";
+
+import { filterSkillsByAllowedNames } from "./slash-suggestions";
 export {
   SUGGESTION_TEMPLATE_PLACEHOLDER_PATTERN,
   findSuggestionTemplatePlaceholder,
@@ -165,6 +167,7 @@ export function getMatchingSkillSuggestions(
   skills: Skill[],
   query: string,
   builtinCommands: SlashSuggestion[],
+  allowedSkillNames?: readonly string[],
 ): SlashSuggestion[] {
   const normalizedQuery = query.toLowerCase();
   // A name the slash parsers refuse must not be offered here either. Both
@@ -187,7 +190,7 @@ export function getMatchingSkillSuggestions(
     );
   });
 
-  const skillMatches = skills
+  const skillMatches = filterSkillsByAllowedNames(skills, allowedSkillNames)
     .map((skill, index) => ({
       skill,
       index,
