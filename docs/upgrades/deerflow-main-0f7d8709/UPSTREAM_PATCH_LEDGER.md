@@ -1,5 +1,11 @@
 # DeerFlow main upstream patch ledger
 
+> **已冻结为历史档案（2026-10-01 起）**：harness 本地补丁的唯一权威登记处已
+> 迁移至仓库根 `UPSTREAM_PATCH_LEDGER.md`（PATCH-002..015 与本文件 2026-09-08
+> 巡检结论已整体迁入，后续新补丁登记为根台账 PATCH-016+）。本文件不再更新，
+> 后续巡检只更新根台账；对照命令与基线不变
+> （`git diff 0f7d8709d3bbf0be26460b6277fbad9329302243 -- backend/packages/harness/deerflow`）。
+
 This ledger is the allow-list for local changes under
 `backend/packages/harness/deerflow/**` during convergence.  The comparison is
 against the locked DeerFlow commit `0f7d8709d3bbf0be26460b6277fbad9329302243`.
