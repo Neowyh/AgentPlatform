@@ -226,6 +226,30 @@ def write_outputs(
             json.dumps(corrective_actions, ensure_ascii=False),
             encoding="utf-8",
         )
+    # Scanner Status disclosure gate (ticket 04): a code-side run's outputs
+    # carry the evidence_collection scan record.
+    summary_dir = output_dir / "artifacts" / "evidence"
+    summary_dir.mkdir(parents=True, exist_ok=True)
+    (summary_dir / "scan_summary.json").write_text(
+        json.dumps(
+            {
+                "package_id": "pkg-fixture",
+                "overall": "completed",
+                "scanners": [
+                    {
+                        "name": "cppcheck",
+                        "available": True,
+                        "version": "2.17.1",
+                        "exit_code": 0,
+                        "timed_out": False,
+                        "skipped_reason": None,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     return output_dir
 
 

@@ -11,6 +11,10 @@ inputs:
     type: string
     default: ""
     description: "经授权的 Code Evidence Package 源码根目录"
+  code_analysis_source:
+    type: string
+    default: ""
+    description: "代码证据包静态分析产物目录（<package>/analysis，系统派生；无代码包时为空）"
   upload_dir:
     type: string
     default: ""
@@ -70,11 +74,13 @@ nodes:
         read:
           - "{{inputs.upload_dir}}"
           - "{{inputs.code_package_source}}"
+          - "{{inputs.code_analysis_source}}"
           - "/mnt/skills/fault-zeroing"
           - "/mnt/skills/fault-zeroing/references"
         write:
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/scan_summary.json"
       params:
         max_turns: 150
         system_prompt: |
@@ -95,6 +101,9 @@ nodes:
 
           1. 使用 glob 扫描 {{inputs.upload_dir}}，了解文件结构。
              当模式为 code 或 hybrid 时，再扫描 {{inputs.code_package_source}}，仅在该目录内递归读取 .c/.h、日志和构建元数据；记录源码相对路径、行号和 provenance。没有编译元数据时记录 compilation_configuration_verified=false，并将代码结论标为 pending_verification。
+             当 {{inputs.code_package_source}} 非空时，调用 analyze_code_evidence
+             （package_root={{inputs.code_package_source}}）对代码证据包运行固定的
+             只读静态扫描；扫描器不可用时工具会如实返回 scanners_unavailable。
            2. 按格式读取关键文件：
               - .doc/.docx/.pdf/.xls/.xlsx/.ppt/.pptx 调用 read_document 转 Markdown 后读取
                 （遇截断标记用 page_range 分段继续；转换结果为空疑似扫描件时按失败契约处理；
@@ -105,13 +114,27 @@ nodes:
           3. 读取文件内容，抽取每一条证据
           4. 检查五类资料覆盖情况：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录
           5. 生成证据台账。静态告警单独最多只能标为 high_risk_candidate，不能标为 confirmed。
+             当 {{inputs.code_analysis_source}} 非空时，读取其中的 scanner_status.json 与
+             findings.json（analyze_code_evidence 落盘的扫描记录与静态告警）：
+             - findings.json 每条静态告警作为独立证据来源引用（confidence 上限
+               high_risk_candidate），必须与人工阅读交叉验证，不得直接写成 confirmed；
+             - scanner_status.json 的 overall 为 scanners_unavailable 时，必须在证据台账
+               与覆盖矩阵中写明“静态扫描器不可用”，并要求下游在报告“遗留风险”中原样披露；
+               严禁把“未扫描”表述成“扫过无发现”。
 
           输出：
           a) 写入 {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
             每条证据包含 id、source（文件路径#行号或章节）、grade（A/B/C/D）、
             type、summary、supports（可支撑的事件ID）、contradicts（反证对象ID）
           b) 写入 {{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md
-          c) 输出摘要：总证据数、A/B/C/D 各级分布、覆盖情况
+          c) 写入 {{inputs.output_base_dir}}/artifacts/evidence/scan_summary.json
+             ——扫描记录（Result Contract 披露门检查该文件）：
+             {{inputs.code_analysis_source}} 非空时，把
+             {{inputs.code_analysis_source}}/scanner_status.json 的内容原样复制为
+             {"package_id": ..., "scanners": [...], "overall": ...}；
+             无代码证据侧（{{inputs.code_analysis_source}} 为空）时写
+             {"package_id": null, "scanners": [], "overall": "document_only"}
+          d) 输出摘要：总证据数、A/B/C/D 各级分布、覆盖情况、静态扫描 overall
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
     on_missing_artifact: pause
@@ -535,6 +558,7 @@ nodes:
           - "{{inputs.output_base_dir}}/fault_tree.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/scan_summary.json"
           - "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
         write:
           - "{{inputs.output_base_dir}}/fault_tree.svg"
@@ -551,10 +575,14 @@ nodes:
           - {{inputs.output_base_dir}}/fault_tree.json
           - {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
           - {{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md
+          - {{inputs.output_base_dir}}/artifacts/evidence/scan_summary.json
           - {{inputs.output_base_dir}}/artifacts/corrective_actions.json
           （若 corrective_actions.json 不存在，说明根因归因后没有 confirmed 根因，
           纠正措施被跳过；此时报告的"纠正措施"章节应写明"无已确认根因，
-          不生成纠正措施"，其余输出照常生成。）
+          不生成纠正措施"，其余输出照常生成。
+          若 scan_summary.json 的 overall 为 scanners_unavailable，报告的
+          "遗留风险"章节必须原样包含“静态扫描器不可用”，并说明本次无机器
+          扫描告警、代码结论依赖人工阅读；不得把"未扫描"写成"扫描无告警"。）
 
           生成以下 4 个文件到 {{inputs.output_base_dir}}/：
 

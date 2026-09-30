@@ -135,6 +135,7 @@ def _upload_file(name: str):
 def test_with_files_route_injects_derived_hybrid_mode():
     stored = SimpleNamespace(
         source_virtual_path="/mnt/user-data/code-evidence/run-1/source",
+        analysis_virtual_path="/mnt/user-data/code-evidence/run-1/analysis",
         as_dict=lambda: {"package_id": "run-1"},
     )
     _, created = _run_with_files_route(
@@ -147,6 +148,7 @@ def test_with_files_route_injects_derived_hybrid_mode():
     # injects the mode derived by the shared intake instead.
     assert created[0]["evidence_mode"] == "hybrid"
     assert created[0]["code_package_source"] == "/mnt/user-data/code-evidence/run-1/source"
+    assert created[0]["code_analysis_source"] == "/mnt/user-data/code-evidence/run-1/analysis"
     assert created[0]["upload_dir"] == "/mnt/user-data/uploads"
 
 
@@ -155,6 +157,7 @@ def test_with_files_route_derived_mode_is_always_hybrid():
 
     stored = SimpleNamespace(
         source_virtual_path="/mnt/user-data/code-evidence/run-1/source",
+        analysis_virtual_path="/mnt/user-data/code-evidence/run-1/analysis",
         as_dict=lambda: {"package_id": "run-1"},
     )
     _, created = _run_with_files_route(

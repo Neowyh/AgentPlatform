@@ -322,6 +322,7 @@ async def test_with_files_kernel_launch_returns_the_stored_code_package(env, mon
 
     manifest = SimpleNamespace(
         source_virtual_path="/mnt/user-data/code-evidence/run-pkg/source",
+        analysis_virtual_path="/mnt/user-data/code-evidence/run-pkg/analysis",
         as_dict=lambda: {"package_id": "run-pkg"},
     )
 

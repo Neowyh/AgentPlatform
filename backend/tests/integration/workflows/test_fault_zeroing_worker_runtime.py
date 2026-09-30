@@ -122,6 +122,9 @@ class RecordingAgent:
         confirmed_root_causes: bool = True,
         contract_violation: bool = False,
         disclose_missing_code_side: bool = False,
+        scan_overall: str = "completed",
+        skip_scan_summary: bool = False,
+        read_analysis: bool = False,
     ) -> None:
         self.calls = calls
         self.write_artifacts = write_artifacts
@@ -129,6 +132,20 @@ class RecordingAgent:
         self.confirmed_root_causes = confirmed_root_causes
         self.contract_violation = contract_violation
         self.disclose_missing_code_side = disclose_missing_code_side
+        self.scan_overall = scan_overall
+        self.skip_scan_summary = skip_scan_summary
+        self.read_analysis = read_analysis
+
+    def _analysis_overall(self, context, resolver) -> str | None:
+        """Read the package's analysis/scanner_status.json through the node's
+        declared analysis read root — the evidence_collection consumption chain."""
+        read_roots = (context.file_access or {}).get("read", [])
+        analysis_roots = [root for root in read_roots if root.rstrip("/").endswith("/analysis")]
+        assert analysis_roots, "evidence_collection must declare the package analysis read root"
+        host = resolver(analysis_roots[0])
+        assert host is not None, f"unresolvable analysis read root {analysis_roots[0]}"
+        status = json.loads((Path(host) / "scanner_status.json").read_text(encoding="utf-8"))
+        return status.get("overall")
 
     async def run(self, context, params):
         self.calls.append(context.node_id)
@@ -141,6 +158,10 @@ class RecordingAgent:
                 "user-1",
                 sandbox_scope=canonical_sandbox_scope(context.run_id, context.run_id),
             )
+            analysis_overall = None
+            if self.read_analysis and context.node_id == "evidence_collection":
+                analysis_overall = self._analysis_overall(context, resolver)
+            effective_overall = analysis_overall if analysis_overall is not None else self.scan_overall
             for root in context.file_access.get("write", []):
                 host = resolver(root)
                 assert host is not None, f"unresolvable write root {root}"
@@ -161,6 +182,27 @@ class RecordingAgent:
                         '{"corrective_actions": [{"id": "CA-01", "name": "fix", "description": "desc", "target_root_cause_id": "RC-01", "completion_criteria": "done"}]}',
                         encoding="utf-8",
                     )
+                elif path.name == "scan_summary.json":
+                    # The evidence_collection node's outputs-side copy of the
+                    # package's analysis/scanner_status.json (ticket 04 gate).
+                    if self.skip_scan_summary:
+                        continue
+                    available = effective_overall != "scanners_unavailable"
+                    summary = {
+                        "package_id": "pkg-t4",
+                        "overall": effective_overall,
+                        "scanners": [
+                            {
+                                "name": "cppcheck",
+                                "available": available,
+                                "version": "2.17.1" if available else None,
+                                "exit_code": 0 if available else None,
+                                "timed_out": False,
+                                "skipped_reason": None if available else "binary not found on PATH",
+                            }
+                        ],
+                    }
+                    path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 elif path.name == "zeroing_report.md":
                     if self.contract_violation:
                         path.write_text("# 归零报告\n", encoding="utf-8")
@@ -176,7 +218,13 @@ class RecordingAgent:
                         )
                         path.write_text(report, encoding="utf-8")
                     else:
-                        path.write_text(fixtures.valid_report(), encoding="utf-8")
+                        report = fixtures.valid_report()
+                        if effective_overall == "scanners_unavailable":
+                            report = report.replace(
+                                "暂无缺失资料风险；BE-02 仍待验证。",
+                                "静态扫描器不可用，本次无机器扫描告警；BE-02 仍待验证。",
+                            )
+                        path.write_text(report, encoding="utf-8")
                 elif path.name == "fault_tree.svg":
                     path.write_text("<svg><rect/><text>fault tree</text></svg>", encoding="utf-8")
                 elif path.name == "analysis_process.svg":
@@ -215,6 +263,7 @@ async def _run_worker_once(
     monkeypatch: pytest.MonkeyPatch,
     pinned_kernel_snapshot: dict | None = None,
     slug: str = "fault-zeroing",
+    extra_inputs: dict | None = None,
 ) -> None:
     # deerflow's skills host path defaults to the upstream `skills/` tree; the
     # enterprise skill bundle (fault-zeroing templates) lives in resources/skills.
@@ -234,6 +283,7 @@ async def _run_worker_once(
             "upload_dir": "/mnt/user-data/uploads",
             "problem_description": "top event",
             "output_base_dir": "/mnt/user-data/outputs",
+            **(extra_inputs or {}),
         },
         name=slug,
     )
@@ -829,3 +879,159 @@ async def test_worker_gate_uses_the_contract_version_pinned_on_the_run(
     # run_failed payload).
     failed_event = next(event for event in events if event.event_type == "run_failed")
     assert any("9.9.9" in str(violation) for violation in failed_event.payload["violations"])
+
+
+# ---------------------------------------------------------------------------
+# Scanner Status disclosure gate — worker runtime end to end (ticket 04).
+# ---------------------------------------------------------------------------
+
+
+CODE_PACKAGE_INPUTS = {
+    "code_package_source": "/mnt/user-data/code-evidence/pkg-t4/source",
+    "code_analysis_source": "/mnt/user-data/code-evidence/pkg-t4/analysis",
+}
+
+
+def _seed_code_package_analysis(run_id: str, *, overall: str = "completed") -> None:
+    """Materialize the package's analysis/ products on the run's host sandbox.
+
+    Callers must patch ``file_roots.get_paths`` first so the resolver maps the
+    virtual package paths onto the run's host base dir.
+    """
+    resolver = make_host_resolver(
+        run_id,
+        "user-1",
+        sandbox_scope=canonical_sandbox_scope(run_id, run_id),
+    )
+    analysis_host = Path(resolver(CODE_PACKAGE_INPUTS["code_analysis_source"]))
+    analysis_host.mkdir(parents=True, exist_ok=True)
+    available = overall != "scanners_unavailable"
+    (analysis_host / "scanner_status.json").write_text(
+        json.dumps(
+            {
+                "package_id": "pkg-t4",
+                "overall": overall,
+                "scanners": [
+                    {
+                        "name": "cppcheck",
+                        "available": available,
+                        "version": "2.17.1" if available else None,
+                        "exit_code": 0 if available else None,
+                        "timed_out": False,
+                        "skipped_reason": None if available else "binary not found on PATH",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (analysis_host / "findings.json").write_text("[]", encoding="utf-8")
+    source_host = Path(resolver(CODE_PACKAGE_INPUTS["code_package_source"]))
+    source_host.mkdir(parents=True, exist_ok=True)
+    (source_host / "main.c").write_text("int main(void) { return 0; }\n", encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_evidence_collection_reads_analysis_products_and_run_passes_scanner_gate(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """带 analysis 产物的 Run：evidence_collection 经声明的 analysis 读根读取
+    scanner_status.json，把扫描记录复制进 outputs，完成判定通过（kernel
+    contract_evaluated 事件 + scan_summary 落盘）。"""
+
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    run_id = "run-scanner-gate-pass"
+    _seed_code_package_analysis(run_id)
+
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True, read_analysis=True),
+        run_id=run_id,
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=_intake_pin([]),
+        extra_inputs=CODE_PACKAGE_INPUTS,
+    )
+
+    run = await durable_store.get_run(run_id)
+    assert run is not None and run.status == "completed"
+    events = await durable_store.list_events(run_id)
+    kernel_evaluated = [event for event in events if event.event_type == "kernel_contract_evaluated"]
+    assert len(kernel_evaluated) == 1 and kernel_evaluated[0].payload["code"] == "contract_passed"
+
+    resolver = make_host_resolver(run_id, "user-1", sandbox_scope=canonical_sandbox_scope(run_id, run_id))
+    summary_path = Path(resolver("/mnt/user-data/outputs/artifacts/evidence/scan_summary.json"))
+    assert summary_path.is_file()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["overall"] == "completed"
+    assert summary["scanners"][0]["name"] == "cppcheck"
+    assert summary["package_id"] == "pkg-t4"
+
+
+@pytest.mark.asyncio
+async def test_code_side_run_without_scan_record_never_reaches_completion(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """代码侧 Run 缺扫描记录永远到不了 completed：节点层 on_missing_artifact
+    先把 Run 停为 paused（artifacts_missing），契约门的 scanner_status_missing
+    （单元 + parity 已证）是缺侧记录的第二道防线。"""
+
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    run_id = "run-scanner-gate-missing"
+    _seed_code_package_analysis(run_id)
+
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True, skip_scan_summary=True),
+        run_id=run_id,
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=_intake_pin([]),
+        extra_inputs=CODE_PACKAGE_INPUTS,
+    )
+
+    run = await durable_store.get_run(run_id)
+    assert run is not None and run.status == "paused"
+    events = await durable_store.list_events(run_id)
+    assert not any(event.event_type == "run_completed" for event in events)
+    assert not any(event.event_type == "kernel_contract_evaluated" for event in events)
+    interrupts = run.snapshot.get("interrupt", [])
+    assert interrupts and interrupts[0]["type"] == "artifacts_missing"
+    assert any("scan_summary.json" in str(missing) for missing in interrupts[0]["missing"])
+
+
+@pytest.mark.asyncio
+async def test_scanners_unavailable_run_requires_report_disclosure_to_complete(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """overall=scanners_unavailable：报告遗留风险已披露 → 完成且留痕。"""
+
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    run_id = "run-scanner-gate-unavailable"
+    _seed_code_package_analysis(run_id, overall="scanners_unavailable")
+
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True, read_analysis=True, scan_overall="scanners_unavailable"),
+        run_id=run_id,
+        monkeypatch=monkeypatch,
+        pinned_kernel_snapshot=_intake_pin([]),
+        extra_inputs=CODE_PACKAGE_INPUTS,
+    )
+
+    run = await durable_store.get_run(run_id)
+    assert run is not None and run.status == "completed", run.error
+    events = await durable_store.list_events(run_id)
+    assert any(event.event_type == "kernel_contract_evaluated" for event in events)

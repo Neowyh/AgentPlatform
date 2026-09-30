@@ -57,6 +57,17 @@ class PackageManifest:
     def source_virtual_path(self) -> str:
         return f"/mnt/user-data/code-evidence/{self.package_id}/source"
 
+    @property
+    def analysis_virtual_path(self) -> str:
+        """The package's static-analysis products directory (ticket 04).
+
+        ``analyze_code_evidence`` writes inventory/findings/scanner_status here;
+        workflow runs receive this path as the server-assigned
+        ``code_analysis_source`` input so the evidence_collection node can read
+        the scan record.
+        """
+        return f"/mnt/user-data/code-evidence/{self.package_id}/analysis"
+
     def as_dict(self) -> dict:
         return {
             "package_id": self.package_id,

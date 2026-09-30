@@ -350,9 +350,11 @@ async def _start_zeroing_run(
             await asyncio.to_thread(_materialize_uploads, thread_id, user_id, upload_paths, run_id)
             upload_dir = f"{VIRTUAL_PATH_PREFIX}/uploads"
         code_package_source = ""
+        code_analysis_source = ""
         if code_package_id:
             manifest = await asyncio.to_thread(_materialize_code_package, thread_id, user_id, code_package_id, run_id)
             code_package_source = manifest.source_virtual_path
+            code_analysis_source = manifest.analysis_virtual_path
 
         limits = _workflow_runtime()
         result = await FaultZeroingKernel(WorkflowV2Store(_session_factory())).start_run(
@@ -362,6 +364,7 @@ async def _start_zeroing_run(
                 "problem_description": description,
                 "upload_dir": upload_dir,
                 "code_package_source": code_package_source,
+                "code_analysis_source": code_analysis_source,
             },
             created_by=user_id,
             run_id=run_id,

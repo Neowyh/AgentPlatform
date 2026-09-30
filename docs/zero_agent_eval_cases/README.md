@@ -21,6 +21,7 @@
 | `case_01_wind_tunnel_heat_flux_drift` | 高焓风洞热流测量漂移 | 区分真实热环境异常与测量链路异常 |
 | `case_02_thermal_vacuum_temp_overshoot` | 热真空控温超调 | 识别控制参数、热惯性和测点布置的耦合影响 |
 | `case_03_arc_heated_ablation_anomaly` | 电弧加热烧蚀异常 | 在证据不足和冲突证据下保持待验证结论 |
+| `case_04_hybrid_code_evidence_scan_disclosure` | 混合证据 + 代码包静态扫描披露 | `analyze_code_evidence` 扫描链路、GB18030 读取、二进制白名单查看、Scanner Status 披露门（真实模型验收待跑） |
 
 ## 人工验收维度
 

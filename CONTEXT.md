@@ -382,6 +382,10 @@ _Avoid_: Code folder, project upload, Agent archive
 The evidence grade of a fault-zeroing conclusion: confirmed, high-risk candidate, or pending verification. A static-analysis alert alone is never confirmed.
 _Avoid_: Severity, certainty, bug status
 
+**Scanner Status**:
+The auditable status record of one static-analysis pass over a Code Evidence Package: per scanner, its availability, version, exit code, and timeout flag, plus the run's overall disclosure grade. A Run carrying the code evidence side must account for its scan through this record — a missing record is never accepted as a clean scan, while an explicit `scanners_unavailable` disclosure is a legal state that must surface in the report's residual risks.
+_Avoid_: Treating "not scanned" as "no alerts", silent degradation
+
 **Hybrid Evidence Intake**:
 The fixed fault-zeroing input policy that expects both documentary evidence and a Code Evidence Package. If exactly one side is missing, the platform creates a paused Run and records the user's confirmation against the input snapshot before continuing; if both are missing, it rejects the request without creating a Run. A non-empty problem description or any document-type attachment satisfies the documentary side, while missing evidence remains visible in the coverage matrix and residual risks.
 _Avoid_: Evidence Mode selection, document-only Run, code-only Run, silent mode downgrade

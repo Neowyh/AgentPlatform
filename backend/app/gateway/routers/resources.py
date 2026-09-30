@@ -2215,7 +2215,7 @@ async def create_workflow_run_with_files(
         raise HTTPException(400, "inputs must be a JSON object") from exc
     if not isinstance(submitted, dict):
         raise HTTPException(400, "inputs must be a JSON object")
-    protected = {"code_package_source", "code_package_id", "code_evidence_source", "upload_dir"}
+    protected = {"code_package_source", "code_package_id", "code_evidence_source", "code_analysis_source", "upload_dir"}
     if protected.intersection(submitted):
         raise HTTPException(400, "Code and upload paths are assigned by the server")
     if not files:
@@ -2234,6 +2234,7 @@ async def create_workflow_run_with_files(
     source_manifest, _stored_names = await _store_workflow_run_files(run_id=run_id, user_id=user_id, files=files)
     if source_manifest is not None:
         submitted["code_package_source"] = source_manifest.source_virtual_path
+        submitted["code_analysis_source"] = source_manifest.analysis_virtual_path
     submitted["upload_dir"] = "/mnt/user-data/uploads"
     # The evidence mode is a derived system result (Hybrid Evidence Intake):
     # a client-supplied value is overwritten, never honored.

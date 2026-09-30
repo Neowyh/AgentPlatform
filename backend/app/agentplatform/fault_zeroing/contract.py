@@ -109,6 +109,22 @@ EVIDENCE_SIDE_DISCLOSURE = {
     "document_evidence": "文档证据未提供",
     "code_evidence_package": "代码证据包未提供",
 }
+CODE_EVIDENCE_SIDE = "code_evidence_package"
+# Scanner Status disclosure gate: the outputs-side record mirroring the Code
+# Evidence Package's ``analysis/scanner_status.json`` (ticket 01 products,
+# copied into the outputs by the evidence_collection node).  A run carrying
+# the code evidence side must account for its static scan through this record;
+# a missing record never passes as a clean scan.
+SCAN_SUMMARY_OUTPUT = "artifacts/evidence/scan_summary.json"
+SCANNERS_UNAVAILABLE = "scanners_unavailable"
+# Legal scan outcomes, unified with the analysis library's overall grades
+# (deerflow.uploads.code_analysis: completed / partial / scanners_unavailable).
+# A code-side run whose record claims "document_only" (or any unknown grade)
+# is a missing record in disguise, never a clean scan.
+SCANNER_OVERALL_GRADES = ("completed", "partial", "scanners_unavailable")
+# Stable residual-risk disclosure phrase shared with the workflow node prompts:
+# scanner unavailability must never degrade silently into "scanned, clean".
+SCANNER_UNAVAILABLE_DISCLOSURE = "静态扫描器不可用"
 
 
 class ContractUnavailableError(RuntimeError):
@@ -928,6 +944,56 @@ def _validate_hybrid_disclosure(report_text: str, missing_sides: tuple[str, ...]
             )
 
 
+def _validate_scanner_status_disclosure(
+    outputs_dir: Path,
+    report_text: str,
+    missing_evidence_sides: Sequence[str],
+    sink: _Sink,
+) -> None:
+    """Scanner Status disclosure gate: a run carrying the code evidence side
+    must account for its static scan in the outputs.
+
+    The record is the evidence_collection node's copy of the package's
+    ``analysis/scanner_status.json`` (``overall`` + one structured entry per
+    scanner: availability/version/exit_code/timeout).  The gate is off for a
+    pure-document run whose intake record declares the code side missing; a
+    missing record never passes as a clean scan, and an explicit
+    ``scanners_unavailable`` disclosure passes only when the report's
+    residual-risk section states it.
+    """
+
+    if CODE_EVIDENCE_SIDE in missing_evidence_sides:
+        return
+    summary_path = outputs_dir / SCAN_SUMMARY_OUTPUT
+    if not summary_path.exists():
+        sink.add(
+            "scanner_status_missing",
+            f"code evidence present but {SCAN_SUMMARY_OUTPUT} is missing: the evidence_collection scan record (summary of analysis/scanner_status.json) is required",
+            artifact=SCAN_SUMMARY_OUTPUT,
+        )
+        return
+    summary = _load_json(summary_path, sink)
+    if summary is None:
+        return
+    overall = summary.get("overall")
+    scanners = summary.get("scanners")
+    if not isinstance(overall, str) or overall not in SCANNER_OVERALL_GRADES or not isinstance(scanners, list):
+        sink.add(
+            "scanner_status_invalid",
+            f"{SCAN_SUMMARY_OUTPUT} must state the scan outcome (overall: one of {', '.join(SCANNER_OVERALL_GRADES)}) and the per-scanner record (scanners list)",
+            artifact=SCAN_SUMMARY_OUTPUT,
+            location="overall" if not (isinstance(overall, str) and overall in SCANNER_OVERALL_GRADES) else "scanners",
+        )
+        return
+    if overall == SCANNERS_UNAVAILABLE and SCANNER_UNAVAILABLE_DISCLOSURE not in _section_text(report_text, "遗留风险"):
+        sink.add(
+            "scanner_unavailable_undisclosed",
+            f"scanners_unavailable must be disclosed in zeroing_report.md 遗留风险 as: {SCANNER_UNAVAILABLE_DISCLOSURE}",
+            artifact="zeroing_report.md",
+            location="遗留风险",
+        )
+
+
 def _coverage_matrix_rows(report_text: str) -> list[str]:
     matrix_section = _section_text(report_text, "资料覆盖矩阵")
     rows: list[str] = []
@@ -1099,11 +1165,12 @@ def evaluate_result_contract(
 
     _validate_required_files(output_path, sink)
     schema_doc = _validate_schema_presence(resolved_schema, sink)
+    report_text = _read_text(output_path / "zeroing_report.md", sink)
+    _validate_scanner_status_disclosure(output_path, report_text, tuple(missing_evidence_sides), sink)
     tree = _load_json(output_path / "fault_tree.json", sink)
     if tree is None:
         return _finish(sink, requested_version, fingerprint, output_path)
 
-    report_text = _read_text(output_path / "zeroing_report.md", sink)
     analysis_process = _read_text(output_path / "analysis_process.svg", sink)
     if schema_doc is not None:
         _validate_json_schema(tree, schema_doc, sink)

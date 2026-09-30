@@ -51,6 +51,114 @@ def test_embedded_contract_matches_the_repo_contract() -> None:
     assert packaged.REQUIRED_COVERAGE == contract.REQUIRED_COVERAGE
     assert packaged.REQUIRED_REPORT_SECTIONS == contract.REQUIRED_REPORT_SECTIONS
     assert packaged.REQUIRED_STAGE_MARKERS == contract.REQUIRED_STAGE_MARKERS
+    # Scanner Status disclosure gate (ticket 04): the packaged copy must share
+    # the canonical gate's constants verbatim.
+    assert packaged.CODE_EVIDENCE_SIDE == contract.CODE_EVIDENCE_SIDE
+    assert packaged.SCAN_SUMMARY_OUTPUT == contract.SCAN_SUMMARY_OUTPUT
+    assert packaged.SCANNERS_UNAVAILABLE == contract.SCANNERS_UNAVAILABLE
+    assert packaged.SCANNER_OVERALL_GRADES == contract.SCANNER_OVERALL_GRADES
+    assert packaged.SCANNER_UNAVAILABLE_DISCLOSURE == contract.SCANNER_UNAVAILABLE_DISCLOSURE
+    assert packaged.EVIDENCE_SIDE_DISCLOSURE == contract.EVIDENCE_SIDE_DISCLOSURE
+
+
+def test_packaged_cli_and_repo_contract_agree_on_the_scanner_gate(tmp_path: Path) -> None:
+    """Scanner Status 披露门三态在打包副本与 canonical 上行为一致。"""
+
+    fixtures = _contract_fixtures()
+    repo_contract = _load(CONTRACT, "fz_repo_contract")
+
+    def outputs_dir(name: str) -> Path:
+        path = tmp_path / name
+        path.mkdir(exist_ok=True)
+        return path
+
+    def packaged_verdict(outputs: Path, *flags: str) -> tuple[int, str]:
+        completed = subprocess.run(
+            [sys.executable, str(PACKAGED), "--outputs-dir", str(outputs), "--json", *flags],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        return completed.returncode, completed.stdout
+
+    # State 1 — code side present, scan record missing: structured violation
+    # on both forms ("缺失" is never a clean scan).
+    outputs = fixtures.write_outputs(outputs_dir("missing"))
+    (outputs / "artifacts" / "evidence" / "scan_summary.json").unlink()
+    expected = repo_contract.evaluate_result_contract(outputs)
+    assert not expected.ok and "scanner_status_missing" in expected.codes()
+    code, stdout = packaged_verdict(outputs)
+    assert code == 1
+    assert "scanner_status_missing" in stdout
+
+    # State 2 — explicit scanners_unavailable with the report disclosure: both pass.
+    outputs = fixtures.write_outputs(outputs_dir("disclosed"))
+    fixtures.write_scan_summary(
+        outputs,
+        {
+            "package_id": "pkg-fixture",
+            "overall": "scanners_unavailable",
+            "scanners": [{"name": "cppcheck", "available": False, "version": None, "exit_code": None, "timed_out": False, "skipped_reason": "binary not found on PATH"}],
+        },
+    )
+    report = fixtures.valid_report().replace(
+        "暂无缺失资料风险；BE-02 仍待验证。",
+        "静态扫描器不可用，本次无机器扫描告警；BE-02 仍待验证。",
+    )
+    (outputs / "zeroing_report.md").write_text(report, encoding="utf-8")
+    expected = repo_contract.evaluate_result_contract(outputs)
+    assert expected.ok, expected.errors
+    code, stdout = packaged_verdict(outputs)
+    assert code == 0, stdout
+    assert '"ok": true' in stdout
+
+    # State 3 — scanners_unavailable without the disclosure: both flag it
+    # (未扫描不得静默当作干净扫描).
+    outputs = fixtures.write_outputs(outputs_dir("undisclosed"))
+    fixtures.write_scan_summary(
+        outputs,
+        {
+            "package_id": "pkg-fixture",
+            "overall": "scanners_unavailable",
+            "scanners": [{"name": "cppcheck", "available": False, "version": None, "exit_code": None, "timed_out": False, "skipped_reason": "binary not found on PATH"}],
+        },
+    )
+    expected = repo_contract.evaluate_result_contract(outputs)
+    assert not expected.ok and "scanner_unavailable_undisclosed" in expected.codes()
+    code, stdout = packaged_verdict(outputs)
+    assert code == 1
+    assert "scanner_unavailable_undisclosed" in stdout
+
+    # Document-only run (declared missing code side): both skip the gate.
+    outputs = fixtures.write_outputs(outputs_dir("doc_only"))
+    (outputs / "artifacts" / "evidence" / "scan_summary.json").unlink()
+    report = (
+        fixtures.valid_report()
+        .replace(
+            "| 问题描述 | 已覆盖 | 01_problem.md | 无 |",
+            "| 问题描述 | 已覆盖 | 01_problem.md | 无 |\n| 代码证据包 | 未提供 | — | 代码证据包未提供 |",
+        )
+        .replace(
+            "暂无缺失资料风险；BE-02 仍待验证。",
+            "代码证据包未提供，本次无静态扫描输入；BE-02 仍待验证。",
+        )
+    )
+    (outputs / "zeroing_report.md").write_text(report, encoding="utf-8")
+    expected = repo_contract.evaluate_result_contract(outputs, missing_evidence_sides=("code_evidence_package",))
+    assert expected.ok, expected.errors
+    code, stdout = packaged_verdict(outputs, "--missing-evidence-side", "code_evidence_package")
+    assert code == 0, stdout
+    assert '"ok": true' in stdout
+
+    # State 4 — a disguised record ("document_only" on a code-side run) is
+    # invalid on both forms: a missing scan never masquerades as a clean one.
+    outputs = fixtures.write_outputs(outputs_dir("disguised"))
+    fixtures.write_scan_summary(outputs, {"package_id": "pkg-fixture", "overall": "document_only", "scanners": []})
+    expected = repo_contract.evaluate_result_contract(outputs)
+    assert not expected.ok and "scanner_status_invalid" in expected.codes()
+    code, stdout = packaged_verdict(outputs)
+    assert code == 1
+    assert "scanner_status_invalid" in stdout
 
 
 def test_packaged_cli_agrees_with_the_repo_contract_on_a_fixture(tmp_path: Path) -> None:

@@ -6,5 +6,6 @@ tool_groups:
   - document
   - web
   - fault-zeroing
+  - code
 skills:
   - fault-zeroing

@@ -262,6 +262,11 @@ class _StubAgent:
                         '{"corrective_actions": [{"id": "CA-01", "name": "fix", "description": "desc", "target_root_cause_id": "RC-01", "completion_criteria": "done"}]}',
                         encoding="utf-8",
                     )
+                elif path.name == "scan_summary.json":
+                    # Scanner Status disclosure gate (ticket 04): the
+                    # evidence_collection node's outputs-side scan record.
+                    summary = '{"package_id": "pkg-equivalence", "overall": "completed", "scanners": [{"name": "cppcheck", "available": true, "version": "2.17.1", "exit_code": 0, "timed_out": false, "skipped_reason": null}]}'
+                    path.write_text(summary, encoding="utf-8")
                 elif path.name == "zeroing_report.md":
                     report = fixtures.valid_report()
                     if self.disclose_missing_side:

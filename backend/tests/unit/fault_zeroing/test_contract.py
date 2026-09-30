@@ -217,6 +217,7 @@ def write_outputs(
         encoding="utf-8",
     )
     (output_dir / "zeroing_report.md").write_text(report or valid_report(), encoding="utf-8")
+    write_scan_summary(output_dir)
     return output_dir
 
 
@@ -414,3 +415,161 @@ def test_semantic_reason_codes(tmp_path: Path, mutate, expected_code: str) -> No
 
     assert not verdict.ok
     assert expected_code in codes_of(verdict)
+
+
+# ---------------------------------------------------------------------------
+# Scanner Status disclosure gate (ticket T4 / issue 04).
+# ---------------------------------------------------------------------------
+
+
+def scan_summary(overall: str = "completed") -> dict:
+    """The outputs-side summary of the package's analysis/scanner_status.json."""
+    scanners = [
+        {
+            "name": "cppcheck",
+            "available": overall != "scanners_unavailable",
+            "version": "2.17.1" if overall != "scanners_unavailable" else None,
+            "exit_code": 0 if overall != "scanners_unavailable" else None,
+            "timed_out": False,
+            "skipped_reason": None if overall != "scanners_unavailable" else "binary not found on PATH",
+        }
+    ]
+    return {"package_id": "pkg-fixture", "scanners": scanners, "overall": overall}
+
+
+def write_scan_summary(output_dir: Path, summary: dict | None = None) -> Path:
+    summary_path = output_dir / "artifacts" / "evidence" / "scan_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(summary if summary is not None else scan_summary(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return summary_path
+
+
+def test_code_side_run_with_scanner_status_passes(tmp_path: Path) -> None:
+    """有 status → 通过：Run 携带代码证据侧时，scan_summary 齐备即通过。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir)
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert verdict.ok, verdict.errors
+
+
+def test_code_side_run_without_scanner_status_is_a_structured_violation(tmp_path: Path) -> None:
+    """缺失 → 违规清单：代码证据侧存在而 scan_summary 缺失是结构化 finding。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir)
+    (output_dir / "artifacts" / "evidence" / "scan_summary.json").unlink()
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert not verdict.ok
+    finding = next(f for f in verdict.findings if f.code == "scanner_status_missing")
+    assert finding.artifact == "artifacts/evidence/scan_summary.json"
+    assert finding.severity == "error"
+
+
+def test_document_only_run_does_not_require_scanner_status(tmp_path: Path) -> None:
+    """纯文档 Run（intake 声明代码侧缺失）不要求 scanner_status。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir)
+    (output_dir / "artifacts" / "evidence" / "scan_summary.json").unlink()
+    # 合法的纯文档 Run 还必须披露缺失的代码侧（Hybrid Evidence Intake 披露契约）。
+    report = (
+        valid_report()
+        .replace(
+            "| 问题描述 | 已覆盖 | 01_problem.md | 无 |",
+            "| 问题描述 | 已覆盖 | 01_problem.md | 无 |\n| 代码证据包 | 未提供 | — | 代码证据包未提供 |",
+        )
+        .replace(
+            "暂无缺失资料风险；BE-02 仍待验证。",
+            "代码证据包未提供，本次无静态扫描输入；BE-02 仍待验证。",
+        )
+    )
+    (output_dir / "zeroing_report.md").write_text(report, encoding="utf-8")
+
+    verdict = contract.evaluate_result_contract(
+        output_dir,
+        missing_evidence_sides=("code_evidence_package",),
+    )
+
+    assert verdict.ok, verdict.errors
+
+
+def test_scanners_unavailable_with_disclosure_passes(tmp_path: Path) -> None:
+    """显式 scanners_unavailable → 通过且报告遗留风险已披露。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir, scan_summary(overall="scanners_unavailable"))
+    report = valid_report().replace(
+        "暂无缺失资料风险；BE-02 仍待验证。",
+        "静态扫描器不可用，本次无机器扫描告警；BE-02 仍待验证。",
+    )
+    (output_dir / "zeroing_report.md").write_text(report, encoding="utf-8")
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert verdict.ok, verdict.errors
+
+
+def test_scanners_unavailable_without_disclosure_fails(tmp_path: Path) -> None:
+    """scanners_unavailable 未写入遗留风险 → 违规（不得静默降级）。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir, scan_summary(overall="scanners_unavailable"))
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert not verdict.ok
+    finding = next(f for f in verdict.findings if f.code == "scanner_unavailable_undisclosed")
+    assert finding.artifact == "zeroing_report.md"
+    assert finding.location == "遗留风险"
+    assert contract.SCANNER_UNAVAILABLE_DISCLOSURE in finding.message
+
+
+@pytest.mark.parametrize(
+    ("summary", "expected_code"),
+    [
+        ({"scanners": []}, "scanner_status_invalid"),  # no overall
+        ({"overall": ""}, "scanner_status_invalid"),  # empty overall
+        ({"overall": "completed"}, "scanner_status_invalid"),  # no scanners list
+        ({"overall": "completed", "scanners": "cppcheck"}, "scanner_status_invalid"),
+        # 伪造的"未扫描"记录：代码侧 Run 不得拿 document_only/未知 overall 充数。
+        ({"overall": "document_only", "scanners": []}, "scanner_status_invalid"),
+        ({"overall": "scanned_everything", "scanners": []}, "scanner_status_invalid"),
+    ],
+)
+def test_scan_summary_must_state_the_scan_outcome(tmp_path: Path, summary, expected_code: str) -> None:
+    """记录缺 overall 或 scanners 清单 → 无效记录，不得当作干净扫描。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir, summary)
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert not verdict.ok
+    finding = next(f for f in verdict.findings if f.code == expected_code)
+    assert finding.artifact == "artifacts/evidence/scan_summary.json"
+
+
+def test_scan_summary_broken_json_is_structured(tmp_path: Path) -> None:
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    write_scan_summary(output_dir)
+    (output_dir / "artifacts" / "evidence" / "scan_summary.json").write_text("{not json", encoding="utf-8")
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert not verdict.ok
+    assert "json_invalid" in codes_of(verdict)
