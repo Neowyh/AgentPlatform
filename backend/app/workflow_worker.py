@@ -166,7 +166,10 @@ async def build_canonical_registry(run: Any, config: Any, session_factory: Any, 
         )
         for resource_id, resource_slug in agent_rows:
             definition = await loader.load_agent(run.run_id, resource_id)
-            skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id)
+            # Pass the already-loaded definition so the UUID-to-name skill
+            # translation lands on the object the adapter keeps — not on a
+            # discarded internal reload — and the load happens exactly once.
+            skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
             for value in skill_definitions:
                 frozen_skill_versions[value.resource_id] = (

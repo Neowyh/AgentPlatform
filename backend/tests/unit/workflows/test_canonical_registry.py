@@ -100,3 +100,129 @@ async def test_canonical_registry_uses_uuid_and_frozen_runner_tool_groups(
         registry.resolve("tool", "write_file")
     assert (tmp_path / "resources" / "run-skill-views" / canonical_run_key("run-1") / "custom").is_dir()
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_canonical_registry_translates_agent_skill_uuids_on_the_adapted_definition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The UUID-to-name skill translation must land on the adapted definition.
+
+    The registry hands the loaded agent definition to the adapter verbatim, so
+    the translation performed inside ``load_agent_skill_definitions`` has to
+    act on that same object. Translating an internally reloaded temporary
+    instead would leave the adapter's ``config.skills`` holding resource UUIDs
+    — a trap for every downstream name-keyed consumer — and would reload the
+    agent definition a second time per Run.
+    """
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'registry-translate.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    storage = ResourceStorage(tmp_path)
+    agent_id = "9b1edb10-cadc-45b4-85f1-0fb427a066ec"
+    skill_id = "951d48c2-c528-41ac-b188-5636ca425f70"
+    agent_source = tmp_path / "agent"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text(f"name: writer\ntool_groups: [read, write]\nskills: [{skill_id}]\n")
+    skill_source = tmp_path / "skill"
+    skill_source.mkdir()
+    (skill_source / "SKILL.md").write_text("---\nname: research\ndescription: Research carefully\n---\n# Research\n")
+    agent_published = storage.publish_staged(storage.stage_directory("agent", agent_id, agent_source), version=1)
+    skill_published = storage.publish_staged(storage.stage_directory("skill", skill_id, skill_source), version=1)
+    from app.agentplatform.resource_models import ResourceDependency
+
+    async with factory() as session:
+        session.add_all(
+            [
+                Resource(
+                    id=agent_id,
+                    type="agent",
+                    slug="writer",
+                    display_name="Writer",
+                    owner_id="owner",
+                    visibility="public",
+                    scope_department_id=None,
+                    lifecycle_status="active",
+                    latest_version=1,
+                    draft_revision=0,
+                    storage_kind="filesystem",
+                    storage_key=f"agents/{agent_id}",
+                    system_owned=False,
+                    authz_revision=1,
+                ),
+                ResourceVersion(
+                    id="agent-version",
+                    resource_id=agent_id,
+                    version=1,
+                    content_hash=agent_published.content_hash,
+                    storage_key=agent_published.storage_key,
+                    scan_result={},
+                    created_by="owner",
+                ),
+                Resource(
+                    id=skill_id,
+                    type="skill",
+                    slug="research",
+                    display_name="Research",
+                    owner_id="owner",
+                    visibility="public",
+                    scope_department_id=None,
+                    lifecycle_status="active",
+                    latest_version=1,
+                    draft_revision=0,
+                    storage_kind="filesystem",
+                    storage_key=f"skills/{skill_id}",
+                    system_owned=False,
+                    authz_revision=1,
+                ),
+                ResourceVersion(
+                    id="skill-version",
+                    resource_id=skill_id,
+                    version=1,
+                    content_hash=skill_published.content_hash,
+                    storage_key=skill_published.storage_key,
+                    scan_result={},
+                    created_by="owner",
+                ),
+                ResourceDependency(id="agent-skill", source_resource_id=agent_id, target_resource_id=skill_id),
+                RunResourceSnapshot(
+                    id="agent-snapshot",
+                    run_id="run-1",
+                    root_resource_id=agent_id,
+                    resource_id=agent_id,
+                    version=1,
+                    content_hash=agent_published.content_hash,
+                    authz_revision=1,
+                ),
+                RunResourceSnapshot(
+                    id="skill-snapshot",
+                    run_id="run-1",
+                    root_resource_id=agent_id,
+                    resource_id=skill_id,
+                    version=1,
+                    content_hash=skill_published.content_hash,
+                    authz_revision=1,
+                ),
+            ]
+        )
+        await session.commit()
+
+    tools = [SimpleNamespace(name="read_file", group="read")]
+    monkeypatch.setattr(
+        deerflow.tools.tools,
+        "get_available_tools",
+        lambda groups=None, app_config=None: [tool for tool in tools if groups is None or tool.group in groups],
+    )
+    run = SimpleNamespace(
+        run_id="run-1",
+        created_by="runner",
+        runner_tool_groups=["read"],
+    )
+
+    registry = await build_canonical_registry(run, SimpleNamespace(), factory, storage)
+
+    adapted = registry.resolve("agent", agent_id).definition
+    assert adapted.config.skills == ["research"]
+    await engine.dispose()
