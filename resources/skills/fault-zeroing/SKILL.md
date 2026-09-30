@@ -12,6 +12,9 @@ allowed-tools:
   - task
   - ask_clarification
   - analyze_code_evidence
+  - start_zeroing_run
+  - confirm_zeroing_run
+  - check_zeroing_run
 ---
 
 # 归零排故工作流
@@ -32,7 +35,7 @@ allowed-tools:
 5. 文档读取后检测空文本与工具错误：`read_document` 返回 JSON 错误（文件不存在、转换失败、疑似扫描件等）时，必须记录文件名、精确路径和错误原因，不得把错误 JSON 当作文档内容或猜测内容。对关键资料先调用 `ask_clarification`，向用户提供三种选择：补传/重试后继续、以待验证状态继续、停止分析；在用户确认前不得输出已确认根因或“已归零”结论。用户选择继续时，相关证据、底事件和根因只能标为 `pending_verification`，并写入遗留风险。非关键资料可记录缺失后继续。
 6. 长文档按章节或行号范围读取，不一次性吞入无关内容。
 7. 缺少关键输入时调用 `ask_clarification`，不得用假设替代资料。
-8. 即使用户只给出一句“做归零排故分析”，也必须主动盘点上传目录并按本工作流执行，不要求用户补写详细 prompt。
+8. 即使用户只给出一句“做归零排故分析”，也要主动盘点上传目录，把盘点到的文件经 `start_zeroing_run` 参数声明后发起正式 Run，不要求用户补写详细 prompt（见「运行入口边界」）。
 9. 资料覆盖矩阵必须逐项检查五类资料：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录。缺失项必须同时写入报告“输入资料”和“遗留风险”。
 10. `06_expected_analysis.md`、`*_expected_analysis.md` 等验收参考文件只可用于人工验收，不得作为底事件、根因或报告结论的证据来源。
 
@@ -48,10 +51,15 @@ allowed-tools:
 
 执行前读取 `references/evidence_rules.md`。每条关键结论必须包含 evidence id 或明确资料来源，来源至少包含文件路径；能定位行号时写明行号或章节名。把内容区分为事实、推断、假设、待验证项。证据台账是证据评估和报告结论的唯一 evidence id 来源；演绎建树不读取证据台账，证据提取与演绎建树的执行关系由 Workflow V2 图和节点文件访问策略控制。底事件、根因和报告结论不得引用证据台账之外的 evidence id。
 
-## 运行入口边界（Result Contract 约束）
+## 运行入口边界（聊天二分规则）
 
-- 本 Skill、fault-zeroing Expert 和 fault-zeroing Workflow 是同一套共享执行内核（`ideer.fault_zeroing.kernel`）的三个入口适配器：相同输入从任一入口发起实际归零 Run 时，使用相同的输入快照、证据规则、阶段策略和 Result Contract 版本，得到语义等价的结构化结果。
-- 概念解释、方法答疑和有限编辑保持普通对话交互，不得意外启动完整 Run；只有用户明确发起归零分析时才进入执行。
+- 概念解释、方法答疑和有限编辑（改措辞、改格式、局部重写）保持普通对话交互，不得发起 Run；只有用户明确发起真实归零分析时才进入执行。
+- 用户提出真实归零分析请求（给出问题/现象并期望产出归零报告）时，必须调用 `start_zeroing_run` 把请求转正为正式 Run，并通过参数声明会话中的证据（`upload_paths` 上传文件、`code_package_id` 代码证据包）；系统会把声明的证据物化进 Run 工作区并以输入快照哈希绑定。禁止在聊天里内联产出五件套。即使用户只给出一句“做归零排故分析”，也要先盘点上传目录，再把盘点到的文件经参数声明后发起，不要求用户补写详细 prompt。
+- 发起后按工具返回驱动闭环：
+  - `queued`：告知用户分析已发起并附运行详情链接（`detail_url`）；
+  - `paused`：用 `ask_clarification` 呈现三选一（补传缺失材料 / 缺侧继续 / 停止）；用户选择继续时调用 `confirm_zeroing_run` 回传发起时返回的 `input_snapshot_hash`；确认后新增材料会改变快照哈希并被拒绝确认，需要重新向用户确认；
+  - 之后用 `check_zeroing_run` 查询进度：Run 完成（含 `pending_verification` 披露性完成）时五件套产物自动送回会话展示；契约违规时把违规摘要与产物链接回传给用户，用户修正材料后重新发起。
+- 真实归零分析与工作流入口共用同一执行内核（`app.agentplatform.fault_zeroing.kernel`）：相同输入从任一入口发起实际归零 Run 时，使用相同的输入快照、证据规则、阶段策略和 Result Contract 版本，得到语义等价的结构化结果。
 - 单侧证据（仅文档或仅代码证据包）继续的 Run 仍为 hybrid 模式，必须在资料覆盖矩阵和遗留风险中披露缺失侧（`文档证据未提供` / `代码证据包未提供`），Result Contract 会强制校验该披露。
 - 结构化最终产物的完成判定以 Result Contract 为准（版本 `1.0.0`），`pending_verification` 是完整的披露性完成状态，不等同于根因已确认。
 
@@ -71,26 +79,17 @@ allowed-tools:
 
 ## 输出规则
 
-**运行模式作用域**：下述五件套输出清单仅适用于你独立完成整个归零流程的场景。当 system prompt 中出现「运行模式：工作流节点」一节时，以该节的「当前阶段指令」为准，只产出本节点指令声明的文件，不得越权补写其他阶段的产物；`write_file` 被拒绝时不要更换路径重试。
+**运行模式作用域**：当 system prompt 中出现「运行模式：工作流节点」一节时，以该节的「当前阶段指令」为准，只产出本节点指令声明的文件，不得越权补写其他阶段的产物；`write_file` 被拒绝时不要更换路径重试。下述文件级要求仅约束工作流节点产出的对应文件。
 
-独立完成全流程时，输出文件写入 `/mnt/user-data/outputs/`：
+聊天入口不内联产出五件套：真实归零分析经 `start_zeroing_run` 发起正式 Run，Run 完成后由 `check_zeroing_run` 把 `fault_tree.json`、`fault_tree.svg`、`bottom_event_assessment.md`、`analysis_process.svg`、`zeroing_report.md` 五件套复制回会话展示（`present_files` 通道）。不在对话中直接散落五个文件路径冒充交付。
 
-1. `/mnt/user-data/outputs/fault_tree.json`
-2. `/mnt/user-data/outputs/fault_tree.svg`
-3. `/mnt/user-data/outputs/bottom_event_assessment.md`
-4. `/mnt/user-data/outputs/analysis_process.svg`
-5. `/mnt/user-data/outputs/zeroing_report.md`
+工作流节点产出的报告与图形仍须满足：
 
-`fault_tree.svg` 必须是静态 SVG 框图，展示顶事件、中间事件、底事件、逻辑门和底事件状态。`analysis_process.svg` 必须展示证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产这条分析链路。SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源。
-
-写完后调用 `present_files` 展示五份文件。输出前必须自检：
-
-1. 端到端模式下五份文件全部存在，缺一份即视为失败并补齐；工作流节点模式下仅自检本节点指令声明的输出。
-2. 报告包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。
-3. 根因结论至少引用一条 A/B 级证据；否则必须写“待验证”。
-4. 数值概率必须有统计、历史频次或专家打分依据；没有依据时 `probability` 保持 `null`。
-5. `zeroing_report.md` 的顶事件、主根因和待验证项必须与 `fault_tree.json` 一致。
-6. 两个 SVG 均为静态内容，不包含脚本、外链、远程图片或动态交互代码。
-7. 报告必须显式包含资料覆盖矩阵、证据台账摘要、待验证项和遗留风险。
-8. 报告必须包含各阶段职责说明：演绎建树阶段不依赖证据台账；证据检漏只做添加不做删除；文档阶段不修改分析数据。
-9. 写完五件套后提示用户可运行离线 validator：`python scripts/validate_fault_zeroing_outputs.py --outputs-dir /mnt/user-data/outputs`。
+1. 报告包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。
+2. 根因结论至少引用一条 A/B 级证据；否则必须写“待验证”。
+3. 数值概率必须有统计、历史频次或专家打分依据；没有依据时 `probability` 保持 `null`。
+4. `zeroing_report.md` 的顶事件、主根因和待验证项必须与 `fault_tree.json` 一致。
+5. SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源，不包含远程图片或动态交互代码。`fault_tree.svg` 展示顶事件、中间事件、底事件、逻辑门和底事件状态；`analysis_process.svg` 展示证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产这条分析链路。
+6. 报告必须显式包含资料覆盖矩阵、证据台账摘要、待验证项和遗留风险。
+7. 报告必须包含各阶段职责说明：演绎建树阶段不依赖证据台账；证据检漏只做添加不做删除；文档阶段不修改分析数据。
+8. 产物落盘后可提示用户运行离线 validator：`python /mnt/skills/fault-zeroing/scripts/validate_fault_zeroing_outputs.py --outputs-dir <产物目录>`。

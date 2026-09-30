@@ -26,6 +26,15 @@ from deerflow.persistence.models.workflow_v2 import (
 logger = logging.getLogger(__name__)
 
 
+class WorkflowConcurrencyExceeded(RuntimeError):
+    """The user or department concurrency limit rejects a new run.
+
+    The message is the stable reason code (``workflow_user_concurrency_exceeded``
+    / ``workflow_department_concurrency_exceeded``), so callers match on the
+    type; it stays a ``RuntimeError`` subclass for the generic error path.
+    """
+
+
 def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str, knowledge_scope: dict[str, str] | None = None) -> dict:
     """Project immutable resource and caller identity into the Run snapshot.
 
@@ -109,18 +118,35 @@ async def _frozen_knowledge_scope(session, snapshots, actor) -> dict[str, str]:
     )
 
 
+# Kernel-pinned snapshot keys (unified-kernel tickets 02/03): immutable at
+# run creation and must survive every worker recovery merge, or a resumed
+# run's completion judgment would treat it as a run without intake.
+KERNEL_SNAPSHOT_KEYS = ("evidence_intake", "contract_version", "entry")
+
+
 def _merge_recovery_snapshot(existing: dict | None, recovery: dict) -> dict:
     """Merge mutable checkpoint state without dropping immutable run evidence."""
 
-    preserved = existing.get("run_evidence") if isinstance(existing, dict) else None
+    preserved_run_evidence = existing.get("run_evidence") if isinstance(existing, dict) else None
     merged = dict(recovery)
-    if preserved is not None:
-        merged["run_evidence"] = preserved
+    if preserved_run_evidence is not None:
+        merged["run_evidence"] = preserved_run_evidence
+    for key in KERNEL_SNAPSHOT_KEYS:
+        preserved = existing.get(key) if isinstance(existing, dict) else None
+        if preserved is not None:
+            merged[key] = preserved
     return merged
 
 
-def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str) -> dict:
-    """Validate one frozen Workflow definition before its Run becomes claimable."""
+def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str, *, validate_roots: bool = True) -> dict:
+    """Validate one frozen Workflow definition before its Run becomes claimable.
+
+    ``validate_roots=False`` skips the creation-time read/write root
+    validation for the paused canonical path: a paused run is precisely the
+    case where a declared evidence root may not exist yet, while the
+    declared input defaults (``output_base_dir`` and friends) must still be
+    filled so the resumed run can render its write roots.
+    """
 
     from app.agentplatform.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError
     from app.agentplatform.workflows.v2.file_roots import (
@@ -150,6 +176,8 @@ def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, 
         if not expected_types[parameter.type](inputs[name]):
             raise ValueError(f"Input '{name}' expects {parameter.type}, got {type(inputs[name]).__name__}")
 
+    if not validate_roots:
+        return inputs
     invalid_roots = validate_workflow_roots(workflow.nodes, inputs)
     if invalid_roots:
         raise WorkflowInvalidRootsError(invalid_roots)
@@ -272,7 +300,7 @@ class WorkflowV2Store:
                     )
                 ).scalar_one()
                 if user_count >= user_concurrency:
-                    raise RuntimeError("workflow_user_concurrency_exceeded")
+                    raise WorkflowConcurrencyExceeded("workflow_user_concurrency_exceeded")
             if department_id is not None and department_concurrency is not None:
                 department_count = (
                     await session.execute(
@@ -285,7 +313,7 @@ class WorkflowV2Store:
                     )
                 ).scalar_one()
                 if department_count >= department_concurrency:
-                    raise RuntimeError("workflow_department_concurrency_exceeded")
+                    raise WorkflowConcurrencyExceeded("workflow_department_concurrency_exceeded")
             session.add(run)
             # Flush before inserting the task: with SQLite foreign keys enabled
             # (production engine), the task row must reference an already
@@ -342,8 +370,15 @@ class WorkflowV2Store:
         model_name: str | None = None,
         user_concurrency: int | None = None,
         department_concurrency: int | None = None,
+        intake_snapshot: dict | None = None,
     ) -> WorkflowV2RunRow:
-        """Freeze a canonical dependency closure before making the Run claimable."""
+        """Freeze a canonical dependency closure before making the Run claimable.
+
+        ``intake_snapshot`` carries kernel-pinned keys (evidence intake record,
+        contract version, entry label) that must land with the run row itself:
+        before a worker claims the task no lease exists, so a post-creation
+        snapshot update would be silently dropped.
+        """
 
         from app.agentplatform.resource_models import Resource, ResourceVersion
         from app.agentplatform.resources.service import ResourceConflict, ResourceService
@@ -391,7 +426,7 @@ class WorkflowV2Store:
                     )
                 ).scalar_one()
                 if user_count >= user_concurrency:
-                    raise RuntimeError("workflow_user_concurrency_exceeded")
+                    raise WorkflowConcurrencyExceeded("workflow_user_concurrency_exceeded")
             if actor.department_id is not None and department_concurrency is not None:
                 department_count = (
                     await session.execute(
@@ -404,7 +439,7 @@ class WorkflowV2Store:
                     )
                 ).scalar_one()
                 if department_count >= department_concurrency:
-                    raise RuntimeError("workflow_department_concurrency_exceeded")
+                    raise WorkflowConcurrencyExceeded("workflow_department_concurrency_exceeded")
 
             run = WorkflowV2RunRow(
                 run_id=run_id,
@@ -415,7 +450,7 @@ class WorkflowV2Store:
                 status="queued",
                 inputs=inputs,
                 model_name=model_name,
-                snapshot={"run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
+                snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
                 department_id=actor.department_id,
@@ -434,6 +469,23 @@ class WorkflowV2Store:
             await session.commit()
             return run
 
+    async def update_paused_run_snapshot(self, run_id: str, snapshot: dict) -> bool:
+        """Persist a kernel snapshot update while the run is parked paused.
+
+        The evidence confirmation records the confirmed intake onto the run
+        before any worker lease exists (the paired task is paused), so this
+        write is guarded by the paused status instead of a lease.  Once the
+        run leaves ``paused`` the lease-guarded :meth:`update_snapshot` is the
+        only snapshot writer again.
+        """
+
+        async with self.session_factory() as session:
+            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, WorkflowV2RunRow.status == "paused").values(snapshot=snapshot))
+            if result.rowcount != 1:
+                return False
+            await session.commit()
+            return True
+
     async def create_canonical_paused_run(
         self,
         run_id: str,
@@ -442,6 +494,9 @@ class WorkflowV2Store:
         actor,
         *,
         intake_snapshot: dict | None = None,
+        model_name: str | None = None,
+        user_concurrency: int | None = None,
+        department_concurrency: int | None = None,
     ) -> WorkflowV2RunRow:
         """Freeze a canonical dependency closure but park the run paused.
 
@@ -449,9 +504,13 @@ class WorkflowV2Store:
         execution; this variant gives that gate the canonical contract — the
         UUID/version/hash closure is frozen exactly like ``create_canonical_run``
         (so the worker only ever consumes the snapshot), but the paired task is
-        parked in ``paused``. Inputs are stored as submitted without
-        creation-time root validation: a paused run is precisely the case where
-        a declared evidence root may not exist yet.
+        parked in ``paused``. Declared input defaults are applied (the caller
+        leaves optional inputs unset), while creation-time root validation is
+        skipped: a paused run is precisely the case where a declared evidence
+        root may not exist yet.  ``model_name`` is pinned like on the queued
+        path so the later resume executes with the model the caller selected
+        at launch, and the user/department concurrency limits apply exactly
+        like on the queued path — a parked run occupies a launch slot too.
         """
 
         from app.agentplatform.resource_models import Resource, ResourceVersion
@@ -479,7 +538,46 @@ class WorkflowV2Store:
             ).scalar_one()
             if not isinstance(version.content, dict):
                 raise ResourceConflict("Canonical Workflow version has no definition content")
+            # Declared input defaults apply to the paused path too (the gateway
+            # and chat callers leave optional inputs unset); root validation is
+            # skipped because a paused run is precisely the case where a
+            # declared evidence root may not exist yet.
+            inputs = _validated_canonical_inputs(
+                version.content,
+                inputs,
+                run_id,
+                actor.user_id,
+                validate_roots=False,
+            )
             knowledge_scope = await _frozen_knowledge_scope(session, snapshots, actor)
+
+            active = ("queued", "running", "paused")
+            if user_concurrency is not None:
+                user_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.created_by == actor.user_id,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if user_count >= user_concurrency:
+                    raise WorkflowConcurrencyExceeded("workflow_user_concurrency_exceeded")
+            if actor.department_id is not None and department_concurrency is not None:
+                department_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.department_id == actor.department_id,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if department_count >= department_concurrency:
+                    raise WorkflowConcurrencyExceeded("workflow_department_concurrency_exceeded")
 
             run = WorkflowV2RunRow(
                 run_id=run_id,
@@ -489,6 +587,7 @@ class WorkflowV2Store:
                 checkpoint_thread_id=f"wf-{run_id}",
                 status="paused",
                 inputs=dict(inputs),
+                model_name=model_name,
                 snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id, knowledge_scope)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,

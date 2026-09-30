@@ -1,0 +1,179 @@
+"""Declared result contracts: loading and runtime enforcement.
+
+A workflow definition may declare a top-level ``result_contract`` naming an
+importable ``<module>:<function>`` validator.  After the graph succeeds, the
+runner loads and calls the validator with the run's artifact root directory
+and the persisted run snapshot; a non-empty violation list turns the run
+into a ``failed`` terminal state before it is written.  The engine knows
+nothing about what the artifacts mean — the validator carries the semantics
+(fail-closed: a validator that cannot be loaded, that raises, or that
+returns a malformed result fails the run).
+"""
+
+from __future__ import annotations
+
+import importlib
+import inspect
+import re
+from collections.abc import Callable
+from typing import Any
+
+from deerflow.config.paths import VIRTUAL_PATH_PREFIX
+
+from .errors import (
+    WorkflowResultContractValidatorError,
+    WorkflowResultContractViolation,
+    WorkflowRunError,
+)
+from .file_roots import render_roots
+from .schema import WorkflowV2
+
+# ``<module>:<function>`` with dotted Python identifiers on both sides.
+_VALIDATOR_PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$")
+# Only the platform's own package may be declared as a validator module: a
+# published definition naming any other importable module would let the
+# import (and therefore arbitrary module-level code) run inside the engine.
+TRUSTED_VALIDATOR_NAMESPACE = "app.agentplatform"
+
+
+def load_result_contract_validator(validator: str) -> Callable[..., Any]:
+    """Import and return a declared ``<module>:<function>`` validator.
+
+    Raises ``ValueError`` for a malformed path, a module outside the trusted
+    platform namespace (``app.agentplatform.*``), or a non-callable target,
+    and ``ModuleNotFoundError``/``ImportError`` for an unimportable module,
+    so static parsing and the runtime gate share one loading rule.
+    """
+    if not _VALIDATOR_PATH.fullmatch(validator):
+        raise ValueError(f"result_contract.validator must be '<module>:<function>': '{validator}'")
+    module_name, function_name = validator.rsplit(":", 1)
+    if module_name != TRUSTED_VALIDATOR_NAMESPACE and not module_name.startswith(f"{TRUSTED_VALIDATOR_NAMESPACE}."):
+        raise ValueError(f"result_contract.validator must live in the trusted platform namespace '{TRUSTED_VALIDATOR_NAMESPACE}.*': '{validator}'")
+    module = importlib.import_module(module_name)
+    attribute = getattr(module, function_name, None)
+    if not callable(attribute):
+        raise ValueError(f"result_contract.validator is not callable: '{validator}'")
+    return attribute
+
+
+def _common_virtual_parent(roots: list[str]) -> str | None:
+    """Longest common virtual ancestor directory of the given write roots.
+
+    Every root is reduced to its directory part first (file roots to their
+    parent, directory roots — trailing ``/`` — to themselves), then the
+    longest common leading path segments are kept.
+    """
+    dirs: list[list[str]] = []
+    for root in roots:
+        normalized = root.rstrip("/")
+        segments = normalized.split("/") if root.endswith("/") else normalized.rsplit("/", 1)[0].split("/")
+        dirs.append(segments)
+    if not dirs:
+        return None
+    common = dirs[0]
+    for other in dirs[1:]:
+        shared: list[str] = []
+        for left, right in zip(common, other):
+            if left != right:
+                break
+            shared.append(left)
+        common = shared
+    return "/".join(common) or None
+
+
+def run_artifact_root(
+    workflow: WorkflowV2,
+    *,
+    run_inputs: dict[str, Any],
+    run_snapshot: Any,
+    resolver: Callable[[str], str | None],
+) -> str:
+    """Host path of the directory a declared validator should judge.
+
+    Derived from the run's own declared write roots rendered against the
+    final run snapshot: their common virtual ancestor, resolved to a host
+    path.  Falls back to the run's standard outputs root when the definition
+    declares no resolvable write roots.  The engine never learns what the
+    artifacts mean.
+    """
+    snapshot = run_snapshot if isinstance(run_snapshot, dict) else {}
+    state = {
+        "inputs": run_inputs or {},
+        "state": snapshot.get("state", {}),
+        "outputs": snapshot.get("outputs", {}),
+    }
+    write_roots: list[str] = []
+    for node in workflow.nodes:
+        if node.type != "action" or node.action is None or node.action.file_access is None:
+            continue
+        rendered = render_roots({"write": node.action.file_access.write}, state)
+        write_roots.extend(rendered.get("write", []))
+    common = _common_virtual_parent(write_roots)
+    host = resolver(common) if common else None
+    if host is None:
+        host = resolver(f"{VIRTUAL_PATH_PREFIX}/outputs")
+    return host or ""
+
+
+def _invoke_validator(
+    validator: Callable[..., Any],
+    outputs_dir: str,
+    run_snapshot: Any,
+    emit_event: Callable[[str, dict[str, Any]], None] | None,
+) -> Any:
+    """Call the declared validator, injecting ``emit_event`` when it accepts one.
+
+    The engine never interprets the events a validator emits — it only
+    shuttles opaque ``(event_type, payload)`` pairs into the run's event log,
+    so a validator (e.g. a shared kernel gate) can leave its own audit trail
+    while the engine stays business-ignorant.  Validators with the plain
+    two-argument signature are unaffected.
+    """
+
+    if emit_event is not None:
+        try:
+            accepts_emit = "emit_event" in inspect.signature(validator).parameters
+        except (TypeError, ValueError):
+            accepts_emit = False
+        if accepts_emit:
+            return validator(outputs_dir, run_snapshot, emit_event=emit_event)
+    return validator(outputs_dir, run_snapshot)
+
+
+def enforce_result_contract(
+    workflow: WorkflowV2,
+    *,
+    run_inputs: dict[str, Any],
+    run_snapshot: Any,
+    resolver: Callable[[str], str | None],
+    emit_event: Callable[[str, dict[str, Any]], None] | None = None,
+) -> WorkflowRunError | None:
+    """Evaluate a declared result contract after graph success.
+
+    Returns ``None`` when the workflow declares no contract or the validator
+    passes (an empty violation list).  Otherwise returns the structured run
+    error the caller must emit and raise, so the run ends ``failed`` with the
+    violation summary on the run record.  A validator that cannot be loaded,
+    that raises, or that returns a malformed result (``None``, a non-list, or
+    a list with non-string items) fails the run closed.
+    """
+    spec = workflow.result_contract
+    if spec is None:
+        return None
+    try:
+        validator = load_result_contract_validator(spec.validator)
+        outputs_dir = run_artifact_root(workflow, run_inputs=run_inputs, run_snapshot=run_snapshot, resolver=resolver)
+        violations = _invoke_validator(validator, outputs_dir, run_snapshot, emit_event)
+    except Exception as exc:
+        return WorkflowResultContractValidatorError(spec.validator, str(exc))
+    # Only an empty list passes. ``None`` — and any other non-list result — is
+    # a malformed verdict and fails the run closed, exactly like a validator
+    # that could not be loaded or that raised.
+    if isinstance(violations, list):
+        if all(isinstance(item, str) for item in violations):
+            return None if not violations else WorkflowResultContractViolation(violations)
+        return WorkflowResultContractValidatorError(spec.validator, "validator returned non-string violations")
+    return WorkflowResultContractValidatorError(
+        spec.validator,
+        f"validator returned a non-list result: {type(violations).__name__}",
+    )

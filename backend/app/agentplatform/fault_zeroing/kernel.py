@@ -33,10 +33,15 @@ from app.agentplatform.fault_zeroing.contract import (
 )
 from app.agentplatform.fault_zeroing.intake import EvidenceIntakeDecision
 
-KERNEL_WORKER_ID = "fault-zeroing-kernel"
-
+# Kernel events are appended without a worker identity: the kernel acts as a
+# platform-level actor before any worker lease exists (creation, pause,
+# confirmation) or outside the worker's lease scope (the engine-declared
+# contract gate), and a lease-checked append would silently drop them.
 SNAPSHOT_INTAKE_KEY = "evidence_intake"
 SNAPSHOT_CONTRACT_VERSION_KEY = "contract_version"
+# Invocation entry label (skill / expert / workflow): persisted on the kernel
+# snapshot keys and on the kernel lifecycle events for per-entry audit.
+SNAPSHOT_ENTRY_KEY = "entry"
 
 # Kernel event types (persisted through the store's event log).
 # Rejection before run creation (both evidence sides missing) raises
@@ -82,11 +87,15 @@ class KernelStore(Protocol):
 
     async def create_paused_run(self, *args: Any, **kwargs: Any) -> Any: ...
 
+    async def create_canonical_run(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    async def create_canonical_paused_run(self, *args: Any, **kwargs: Any) -> Any: ...
+
     async def append_event(self, *args: Any, **kwargs: Any) -> Any: ...
 
     async def get_run(self, run_id: str) -> Any: ...
 
-    async def update_snapshot(self, run_id: str, snapshot: dict, *, worker_id: str) -> bool: ...
+    async def update_paused_run_snapshot(self, run_id: str, snapshot: dict) -> bool: ...
 
     async def submit_command(self, *args: Any, **kwargs: Any) -> Any: ...
 
@@ -108,6 +117,80 @@ class KernelCompletion:
     pending_verification: bool = False
 
 
+@dataclass
+class KernelContractJudgment:
+    """Pure, store-free result of one kernel completion judgment.
+
+    ``events`` lists the ``(event_type, payload)`` pairs the kernel logs for
+    this judgment, so every caller (the resumable seam and the engine's
+    declared contract gate) leaves the same kernel event trail.
+    """
+
+    status: str  # completed | failed
+    verdict: ContractVerdict
+    reason_codes: list[str] = field(default_factory=list)
+    pending_verification: bool = False
+    events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+
+
+def judge_completion(
+    run_snapshot: Any,
+    outputs_dir: str,
+    *,
+    contract_version: str | None = None,
+    default_contract_version: str = CONTRACT_VERSION,
+) -> KernelContractJudgment:
+    """Judge completion from a persisted run snapshot — the kernel entry that
+    needs neither a store nor a run id (unified-kernel ticket 03).
+
+    The intake record on the snapshot (if any) pins the missing evidence
+    sides the report must disclose; the snapshot's ``contract_version`` key
+    pins the rules this run is judged by (fallback: ``default``).  A
+    malformed intake record raises, so callers fail the run closed.
+    """
+
+    snapshot = run_snapshot if isinstance(run_snapshot, dict) else {}
+    missing_sides: tuple[str, ...] = ()
+    if SNAPSHOT_INTAKE_KEY in snapshot:
+        missing_sides = _intake_record_from_snapshot(snapshot).missing
+    pinned_version = contract_version or snapshot.get(SNAPSHOT_CONTRACT_VERSION_KEY, default_contract_version)
+
+    verdict = evaluate_result_contract(
+        outputs_dir,
+        contract_version=pinned_version,
+        missing_evidence_sides=missing_sides,
+    )
+    if verdict.ok:
+        events = [
+            (
+                EVENT_CONTRACT_EVALUATED,
+                {
+                    "code": "contract_passed",
+                    "contract_version": verdict.contract_version,
+                    "pending_verification_disclosed": _tree_has_pending_verification(outputs_dir),
+                },
+            )
+        ]
+    else:
+        events = [
+            (
+                EVENT_CONTRACT_FAILED,
+                {
+                    "code": "contract_failed",
+                    "contract_version": verdict.contract_version,
+                    "reason_codes": verdict.codes(),
+                },
+            )
+        ]
+    return KernelContractJudgment(
+        status=(COMPLETION_STATUS_COMPLETED if verdict.ok else COMPLETION_STATUS_FAILED),
+        verdict=verdict,
+        reason_codes=verdict.codes(),
+        pending_verification=(verdict.ok and _tree_has_pending_verification(outputs_dir)),
+        events=events,
+    )
+
+
 def _tree_has_pending_verification(outputs_dir: str) -> bool:
     import json
     from pathlib import Path
@@ -124,7 +207,11 @@ def _tree_has_pending_verification(outputs_dir: str) -> bool:
 
 
 def _current_inputs_snapshot(inputs: dict[str, Any]) -> dict[str, str]:
-    return intake_mod.build_input_snapshot(inputs.get("upload_dir"), inputs.get("code_package_source"))
+    return intake_mod.build_input_snapshot(
+        inputs.get("problem_description"),
+        inputs.get("upload_dir"),
+        inputs.get("code_package_source"),
+    )
 
 
 def _current_snapshot_hash(inputs: dict[str, Any]) -> str:
@@ -171,6 +258,10 @@ class FaultZeroingKernel:
         department_id: str | None = None,
         workflow_resource_id: str | None = None,
         actor: Any | None = None,
+        entry: str | None = None,
+        model_name: str | None = None,
+        user_concurrency: int | None = None,
+        department_concurrency: int | None = None,
     ) -> KernelStartResult:
         """Start a run through hybrid evidence intake.
 
@@ -184,14 +275,21 @@ class FaultZeroingKernel:
         created through the canonical contract — the UUID/version/hash closure
         is frozen before the run becomes claimable (or pausable) — while the
         legacy name+version path stays available for runs created before the
-        canonical cutover.
+        canonical cutover.  ``entry`` labels the invocation entry (skill /
+        expert / workflow) on the run snapshot and lifecycle events for
+        per-entry audit; ``model_name`` and the concurrency limits apply to
+        the canonical paths (queued and paused alike), matching the gateway's
+        existing launch contract.
         """
 
         run_id = run_id or str(self._id_factory())
+        # The evidence mode is derived here, never read from the inputs:
+        # a caller-supplied value cannot resurrect a document-only or
+        # code-only run (CONTEXT.md Avoid "Evidence Mode selection").
         decision = intake_mod.assess_evidence_intake(
+            problem_description=inputs.get("problem_description"),
             upload_dir=inputs.get("upload_dir"),
             code_package_source=inputs.get("code_package_source"),
-            evidence_mode=inputs.get("evidence_mode", "hybrid"),
         )
 
         if decision.status == intake_mod.REJECT:
@@ -202,6 +300,9 @@ class FaultZeroingKernel:
             SNAPSHOT_INTAKE_KEY: decision.to_dict(),
             SNAPSHOT_CONTRACT_VERSION_KEY: self._contract_version,
         }
+        if entry is not None:
+            pinned_snapshot[SNAPSHOT_ENTRY_KEY] = entry
+        lifecycle_payload = {"entry": entry} if entry is not None else {}
 
         if decision.status == intake_mod.PAUSE:
             payload = intake_mod.interrupt_payload(decision)
@@ -212,6 +313,9 @@ class FaultZeroingKernel:
                     dict(inputs),
                     actor,
                     intake_snapshot={**pinned_snapshot, "interrupt": [payload]},
+                    model_name=model_name,
+                    user_concurrency=user_concurrency,
+                    department_concurrency=department_concurrency,
                 )
             else:
                 await self._store.create_paused_run(
@@ -226,8 +330,7 @@ class FaultZeroingKernel:
             await self._store.append_event(
                 run_id,
                 EVENT_INTERRUPTED,
-                {"code": decision.reason_code, **payload},
-                worker_id=KERNEL_WORKER_ID,
+                {"code": decision.reason_code, **lifecycle_payload, **payload},
             )
             return KernelStartResult(
                 run_id=run_id,
@@ -237,13 +340,18 @@ class FaultZeroingKernel:
             )
 
         if workflow_resource_id is not None:
-            run = await self._store.create_canonical_run(run_id, workflow_resource_id, dict(inputs), actor)
-            # Keep the intake contract pinned on the canonical run snapshot
-            # (create_canonical_run only stores the run evidence envelope).
-            await self._store.update_snapshot(
+            # The pins must land with the run row itself: before a worker
+            # claims the task no lease exists, so a post-creation snapshot
+            # update would be silently dropped.
+            await self._store.create_canonical_run(
                 run_id,
-                {**dict(run.snapshot or {}), **pinned_snapshot},
-                worker_id=KERNEL_WORKER_ID,
+                workflow_resource_id,
+                dict(inputs),
+                actor,
+                intake_snapshot=pinned_snapshot,
+                model_name=model_name,
+                user_concurrency=user_concurrency,
+                department_concurrency=department_concurrency,
             )
         else:
             await self._store.create_run(
@@ -263,8 +371,8 @@ class FaultZeroingKernel:
                 "evidence_mode": decision.evidence_mode,
                 "missing_evidence_sides": list(decision.missing),
                 "contract_version": self._contract_version,
+                **lifecycle_payload,
             },
-            worker_id=KERNEL_WORKER_ID,
         )
         return KernelStartResult(
             run_id=run_id,
@@ -303,7 +411,6 @@ class FaultZeroingKernel:
                 run_id,
                 EVENT_CONFIRMATION_REJECTED,
                 {"code": REASON_RUN_NOT_PAUSED, "run_status": getattr(run, "status", None)},
-                worker_id=KERNEL_WORKER_ID,
             )
             raise ConfirmationStaleError(
                 REASON_RUN_NOT_PAUSED,
@@ -315,7 +422,6 @@ class FaultZeroingKernel:
                 run_id,
                 EVENT_CONFIRMATION_REJECTED,
                 {"code": REASON_RUN_NOT_PAUSED, "missing": []},
-                worker_id=KERNEL_WORKER_ID,
             )
             raise ConfirmationStaleError(
                 REASON_RUN_NOT_PAUSED,
@@ -334,7 +440,6 @@ class FaultZeroingKernel:
                     "presented_hash": presented_hash,
                     "current_hash": current_hash,
                 },
-                worker_id=KERNEL_WORKER_ID,
             )
             raise ConfirmationStaleError(intake_mod.INTAKE_SNAPSHOT_CHANGED, message)
 
@@ -345,7 +450,22 @@ class FaultZeroingKernel:
             "confirmed_snapshot_hash": current_hash,
         }
         snapshot = {**dict(run.snapshot or {}), SNAPSHOT_INTAKE_KEY: confirmed_record}
-        await self._store.update_snapshot(run_id, snapshot, worker_id=KERNEL_WORKER_ID)
+        # No worker lease exists while the run is parked, so the confirmed
+        # intake record persists through the paused-status-guarded write.
+        # A False write means the run left ``paused`` between the check above
+        # and this write (check-then-act): fail closed instead of silently
+        # resuming something that is no longer parked for evidence.
+        confirmed = await self._store.update_paused_run_snapshot(run_id, snapshot)
+        if not confirmed:
+            await self._store.append_event(
+                run_id,
+                EVENT_CONFIRMATION_REJECTED,
+                {"code": REASON_RUN_NOT_PAUSED, "stage": "paused_snapshot_write"},
+            )
+            raise ConfirmationStaleError(
+                REASON_RUN_NOT_PAUSED,
+                "run is no longer paused for evidence confirmation",
+            )
         command = await self._store.submit_command(
             command_id or str(self._id_factory()),
             run_id,
@@ -366,7 +486,6 @@ class FaultZeroingKernel:
                 "input_snapshot_hash": current_hash,
                 "confirmed_by": confirmed_by,
             },
-            worker_id=KERNEL_WORKER_ID,
         )
         return {
             "command_id": command.command_id,
@@ -396,14 +515,13 @@ class FaultZeroingKernel:
         run = await self._store.get_run(run_id)
         if run is None:
             raise RunNotFoundError(run_id)
-        record = _intake_record_from_snapshot(dict(run.snapshot or {}))
-        pinned_version = contract_version or (run.snapshot or {}).get(SNAPSHOT_CONTRACT_VERSION_KEY, self._contract_version)
 
         try:
-            verdict = evaluate_result_contract(
+            judgment = judge_completion(
+                run.snapshot,
                 outputs_dir,
-                contract_version=pinned_version,
-                missing_evidence_sides=record.missing,
+                contract_version=contract_version,
+                default_contract_version=self._contract_version,
             )
         except ContractUnavailableError:
             decision = policy.classify_failure(
@@ -414,37 +532,16 @@ class FaultZeroingKernel:
                 run_id,
                 EVENT_CONTRACT_FAILED,
                 {"code": decision.reason_code, "detail": decision.message},
-                worker_id=KERNEL_WORKER_ID,
             )
             raise
 
-        if verdict.ok:
-            await self._store.append_event(
-                run_id,
-                EVENT_CONTRACT_EVALUATED,
-                {
-                    "code": "contract_passed",
-                    "contract_version": verdict.contract_version,
-                    "pending_verification_disclosed": _tree_has_pending_verification(outputs_dir),
-                },
-                worker_id=KERNEL_WORKER_ID,
-            )
-        else:
-            await self._store.append_event(
-                run_id,
-                EVENT_CONTRACT_FAILED,
-                {
-                    "code": "contract_failed",
-                    "contract_version": verdict.contract_version,
-                    "reason_codes": verdict.codes(),
-                },
-                worker_id=KERNEL_WORKER_ID,
-            )
+        for event_type, payload in judgment.events:
+            await self._store.append_event(run_id, event_type, payload)
 
         return KernelCompletion(
             run_id=run_id,
-            status=(COMPLETION_STATUS_COMPLETED if verdict.ok else COMPLETION_STATUS_FAILED),
-            verdict=verdict,
-            reason_codes=verdict.codes(),
-            pending_verification=(verdict.ok and _tree_has_pending_verification(outputs_dir)),
+            status=judgment.status,
+            verdict=judgment.verdict,
+            reason_codes=judgment.reason_codes,
+            pending_verification=judgment.pending_verification,
         )

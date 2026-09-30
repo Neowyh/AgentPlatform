@@ -30,6 +30,7 @@ from app.agentplatform.workflow_runtime import (
     WorkflowRunError,
     WorkflowV2Store,
     WorkflowWorker,
+    enforce_result_contract,
     make_host_resolver,
     parse_workflow_v2,
     run_failure_payload,
@@ -367,6 +368,31 @@ async def execute_workflow_task(
     if "__interrupt__" in result:
         await emit_event("interrupted", {"value": snapshot["interrupt"]})
         raise WorkflowPaused
+    # Declared Result Contract gate (unified-kernel ticket 01): after the graph
+    # succeeds and before the terminal state is written, the run's declared
+    # validator judges the artifacts.  A violation (or a broken validator,
+    # fail-closed) ends the run as failed; artifacts are never cleaned up here.
+    # The validator judges the persisted run snapshot — the store's recovery
+    # merge keeps the kernel-pinned keys (intake record, contract version,
+    # entry, unified-kernel ticket 03) that the graph result never carries —
+    # and may emit opaque (event_type, payload) audit events (e.g. the shared
+    # kernel's contract judgment); the engine only shuttles them into the
+    # event log ahead of the terminal event.
+    persisted = await store.get_run(run_id)
+    persisted_snapshot = persisted.snapshot if persisted is not None and isinstance(persisted.snapshot, dict) and persisted.snapshot else snapshot
+    validator_events: list[tuple[str, dict]] = []
+    violation = enforce_result_contract(
+        definition,
+        run_inputs=run.inputs or {},
+        run_snapshot=persisted_snapshot,
+        resolver=make_host_resolver(run_id, run.created_by, sandbox_scope=sandbox_scope),
+        emit_event=lambda event_type, payload: validator_events.append((event_type, payload)),
+    )
+    for event_type, payload in validator_events:
+        await emit_event(event_type, payload)
+    if violation is not None:
+        await emit_terminal_event("run_failed", run_failure_payload(violation))
+        raise violation
     await emit_terminal_event("run_completed", {})
 
 

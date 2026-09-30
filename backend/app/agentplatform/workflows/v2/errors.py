@@ -24,6 +24,8 @@ ITERATION_LIMIT = "iteration_limit"
 ARTIFACTS_MISSING = "artifacts_missing"
 EVENT_LIMIT = "event_limit"
 MAX_ATTEMPTS = "max_attempts"
+RESULT_CONTRACT_FAILED = "result_contract_failed"
+RESULT_CONTRACT_VALIDATOR_ERROR = "result_contract_validator_error"
 UNKNOWN = "unknown"
 
 # Detail (raw long text) stored in event payloads is capped at this length.
@@ -115,6 +117,38 @@ def format_root_violations(violations: list[dict[str, Any]]) -> list[str]:
         prefix = f"node '{node_id}': " if node_id else ""
         lines.append(f"{prefix}{access}:{path}")
     return lines
+
+
+class WorkflowResultContractViolation(WorkflowRunError):
+    """A declared Result Contract validator rejected the run's artifacts.
+
+    ``violations`` are the validator's violation messages; they ride the
+    ``run_failed`` event payload (and hence the run record), while the short
+    ``summary`` lands in ``run.error``.  The run ends ``failed`` and its
+    artifacts are left in place.
+    """
+
+    def __init__(self, violations: list[str]) -> None:
+        super().__init__(
+            RESULT_CONTRACT_FAILED,
+            f"产物未通过 Result Contract 校验（{len(violations)} 项违规）",
+            detail="\n".join(violations),
+            violations=[{"message": message} for message in violations],
+        )
+
+
+class WorkflowResultContractValidatorError(WorkflowRunError):
+    """Fail-closed: a declared validator could not be loaded or raised.
+
+    The engine cannot judge the artifacts, so the run must not complete.
+    """
+
+    def __init__(self, validator: str, detail: str) -> None:
+        super().__init__(
+            RESULT_CONTRACT_VALIDATOR_ERROR,
+            f"Result Contract 校验器不可用，按失败处理：{_short_text(validator)}",
+            detail=detail,
+        )
 
 
 class WorkflowInvalidRootsError(WorkflowRunError):

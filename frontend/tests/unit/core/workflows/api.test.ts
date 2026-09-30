@@ -279,7 +279,7 @@ describe("canonical Workflow API facade", () => {
 
     await runWorkflowWithFiles(
       resourceId,
-      { evidence_mode: "hybrid" },
+      { problem_description: "top event" },
       [source, log],
       "model-b",
     );
@@ -293,8 +293,9 @@ describe("canonical Workflow API facade", () => {
     expect(options.method).toBe("POST");
     expect(options.headers).toBeUndefined();
     expect(body).toBeInstanceOf(FormData);
+    // The evidence mode is derived server-side and never sent by the client.
     expect(body.get("inputs")).toBe(
-      JSON.stringify({ evidence_mode: "hybrid" }),
+      JSON.stringify({ problem_description: "top event" }),
     );
     expect(body.get("model_name")).toBe("model-b");
     expect(body.getAll("files")).toHaveLength(2);

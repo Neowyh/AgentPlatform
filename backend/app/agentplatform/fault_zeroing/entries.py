@@ -13,11 +13,13 @@ delegates to ``FaultZeroingKernel.start_run``).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.agentplatform.fault_zeroing.contract import EVIDENCE_SIDE_DISCLOSURE
+from app.agentplatform.fault_zeroing.contract import EVIDENCE_SIDE_DISCLOSURE, evaluate_result_contract
+from app.agentplatform.fault_zeroing.kernel import SNAPSHOT_INTAKE_KEY, judge_completion
 
 SUPPORTED_ENTRIES = ("skill", "expert", "workflow")
 
@@ -52,6 +54,31 @@ class EntryAdapter:
 
 def adapter_for(entry: str) -> EntryAdapter:
     return EntryAdapter(entry)
+
+
+def evaluate_workflow_contract(outputs_dir: str | Path, run_snapshot: Any, *, emit_event: Callable[[str, dict[str, Any]], None] | None = None) -> list[str]:
+    """Engine contract-gate adapter for the declared fault-zeroing workflow.
+
+    The workflow runner calls this validator with the run's artifact root
+    directory and the persisted run snapshot after the graph succeeds and
+    before the terminal state is written.  A snapshot carrying a hybrid
+    intake record — i.e. a run started through the shared kernel — delegates
+    the whole judgment to the kernel (``kernel.judge_completion``): the same
+    intake-pinned missing sides, the snapshot-pinned contract version and
+    the kernel contract event trail (``emit_event`` receives opaque
+    ``(event_type, payload)`` pairs the engine only shuttles into the run's
+    event log).  Every other snapshot keeps the plain engine gate with no
+    missing sides and no events.  Returns the violation messages (empty list
+    = the artifacts pass).  A malformed intake record raises, so the runner
+    fails the run closed.
+    """
+    if not (isinstance(run_snapshot, dict) and SNAPSHOT_INTAKE_KEY in run_snapshot):
+        return evaluate_result_contract(outputs_dir).errors
+    judgment = judge_completion(run_snapshot, outputs_dir)
+    if emit_event is not None:
+        for event_type, payload in judgment.events:
+            emit_event(event_type, payload)
+    return [] if judgment.verdict.ok else judgment.verdict.errors
 
 
 # ---------------------------------------------------------------------------

@@ -205,6 +205,41 @@ def test_v2_parser_rejects_fork_join_mismatch() -> None:
         parse_workflow_v2(_workflow(entrypoint="fork", nodes=nodes, edges=edges))
 
 
+def test_v2_parser_accepts_declared_result_contract() -> None:
+    workflow = parse_workflow_v2(_workflow(result_contract={"validator": "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"}))
+
+    assert workflow.result_contract is not None
+    assert workflow.result_contract.validator == "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"
+    # The declared contract must survive the canonical definition round-trip
+    # (bundled seeding stores ``model_dump`` content, the worker re-parses it).
+    dumped = workflow.model_dump(mode="json", by_alias=True)
+    assert dumped["result_contract"] == {"validator": "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"}
+    assert parse_workflow_v2(_workflow()).result_contract is None
+
+
+def test_v2_parser_rejects_malformed_result_contract_validator() -> None:
+    for validator in ("no-separator", "no_module.colon", "app.workflow:1func", ":callback", "a.b:c.d"):
+        with pytest.raises(ValueError, match="result_contract"):
+            parse_workflow_v2(_workflow(result_contract={"validator": validator}))
+
+
+def test_v2_parser_rejects_unimportable_result_contract_validator() -> None:
+    with pytest.raises(ValueError, match="result_contract"):
+        parse_workflow_v2(_workflow(result_contract={"validator": "app.nonexistent_contract_module:validate"}))
+
+
+def test_v2_parser_rejects_non_callable_result_contract_validator() -> None:
+    with pytest.raises(ValueError, match="result_contract"):
+        parse_workflow_v2(_workflow(result_contract={"validator": "app.agentplatform.fault_zeroing.entries:SUPPORTED_ENTRIES"}))
+
+
+def test_v2_parser_wraps_broken_validator_imports_into_value_error() -> None:
+    """A validator module that raises at import time must surface as the
+    parser's standard ValueError, not leak the raw import exception."""
+    with pytest.raises(ValueError, match="result_contract"):
+        parse_workflow_v2(_workflow(result_contract={"validator": "tests.support.contract_validator_broken_import:validate"}))
+
+
 def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
     workflow = parse_workflow_v2_file(REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml")
 

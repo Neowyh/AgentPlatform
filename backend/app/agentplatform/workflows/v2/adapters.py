@@ -141,7 +141,17 @@ class _ToolAdapter:
         yield {"type": "result", "value": result}
 
 
-class _AgentAdapter:
+class _CanonicalAgentAdapter:
+    """Run one frozen Agent definition with runner-scoped tools and Skills.
+
+    The only workflow agent adapter: a call + presentation shell over the
+    agent definition frozen into the run's canonical closure.  Agent config,
+    SOUL and Skills are never re-resolved from the catalog at node time —
+    the second, name-based implementation that did that was removed with the
+    unified-kernel adoption (ADR-0004), so a workflow agent node has exactly
+    one execution path.
+    """
+
     # Graceful fallback texts produced by LLMErrorHandlingMiddleware when the
     # provider is down. In a workflow node they signal failure, not output.
     _LLM_UNAVAILABLE_MARKERS = (
@@ -151,29 +161,15 @@ class _AgentAdapter:
         "authentication or access is invalid",
     )
 
-    def __init__(self, name: str, user_id: str, *, owner_id: str | None = None) -> None:
-        self.name = name
+    def __init__(self, definition: Any, skills: list[Any], user_id: str, *, allowed_tool_groups: frozenset[str] | None) -> None:
+        self.name = definition.resource_id
         self.user_id = user_id
-        # For shared agents the config/SOUL are read from the declaring owner's
-        # directory while the runtime context (sandbox, user) stays with the
-        # runner.
-        self.owner_id = owner_id
+        self.definition = definition
+        self.skills = list(skills)
+        self.allowed_tool_groups = allowed_tool_groups
 
     async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
-        return await self._build_canonical_executor(context, params, model_name=model_name)
-
-    async def _build_canonical_executor(self, context: ActionContext, params: dict[str, Any], *, model_name: str | None = None):
-        import yaml
-        from sqlalchemy import select
-
-        from app.agentplatform.resource_models import Resource, ResourceDependency
-        from app.agentplatform.resources.service import (
-            ResourceAction,
-            ResourceActor,
-            ResourceNotFound,
-            ResourceService,
-        )
-        from app.agentplatform.resources.storage import ResourceStorage
+        from app.agentplatform.resources.runtime import intersect_tool_groups
         from app.agentplatform.workflows.v2.executor_bridge import (
             WorkflowSubagentConfig as SubagentConfig,
         )
@@ -181,76 +177,37 @@ class _AgentAdapter:
             WorkflowSubagentExecutor as SubagentExecutor,
         )
         from deerflow.config import get_app_config
-        from deerflow.config.paths import get_paths
-        from deerflow.persistence.engine import get_session_factory
         from deerflow.tools.tools import get_available_tools
 
-        sf = get_session_factory()
-        if sf is None:
-            raise ActionResolutionError(f"agent '{self.name}' not found (catalog unavailable)")
-        async with sf() as session:
-            actor = ResourceActor(
-                user_id=self.user_id,
-                department_id=None,
-                role="user",
-                permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
-            )
-            service = ResourceService(session, actor)
-            resource = await session.get(Resource, self.name)
-            if resource is None or resource.type != "agent":
-                try:
-                    resource = await service.resolve_legacy_alias("agent", self.name)
-                except ResourceNotFound as exc:
-                    raise ActionResolutionError(f"agent '{self.name}' not found") from exc
-            published = await service.get_published_content(resource.id)
-            storage = ResourceStorage(get_paths().base_dir)
-            root = storage.resources_root / published.storage_key
-            config_yaml = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8")) or {}
-            soul = ""
-            soul_path = root / "SOUL.md"
-            if soul_path.exists():
-                soul = soul_path.read_text(encoding="utf-8")
-            targets = list(
-                (
-                    await session.execute(
-                        select(Resource)
-                        .join(ResourceDependency, ResourceDependency.target_resource_id == Resource.id)
-                        .where(
-                            ResourceDependency.source_resource_id == resource.id,
-                            Resource.type == "skill",
-                        )
-                        .order_by(Resource.slug, Resource.id)
-                    )
-                ).scalars()
-            )
-            by_slug = {target.slug: target for target in targets}
-            by_id = {target.id: target for target in targets}
-            requested = config_yaml.get("skills")
-            selected = targets if requested is None else [target for name in requested if (target := by_id.get(name) or by_slug.get(name)) is not None]
-            skill_names = [target.slug for target in selected]
-
+        config = self.definition.config
+        agent_scope = _agent_knowledge_scope(context.knowledge_scope, self.definition.knowledge_resource_ids)
         override = params.get("system_prompt", "")
-        system_prompt = _compose_system_prompt(soul, override, context)
-
+        system_prompt = _compose_system_prompt(self.definition.soul, override, context)
         subagent = SubagentConfig(
-            name=self.name,
+            name=self.definition.resource_id,
             description=f"Workflow node: {context.node_id}",
             system_prompt=system_prompt,
-            skills=skill_names,
-            model=model_name or config_yaml.get("model") or "inherit",
+            skills=[skill.name for skill in self.skills],
+            model=model_name or config.model or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
-            knowledge_scope=context.knowledge_scope,
+            knowledge_scope=agent_scope,
         )
-        tools = get_available_tools(groups=config_yaml.get("tool_groups"), app_config=get_app_config())
-        if context.knowledge_scope is not None:
-            tools = adapt_knowledge_tools(tools, context.knowledge_scope)
-        executor = SubagentExecutor(
+        frozen_skills = list(self.skills)
+
+        class CanonicalSubagentExecutor(SubagentExecutor):
+            async def _load_skills(self) -> list[Any]:
+                return list(frozen_skills)
+
+        app_config = get_app_config()
+        groups = intersect_tool_groups(config.tool_groups, self.allowed_tool_groups)
+        executor = CanonicalSubagentExecutor(
             subagent,
-            tools,
-            app_config=get_app_config(),
+            adapt_knowledge_tools(get_available_tools(groups=groups, app_config=app_config), agent_scope) if agent_scope is not None else get_available_tools(groups=groups, app_config=app_config),
+            app_config=app_config,
             thread_id=context.run_id,
         )
+        executor.canonical_run_id = context.run_id
         prompt = params.get("prompt", params.get("input", params))
         return executor, str(prompt)
 
@@ -359,59 +316,6 @@ class _AgentAdapter:
         raise WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
 
 
-class _CanonicalAgentAdapter(_AgentAdapter):
-    """Run one frozen Agent definition with runner-scoped tools and Skills."""
-
-    def __init__(self, definition: Any, skills: list[Any], user_id: str, *, allowed_tool_groups: frozenset[str] | None) -> None:
-        super().__init__(definition.resource_id, user_id)
-        self.definition = definition
-        self.skills = list(skills)
-        self.allowed_tool_groups = allowed_tool_groups
-
-    async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
-        from app.agentplatform.resources.runtime import intersect_tool_groups
-        from app.agentplatform.workflows.v2.executor_bridge import (
-            WorkflowSubagentConfig as SubagentConfig,
-        )
-        from app.agentplatform.workflows.v2.executor_bridge import (
-            WorkflowSubagentExecutor as SubagentExecutor,
-        )
-        from deerflow.config import get_app_config
-        from deerflow.tools.tools import get_available_tools
-
-        config = self.definition.config
-        agent_scope = _agent_knowledge_scope(context.knowledge_scope, self.definition.knowledge_resource_ids)
-        override = params.get("system_prompt", "")
-        system_prompt = _compose_system_prompt(self.definition.soul, override, context)
-        subagent = SubagentConfig(
-            name=self.definition.resource_id,
-            description=f"Workflow node: {context.node_id}",
-            system_prompt=system_prompt,
-            skills=[skill.name for skill in self.skills],
-            model=model_name or config.model or "inherit",
-            max_turns=params.get("max_turns", 50),
-            file_access=context.file_access,
-            knowledge_scope=agent_scope,
-        )
-        frozen_skills = list(self.skills)
-
-        class CanonicalSubagentExecutor(SubagentExecutor):
-            async def _load_skills(self) -> list[Any]:
-                return list(frozen_skills)
-
-        app_config = get_app_config()
-        groups = intersect_tool_groups(config.tool_groups, self.allowed_tool_groups)
-        executor = CanonicalSubagentExecutor(
-            subagent,
-            adapt_knowledge_tools(get_available_tools(groups=groups, app_config=app_config), agent_scope) if agent_scope is not None else get_available_tools(groups=groups, app_config=app_config),
-            app_config=app_config,
-            thread_id=context.run_id,
-        )
-        executor.canonical_run_id = context.run_id
-        prompt = params.get("prompt", params.get("input", params))
-        return executor, str(prompt)
-
-
 class _STREAM_END:
     """Sentinel that closes an agent progress stream."""
 
@@ -447,7 +351,7 @@ def _is_llm_unavailable_text(result: Any) -> bool:
     if not isinstance(result, str):
         return False
     lowered = result.lower()
-    return any(marker in lowered for marker in _AgentAdapter._LLM_UNAVAILABLE_MARKERS)
+    return any(marker in lowered for marker in _CanonicalAgentAdapter._LLM_UNAVAILABLE_MARKERS)
 
 
 def _adopt_subagent_retrieval_evidence(result: Any, *, context: ActionContext, agent_id: str) -> None:

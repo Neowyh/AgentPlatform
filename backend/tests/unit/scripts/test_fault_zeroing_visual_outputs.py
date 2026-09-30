@@ -21,35 +21,45 @@ RESPONSIBILITY_PHRASES = [
     "证据检漏只做添加不做删除",
     "文档阶段不修改分析数据",
 ]
-REMOVED_WORKFLOW_PHRASES = [
-    "资料盘点",
-    "报告生成",
-    "报告审查",
-    "最多只进行一轮核心委托",
-    "evidence-reader 不输出根因",
-    "先生成证据台账，再构建故障树",
+# The inline end-to-end chat mode was removed by the unified-kernel ticket 04:
+# real analysis promotes into a kernel Run via start_zeroing_run instead.
+REMOVED_INLINE_MODE_PHRASES = [
+    "独立完成全流程",
+    "端到端模式",
+    "展示五份文件",
+    "/mnt/user-data/outputs/fault_tree.json",
+    "python scripts/validate_fault_zeroing_outputs.py",
+    "ideer.fault_zeroing.kernel",
+]
+CLOSURE_TOOLS = [
+    "start_zeroing_run",
+    "confirm_zeroing_run",
+    "check_zeroing_run",
 ]
 
 
-def test_fault_zeroing_skill_requires_visual_outputs() -> None:
+def test_fault_zeroing_skill_promotes_real_analysis_into_kernel_runs() -> None:
     content = (REPO_ROOT / "resources" / "skills" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
 
-    for output in REQUIRED_OUTPUTS:
-        assert output in content
-
+    # The bisection rule: chat tools drive the closed loop, the five artifacts
+    # only ever come back through the Run bridge.
+    for tool in CLOSURE_TOOLS:
+        assert tool in content
     for phrase in [
-        "证据台账",
-        *STAGE_MARKERS,
+        "ask_clarification",
+        "三选一",
+        "input_snapshot_hash",
+        *REQUIRED_OUTPUTS,
         "资料覆盖矩阵",
-        "scripts/validate_fault_zeroing_outputs.py",
+        "证据台账",
         "probability_basis",
         "06_expected_analysis.md",
         *RESPONSIBILITY_PHRASES,
+        *STAGE_MARKERS,
     ]:
         assert phrase in content
 
     assert "present_files" in content
-    assert "展示五份文件" in content
     assert "不写脚本和外链资源" in content
 
     assert "read_document" in content
@@ -72,24 +82,30 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
     # under the failure contract, never ingested as document content.
     assert "JSON 错误" in content
 
-    for phrase in REMOVED_WORKFLOW_PHRASES:
+    for phrase in REMOVED_INLINE_MODE_PHRASES:
         assert phrase not in content
 
+    # The shared-kernel reference points at the real kernel module.
+    assert "app.agentplatform.fault_zeroing.kernel" in content
+    # The validator pointer resolves on the skill mount path.
+    assert "/mnt/skills/fault-zeroing/scripts/validate_fault_zeroing_outputs.py" in content
 
-def test_fault_zeroing_soul_requires_visual_outputs() -> None:
+
+def test_fault_zeroing_soul_promotes_real_analysis_into_kernel_runs() -> None:
     content = (REPO_ROOT / "resources" / "agents" / "fault-zeroing" / "SOUL.md").read_text(encoding="utf-8")
 
-    for output in REQUIRED_OUTPUTS:
-        assert output in content
-
+    for tool in CLOSURE_TOOLS:
+        assert tool in content
     for phrase in [
+        "ask_clarification",
+        "三选一",
         "证据台账",
-        *STAGE_MARKERS,
+        *REQUIRED_OUTPUTS,
         "资料覆盖矩阵",
-        "scripts/validate_fault_zeroing_outputs.py",
         "probability_basis",
         "06_expected_analysis.md",
         *RESPONSIBILITY_PHRASES,
+        *STAGE_MARKERS,
     ]:
         assert phrase in content
 
@@ -102,8 +118,10 @@ def test_fault_zeroing_soul_requires_visual_outputs() -> None:
     assert "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json" in content
     assert "不得用于结论状态" in content
 
-    for phrase in REMOVED_WORKFLOW_PHRASES:
+    for phrase in REMOVED_INLINE_MODE_PHRASES:
         assert phrase not in content
+
+    assert "/mnt/skills/fault-zeroing/scripts/validate_fault_zeroing_outputs.py" in content
 
 
 def test_fault_zeroing_sample_prompt_mentions_visual_outputs() -> None:

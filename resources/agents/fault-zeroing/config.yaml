@@ -5,5 +5,6 @@ tool_groups:
   - file:write
   - document
   - web
+  - fault-zeroing
 skills:
   - fault-zeroing

@@ -5,16 +5,16 @@ description: 归零排故工作流 — 基于证据资料完成故障树构建�
 inputs:
   evidence_mode:
     type: string
-    default: "document"
-    description: "证据模式：document、code 或 hybrid"
+    default: "hybrid"
+    description: "证据模式（系统派生结果，恒为 hybrid；用户不可指定）"
   code_package_source:
     type: string
     default: ""
     description: "经授权的 Code Evidence Package 源码根目录"
   upload_dir:
     type: string
-    required: true
-    description: "用户上传资料的目录路径（沙箱虚拟路径，如 /mnt/user-data/uploads/<case>/）"
+    default: ""
+    description: "用户上传资料的目录路径（沙箱虚拟路径；可选，非空问题描述也可满足文档侧）"
   problem_description:
     type: string
     default: ""
@@ -43,6 +43,12 @@ state:
   corrective_actions_summary:
     type: object
     default: {}
+
+# 完成前 Result Contract 契约门：图执行成功后、终态写入前，运行器调用该声明
+# 校验器判定五件套产物（转调统一契约实现）。未通过 → Run 终态 failed、
+# 违规清单入 Run 记录、产物保留可下载；校验器异常按 failed（fail-closed）。
+result_contract:
+  validator: "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"
 
 entrypoint: fork_start
 

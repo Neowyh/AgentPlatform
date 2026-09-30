@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.store import WorkflowConcurrencyExceeded, WorkflowV2Store
 from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
 
 
@@ -66,6 +66,31 @@ async def test_create_run_starts_queued_and_never_embeds_yaml() -> None:
     assert run.definition_version == 2
     assert not hasattr(run, "workflow_yaml")
     session.add.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_concurrency_rejection_raises_the_typed_exception() -> None:
+    """并发超限按专用异常类型抛出（仍是 RuntimeError 子类，消息不变）。"""
+
+    session = AsyncMock()
+    count = MagicMock()
+    count.scalar_one.return_value = 1
+    session.execute.return_value = count
+    session.add = MagicMock()
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    with pytest.raises(WorkflowConcurrencyExceeded, match="workflow_user_concurrency_exceeded") as excinfo:
+        await store.create_run(
+            "run-1",
+            "approval",
+            2,
+            {},
+            "user-1",
+            user_concurrency=1,
+        )
+
+    assert isinstance(excinfo.value, RuntimeError)
+    assert str(excinfo.value) == "workflow_user_concurrency_exceeded"
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,14 @@ import {
 import { classifyVisibilityChange } from "@/core/visibility-applications/options";
 import { useRunWorkflow, useWorkflow, useWorkflowRuns } from "@/core/workflows";
 
+// Server-owned inputs (evidence paths and the derived evidence mode) are
+// never user-editable: hidden from the run dialog and stripped on submit.
+const SERVER_OWNED_INPUT_KEYS = [
+  "code_package_source",
+  "upload_dir",
+  "evidence_mode",
+];
+
 export default function WorkflowDetailPage() {
   const router = useRouter();
   const { workflow_name } = useParams<{ workflow_name: string }>();
@@ -134,12 +142,6 @@ export default function WorkflowDetailPage() {
       }
       return next;
     });
-    if (accepted.some((file) => file.name.toLowerCase().endsWith(".zip"))) {
-      setInputValues((previous) => ({
-        ...previous,
-        evidence_mode: previous.evidence_mode ?? "hybrid",
-      }));
-    }
     event.target.value = "";
   }
 
@@ -173,7 +175,7 @@ export default function WorkflowDetailPage() {
     if (!workflow) return;
     // Validate required inputs
     for (const [key, param] of Object.entries(workflow.inputs)) {
-      if (["code_package_source", "upload_dir"].includes(key)) continue;
+      if (SERVER_OWNED_INPUT_KEYS.includes(key)) continue;
       if (param.required && !inputValues[key]?.trim()) {
         toast.error(t.workflows.requiredMissing(key));
         return;
@@ -182,7 +184,7 @@ export default function WorkflowDetailPage() {
 
     const inputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(inputValues)) {
-      if (["code_package_source", "upload_dir"].includes(key)) continue;
+      if (SERVER_OWNED_INPUT_KEYS.includes(key)) continue;
       if (value.trim()) {
         try {
           inputs[key] = JSON.parse(value);
@@ -660,10 +662,7 @@ export default function WorkflowDetailPage() {
           <div className="min-h-0 flex-1 overflow-y-auto py-4 pr-1">
             <div className="space-y-4">
               {Object.entries(workflow.inputs)
-                .filter(
-                  ([key]) =>
-                    !["code_package_source", "upload_dir"].includes(key),
-                )
+                .filter(([key]) => !SERVER_OWNED_INPUT_KEYS.includes(key))
                 .map(([key, param]) => (
                   <div key={key} className="space-y-2">
                     <Label htmlFor={`input-${key}`}>

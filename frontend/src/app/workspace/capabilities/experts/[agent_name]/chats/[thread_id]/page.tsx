@@ -123,7 +123,6 @@ export default function AgentChatPage() {
     context: {
       ...settings.context,
       agent_name: agent_name,
-      evidence_mode: "hybrid",
     },
     isMock,
     prepareSubmit: async () => {
@@ -467,7 +466,6 @@ export default function AgentChatPage() {
                     }
                     context={{
                       ...settings.context,
-                      evidence_mode: "hybrid",
                     }}
                     disabled={
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||

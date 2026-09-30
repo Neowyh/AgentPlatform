@@ -1,19 +1,31 @@
-"""Versioned, immutable Result Contract for fault-zeroing runs.
+#!/usr/bin/env python3
+"""Offline fault-zeroing Result Contract validator — self-contained skill copy.
 
-This module is the single source of truth for judging whether a set of
-fault-zeroing output artifacts is structurally complete, reference-closed,
-evidence-sufficient, status-consistent and safe.  It is intentionally
-stdlib-only so that it can be consumed by:
+This file is the mounted-skill form of the offline validator referenced by the
+fault-zeroing Skill and Expert texts as
+``/mnt/skills/fault-zeroing/scripts/validate_fault_zeroing_outputs.py``.  It
+runs under a bare, sandboxed Python (standard library only) where the backend
+tree and the ``app`` package are NOT importable, so the versioned Result
+Contract (``backend/app/agentplatform/fault_zeroing/contract.py``) is embedded
+below verbatim instead of imported.
 
-- the offline CLI shim ``scripts/validate_fault_zeroing_outputs.py``;
-- the shared execution kernel (``app.agentplatform.fault_zeroing.kernel``) quality gates;
-- downstream automation that may only consume ``confirmed`` facts.
+Single-standard discipline: the embedded block is a byte-equivalent copy of the
+contract module at contract version 1.0.0.  The runtime kernel pins its own
+contract version per run; this offline copy judges with the version embedded
+here (override per evaluation with ``--contract-version``).  Repo-side tests
+(``backend/tests/unit/scripts/test_fault_zeroing_packaged_validator.py``)
+assert version/constant parity and behavioral agreement, so the two forms
+cannot drift silently.  When the contract changes, regenerate this file from
+the contract module and commit the result together with it.
 
-Contract versioning: ``CONTRACT_VERSION`` is bumped together with the
-bundled schemas and the semantic rules encoded below.  Callers may pin a
-contract version per run; unsupported versions yield an explicit
-``contract_version_unsupported`` finding instead of silently drifting.
+Default schema paths resolve relative to this script (``../templates/``), which
+matches both the skill mount (``/mnt/skills/fault-zeroing/templates/``) and a
+repository checkout (``resources/skills/fault-zeroing/templates/``).
 """
+
+# ---------------------------------------------------------------------------
+# Embedded Result Contract (verbatim copy, see docstring).
+# ---------------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -1134,3 +1146,61 @@ def _finish(sink: _Sink, version: str, fingerprint: str, output_path: Path) -> C
         findings=sink.findings,
         artifact_digests=digests,
     )
+
+
+# ---------------------------------------------------------------------------
+# CLI (mounted-form defaults: schemas live next to this script's skill root).
+# ---------------------------------------------------------------------------
+
+
+def _skill_template(name: str) -> Path:
+    return Path(__file__).resolve().parent.parent / "templates" / name
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Validate fault-zeroing output artifacts against the Result Contract.",
+    )
+    parser.add_argument(
+        "--outputs-dir",
+        required=True,
+        help="Directory containing the five fault-zeroing outputs.",
+    )
+    parser.add_argument("--schema", default=str(_skill_template("fault_tree.schema.json")), help="Path to fault_tree.schema.json.")
+    parser.add_argument(
+        "--corrective-schema",
+        default=str(_skill_template("corrective_actions.schema.json")),
+        help="Path to corrective_actions.schema.json.",
+    )
+    parser.add_argument(
+        "--contract-version",
+        default=None,
+        help="Pin the Result Contract semantic version for this evaluation.",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit the structured contract verdict as JSON.")
+    args = parser.parse_args(argv)
+
+    verdict = evaluate_result_contract(
+        args.outputs_dir,
+        contract_version=args.contract_version,
+        schema_path=args.schema,
+        corrective_schema_path=args.corrective_schema,
+    )
+    if args.json:
+        print(verdict.to_json())
+        return 0 if verdict.ok else 1
+
+    if verdict.ok:
+        print("fault-zeroing outputs validation passed")
+        return 0
+
+    print("fault-zeroing outputs validation failed", file=__import__("sys").stderr)
+    for error in verdict.errors:
+        print(f"- {error}", file=__import__("sys").stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

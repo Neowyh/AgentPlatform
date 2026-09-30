@@ -40,6 +40,53 @@ def test_both_sides_present_executes_immediately() -> None:
     assert decision.status == intake.EXECUTE
     assert decision.missing == ()
     assert decision.reason_code == intake.INTAKE_COMPLETE
+    # The mode is a derived system result, always hybrid (CONTEXT.md:
+    # Avoid "Evidence Mode selection", "document-only Run").
+    assert decision.evidence_mode == "hybrid"
+
+
+def test_nonempty_problem_description_satisfies_document_side() -> None:
+    """A description alone is documentary evidence (CONTEXT.md glossary)."""
+
+    intake = load_intake()
+    decision = intake.assess_evidence_intake(
+        problem_description="主轴电机过热报警，请分析根因",
+        code_package_source="/mnt/user-data/code-evidence/pkg-1/source",
+    )
+
+    assert decision.status == intake.EXECUTE
+    assert decision.missing == ()
+    assert decision.reason_code == intake.INTAKE_COMPLETE
+
+
+def test_problem_description_alone_pauses_for_missing_code_side() -> None:
+    intake = load_intake()
+    decision = intake.assess_evidence_intake(
+        problem_description="主轴电机过热报警，请分析根因",
+    )
+
+    assert decision.status == intake.PAUSE
+    assert decision.missing == ("code_evidence_package",)
+    assert decision.reason_code == intake.INTAKE_CONFIRMATION_REQUIRED
+    assert decision.evidence_mode == "hybrid"
+
+
+def test_code_package_alone_pauses_for_missing_document_side() -> None:
+    intake = load_intake()
+    decision = intake.assess_evidence_intake(
+        code_package_source="/mnt/user-data/code-evidence/pkg-1/source",
+    )
+
+    assert decision.status == intake.PAUSE
+    assert decision.missing == ("document_evidence",)
+
+
+def test_whitespace_description_does_not_satisfy_document_side() -> None:
+    intake = load_intake()
+    decision = intake.assess_evidence_intake(problem_description="   \n\t")
+
+    assert decision.status == intake.REJECT
+    assert decision.missing == intake.SIDES
 
 
 def test_one_side_missing_creates_confirmation_pause() -> None:
@@ -60,20 +107,18 @@ def test_both_sides_missing_rejects_before_model_execution() -> None:
     assert decision.status == intake.REJECT
     assert decision.missing == intake.SIDES
     assert decision.reason_code == intake.INTAKE_MISSING_BOTH
+    # Even the rejection record never claims a document-only or code-only mode.
+    assert decision.evidence_mode == "hybrid"
 
 
-def test_unsupported_evidence_mode_raises() -> None:
+def test_evidence_mode_is_derived_never_user_declared() -> None:
+    """No caller-selectable mode survives: document/code modes are gone."""
+
     intake = load_intake()
-    try:
-        intake.assess_evidence_intake(
-            upload_dir="/u",
-            code_package_source="/c",
-            evidence_mode="psychic",
-        )
-    except intake.IntakeError:
-        pass
-    else:
-        raise AssertionError("expected IntakeError")
+    import inspect
+
+    params = inspect.signature(intake.assess_evidence_intake).parameters
+    assert "evidence_mode" not in params
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +131,44 @@ def test_confirmation_binds_to_input_snapshot() -> None:
     decision = intake.assess_evidence_intake(upload_dir="/mnt/user-data/uploads")
 
     assert intake.confirmation_is_current(decision.input_snapshot_hash, decision.input_snapshot_hash)
+
+
+def test_problem_description_is_bound_into_the_snapshot_hash() -> None:
+    """Changing the description changes the hash: re-confirmation required."""
+
+    intake = load_intake()
+    decision = intake.assess_evidence_intake(
+        problem_description="主轴电机过热报警",
+        upload_dir="/mnt/user-data/uploads",
+    )
+    rewritten = intake.assess_evidence_intake(
+        problem_description="主轴电机过热停机",
+        upload_dir="/mnt/user-data/uploads",
+    )
+
+    assert rewritten.input_snapshot_hash != decision.input_snapshot_hash
+    assert not intake.confirmation_is_current(decision.input_snapshot_hash, rewritten.input_snapshot_hash)
+
+
+def test_snapshot_records_both_documentary_sources() -> None:
+    """The document side snapshot reflects description and attachments."""
+
+    intake = load_intake()
+    described = intake.assess_evidence_intake(
+        problem_description="主轴电机过热报警",
+        upload_dir="/mnt/user-data/uploads",
+    )
+    described_only = intake.assess_evidence_intake(problem_description="主轴电机过热报警")
+    attached_only = intake.assess_evidence_intake(upload_dir="/mnt/user-data/uploads")
+
+    document_value = described.input_snapshot["document_evidence"]
+    assert "主轴电机过热报警" in document_value
+    assert "/mnt/user-data/uploads" in document_value
+    # Each documentary source is part of the hash input.
+    assert described_only.input_snapshot_hash != described.input_snapshot_hash
+    assert attached_only.input_snapshot_hash != described.input_snapshot_hash
+    # And an empty document side stays empty.
+    assert intake.build_input_snapshot(None, None, None)["document_evidence"] == ""
 
 
 def test_new_material_requires_reconfirmation() -> None:

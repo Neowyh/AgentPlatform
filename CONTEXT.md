@@ -390,6 +390,10 @@ _Avoid_: Evidence Mode selection, document-only Run, code-only Run, silent mode 
 The single Workflow-backed implementation used by Skill, Expert, and Workflow invocation adapters for an actual fault-zeroing analysis. Educational or editing conversations remain ordinary Agent interactions; starting an analysis routes all three forms through the same evidence, fault-tree, assessment, review, reporting, and validation stages.
 _Avoid_: Three independent fault-zeroing implementations, prompt-only orchestration, starting a Run for conceptual questions
 
+**Invocation Adapter**:
+The Skill, Expert, or Workflow entry shell that calls and presents the one shared Fault-zeroing Execution Kernel for a real analysis without re-implementing its stages, evidence rules, or result validation, while conceptual explanations and limited editing stay ordinary conversation.
+_Avoid_: Three independent fault-zeroing implementations, prompt-only orchestration, starting a Run for conceptual questions
+
 **Fault-zeroing Result Contract**:
 The immutable, versioned, deterministic rules that validate fault-zeroing Artifacts at analysis checkpoints and before Run completion, including structure, references, evidence strength, report consistency, and static SVG safety. Each Run pins the contract version it started with.
 _Avoid_: Skill text as the validator, mutable in-place rules, separate Workflow and offline validation standards

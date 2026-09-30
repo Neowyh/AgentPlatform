@@ -47,6 +47,7 @@ class FakeRun:
     created_by: str
     status: str = "queued"
     snapshot: dict = field(default_factory=dict)
+    model_name: str | None = None
 
 
 class FakeStore:
@@ -84,17 +85,28 @@ class FakeStore:
         self.runs[run_id].snapshot = dict(snapshot)
         return True
 
+    async def update_paused_run_snapshot(self, run_id, snapshot):
+        self.runs[run_id].snapshot = dict(snapshot)
+        return True
+
     async def submit_command(self, command_id, run_id, command_type, payload, created_by):
         self.commands.append((command_id, run_id, command_type, dict(payload)))
         return type("Cmd", (), {"command_id": command_id})()
 
     async def create_canonical_run(self, run_id, workflow_resource_id, inputs, actor, **kwargs):
         self.canonical_calls.append(("create_canonical_run", run_id, workflow_resource_id, actor))
-        run = FakeRun(run_id, "fault-zeroing", 1, dict(inputs), actor.user_id, snapshot={"run_evidence": {}})
+        run = FakeRun(
+            run_id,
+            "fault-zeroing",
+            1,
+            dict(inputs),
+            actor.user_id,
+            snapshot={**dict(kwargs.get("intake_snapshot") or {}), "run_evidence": {}},
+        )
         self.runs[run_id] = run
         return run
 
-    async def create_canonical_paused_run(self, run_id, workflow_resource_id, inputs, actor, *, intake_snapshot=None):
+    async def create_canonical_paused_run(self, run_id, workflow_resource_id, inputs, actor, **kwargs):
         self.canonical_calls.append(("create_canonical_paused_run", run_id, workflow_resource_id, actor))
         run = FakeRun(
             run_id,
@@ -103,7 +115,8 @@ class FakeStore:
             dict(inputs),
             actor.user_id,
             status="paused",
-            snapshot=dict(intake_snapshot or {}),
+            snapshot=dict(kwargs.get("intake_snapshot") or {}),
+            model_name=kwargs.get("model_name"),
         )
         self.runs[run_id] = run
         return run
@@ -134,7 +147,6 @@ def kernel_env(tmp_path):
 BASE_INPUTS = {
     "upload_dir": "/mnt/user-data/uploads",
     "code_package_source": "/mnt/user-data/code-evidence/pkg-1/source",
-    "evidence_mode": "hybrid",
 }
 
 
@@ -165,7 +177,7 @@ def test_start_run_queues_when_both_sides_present(kernel_env) -> None:
 
 def test_start_run_pauses_on_missing_side_without_claimable_task(kernel_env) -> None:
     _, _, _, _, kernel, store, _ = kernel_env
-    inputs = {"upload_dir": "/mnt/user-data/uploads", "evidence_mode": "hybrid"}
+    inputs = {"upload_dir": "/mnt/user-data/uploads"}
 
     result = asyncio.run(
         kernel.start_run(
@@ -193,13 +205,54 @@ def test_start_run_rejects_when_both_sides_missing(kernel_env) -> None:
             kernel.start_run(
                 workflow_name="fault-zeroing",
                 definition_version=1,
-                inputs={"evidence_mode": "hybrid"},
+                inputs={},
                 created_by="user-1",
             )
         )
 
     assert excinfo.value.reason_code == "intake_evidence_missing_both"
     assert store.runs == {}  # no usable run is created
+
+
+def test_description_only_start_pauses_with_derived_hybrid_snapshot(kernel_env) -> None:
+    """A non-empty description satisfies the document side (glossary)."""
+
+    _, _, _, _, kernel, store, _ = kernel_env
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警，请分析根因"},
+            created_by="user-1",
+        )
+    )
+
+    assert result.status == "paused"
+    record = store.runs[result.run_id].snapshot["evidence_intake"]
+    assert record["missing"] == ["code_evidence_package"]
+    # The mode in the Run snapshot is the derived system result.
+    assert record["evidence_mode"] == "hybrid"
+
+
+def test_user_supplied_evidence_mode_in_inputs_is_ignored(kernel_env) -> None:
+    """evidence_mode is no longer a caller input; a stale value cannot
+    resurrect a document-only run."""
+
+    _, _, _, _, kernel, store, _ = kernel_env
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警", "evidence_mode": "document"},
+            created_by="user-1",
+        )
+    )
+
+    record = store.runs[result.run_id].snapshot["evidence_intake"]
+    assert record["evidence_mode"] == "hybrid"
+    assert record["missing"] == ["code_evidence_package"]
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +291,7 @@ def test_start_canonical_run_queues_through_frozen_closure(kernel_env) -> None:
 def test_start_canonical_run_pauses_with_intake_snapshot(kernel_env) -> None:
     _, _, _, _, kernel, store, _ = kernel_env
     actor = _actor()
-    inputs = {"upload_dir": "/mnt/user-data/uploads", "evidence_mode": "hybrid"}
+    inputs = {"upload_dir": "/mnt/user-data/uploads"}
 
     result = asyncio.run(
         kernel.start_run(
@@ -270,7 +323,7 @@ def test_start_canonical_run_rejects_before_creating_anything(kernel_env) -> Non
             kernel.start_run(
                 workflow_name="fault-zeroing",
                 definition_version=1,
-                inputs={"evidence_mode": "hybrid"},
+                inputs={},
                 created_by="user-1",
                 workflow_resource_id="wf-resource-uuid",
                 actor=actor,
@@ -281,13 +334,43 @@ def test_start_canonical_run_rejects_before_creating_anything(kernel_env) -> Non
     assert store.runs == {}
 
 
+def test_start_run_records_the_invocation_entry(kernel_env) -> None:
+    """The entry label rides the kernel snapshot keys and lifecycle events."""
+
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+
+    queued = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=dict(BASE_INPUTS),
+            created_by="user-1",
+            entry="workflow",
+        )
+    )
+    paused = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"upload_dir": "/u"},
+            created_by="user-1",
+            entry="workflow",
+        )
+    )
+
+    assert store.runs[queued.run_id].snapshot[kernel_mod.SNAPSHOT_ENTRY_KEY] == "workflow"
+    assert store.runs[paused.run_id].snapshot[kernel_mod.SNAPSHOT_ENTRY_KEY] == "workflow"
+    assert any(event_type == "run_started" and payload.get("entry") == "workflow" for _, event_type, payload in store.events)
+    assert any(event_type == kernel_mod.EVENT_INTERRUPTED and payload.get("entry") == "workflow" for _, event_type, payload in store.events)
+
+
 def test_confirm_evidence_resumes_paused_run(kernel_env) -> None:
     _, _, _, _, kernel, store, _ = kernel_env
     started = asyncio.run(
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
@@ -337,7 +420,7 @@ def test_new_material_requires_reconfirmation(kernel_env) -> None:
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
@@ -358,6 +441,97 @@ def test_new_material_requires_reconfirmation(kernel_env) -> None:
     # The rejection is observable.
     assert any(event_type == "kernel_confirmation_rejected" for _, event_type, _ in store.events)
     assert not store.commands  # nothing was resumed
+
+
+def test_description_change_after_pause_requires_reconfirmation(kernel_env) -> None:
+    """The problem description is part of the confirmation-bound hash."""
+
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    # The description changed after the pause: the presented hash is stale.
+    store.runs[started.run_id].inputs = dict(store.runs[started.run_id].inputs, problem_description="主轴电机过热停机")
+
+    with pytest.raises(kernel_mod.ConfirmationStaleError) as excinfo:
+        asyncio.run(
+            kernel.confirm_evidence(
+                started.run_id,
+                payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+                confirmed_by="user-1",
+            )
+        )
+    assert excinfo.value.reason_code == "intake_snapshot_changed"
+    assert not store.commands
+
+
+def test_confirm_succeeds_while_description_unchanged(kernel_env) -> None:
+    _, _, _, _, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"problem_description": "主轴电机过热报警"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    result = asyncio.run(
+        kernel.confirm_evidence(
+            started.run_id,
+            payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+            confirmed_by="user-1",
+        )
+    )
+
+    assert result["missing_evidence_sides"] == ["code_evidence_package"]
+    assert store.commands and store.commands[0][2] == "resume"
+
+
+def test_confirmation_rejected_when_the_paused_snapshot_write_fails(kernel_env) -> None:
+    """paused 检查通过后、快照写入前 Run 状态迁移（写入返回 False）→ 确认被拒。
+
+    check-then-act 竞态必须 fail-closed：不提交 resume 命令，留下可审计的
+    拒绝事件，而不是让一个已离开 paused 的 Run 被静默恢复。
+    """
+
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"upload_dir": "/u"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    async def _losing_race(run_id, snapshot):
+        return False
+
+    store.update_paused_run_snapshot = _losing_race
+
+    with pytest.raises(kernel_mod.ConfirmationStaleError) as excinfo:
+        asyncio.run(
+            kernel.confirm_evidence(
+                started.run_id,
+                payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+                confirmed_by="user-1",
+            )
+        )
+
+    assert excinfo.value.reason_code == kernel_mod.REASON_RUN_NOT_PAUSED
+    assert not store.commands
+    rejections = [payload for _, event_type, payload in store.events if event_type == kernel_mod.EVENT_CONFIRMATION_REJECTED]
+    assert rejections and rejections[-1]["code"] == kernel_mod.REASON_RUN_NOT_PAUSED
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +607,7 @@ def test_single_side_run_requires_hybrid_disclosure_at_completion(kernel_env) ->
         kernel.start_run(
             workflow_name="fault-zeroing",
             definition_version=1,
-            inputs={"upload_dir": "/u", "evidence_mode": "hybrid"},
+            inputs={"upload_dir": "/u"},
             created_by="user-1",
         )
     )
@@ -442,6 +616,82 @@ def test_single_side_run_requires_hybrid_disclosure_at_completion(kernel_env) ->
 
     assert completion.status == "failed"
     assert "hybrid_disclosure_missing" in completion.reason_codes
+
+
+def test_completion_uses_the_contract_version_pinned_on_the_snapshot(kernel_env) -> None:
+    """A run is judged by the contract version it started with (ticket 03 P2)."""
+
+    _, _, _, kernel_mod, kernel, store, outputs_dir = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=dict(BASE_INPUTS),
+            created_by="user-1",
+        )
+    )
+    store.runs[started.run_id].snapshot["contract_version"] = "9.9.9"
+
+    completion = asyncio.run(kernel.evaluate_completion(started.run_id, str(outputs_dir)))
+
+    assert completion.verdict.contract_version == "9.9.9"
+    assert completion.status == "failed"
+    assert "contract_version_unsupported" in completion.reason_codes
+    assert any(event_type == kernel_mod.EVENT_CONTRACT_FAILED and payload["contract_version"] == "9.9.9" for _, event_type, payload in store.events)
+
+
+def test_explicit_contract_version_argument_overrides_the_pin(kernel_env) -> None:
+    _, _, _, _, kernel, store, outputs_dir = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=dict(BASE_INPUTS),
+            created_by="user-1",
+        )
+    )
+    store.runs[started.run_id].snapshot["contract_version"] = "9.9.9"
+
+    completion = asyncio.run(kernel.evaluate_completion(started.run_id, str(outputs_dir), contract_version=kernel._contract_version))
+
+    assert completion.status == "completed"
+
+
+def test_judge_completion_is_a_pure_kernel_entry_with_events(kernel_env, tmp_path: Path) -> None:
+    """The sync judgment entry (no store, no run id) returns the same verdict,
+    completion status and kernel events the store-backed evaluation logs."""
+
+    _, _, _, kernel_mod, kernel, store, outputs_dir = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"upload_dir": "/u"},
+            created_by="user-1",
+        )
+    )
+    snapshot = dict(store.runs[started.run_id].snapshot)
+
+    judgment = kernel_mod.judge_completion(snapshot, str(outputs_dir))
+
+    assert judgment.status == kernel_mod.COMPLETION_STATUS_FAILED
+    assert "hybrid_disclosure_missing" in judgment.reason_codes
+    assert [(event_type, dict(payload)) for event_type, payload in judgment.events] == [(kernel_mod.EVENT_CONTRACT_FAILED, {"code": "contract_failed", "contract_version": kernel_mod.CONTRACT_VERSION, "reason_codes": judgment.reason_codes})]
+
+    passing_dir = tmp_path / "passing"
+    passing_dir.mkdir()
+    # The passing case needs an intake record with no missing sides; the
+    # paused run's record pins a disclosure the valid fixture does not carry.
+    fully_evidenced = {
+        **snapshot,
+        "evidence_intake": {**snapshot["evidence_intake"], "missing": []},
+    }
+    passing = kernel_mod.judge_completion(fully_evidenced, str(make_valid_outputs(passing_dir)))
+    assert passing.status == kernel_mod.COMPLETION_STATUS_COMPLETED
+    event_type, payload = passing.events[0]
+    assert event_type == kernel_mod.EVENT_CONTRACT_EVALUATED
+    assert payload["code"] == "contract_passed"
+    assert "pending_verification_disclosed" in payload
 
 
 # ---------------------------------------------------------------------------
