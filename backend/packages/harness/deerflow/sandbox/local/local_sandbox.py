@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from deerflow.config.paths import VIRTUAL_PATH_PREFIX
+from deerflow.sandbox.encoding import DecodedText, sniff_decode, universal_newline_lines, universal_newlines
 from deerflow.sandbox.env_policy import build_sandbox_env
 from deerflow.sandbox.local.list_dir import list_dir
 from deerflow.sandbox.path_patterns import replace_output_path_matches
@@ -790,27 +791,35 @@ class LocalSandbox(Sandbox):
         resolved_path = self._resolve_path(path)
         should_slice = start_line is not None or end_line is not None
         try:
-            with open(resolved_path, encoding="utf-8") as f:
-                if not should_slice:
-                    content = f.read()
-
+            with open(resolved_path, "rb") as f:
+                raw = f.read()
+            # Sniff strictly (UTF-8 -> UTF-8 BOM -> GB18030) instead of failing
+            # on non-UTF-8 text. The sniffed label rides on the DecodedText
+            # metadata — never embedded in the text — so read-modify-write
+            # flows (str_replace) round-trip the content unchanged while the
+            # tool layer can still render the `[encoding: GB18030]` marker.
+            content, encoding_label = sniff_decode(raw)
+            # Shared universal-newline contract: full reads keep the trailing
+            # newline like text-mode read(); line slices share grep's
+            # line-numbering via universal_newline_lines.
+            content = universal_newlines(content)
+            if should_slice:
                 start = max(start_line or 1, 1)
-                if should_slice:
-                    selected: list[str] = []
-                    for line_number, line in enumerate(f, start=1):
-                        if line_number < start:
-                            continue
-                        if end_line is not None and line_number > end_line:
-                            break
-                        selected.append(line.rstrip("\r\n"))
-                    content = "\n".join(selected)
+                selected: list[str] = []
+                for line_number, line in enumerate(universal_newline_lines(content), start=1):
+                    if line_number < start:
+                        continue
+                    if end_line is not None and line_number > end_line:
+                        break
+                    selected.append(line)
+                content = "\n".join(selected)
             # Only reverse-resolve paths in files that were previously written
             # by write_file (agent-authored content). User-uploaded files,
             # external tool output, and other non-agent content should not be
             # silently rewritten — see discussion on PR #1935.
             if resolved_path in self._agent_written_paths:
                 content = self._reverse_resolve_paths_in_output(content)
-            return content
+            return DecodedText(content, encoding_label)
         except OSError as e:
             # Re-raise with the original path for clearer error messages, hiding internal resolved paths
             raise type(e)(e.errno, e.strerror, path) from None
@@ -889,6 +898,7 @@ class LocalSandbox(Sandbox):
                 path=self._reverse_resolve_path(match.path),
                 line_number=match.line_number,
                 line=match.line,
+                encoding=match.encoding,
             )
             for match in matches
         ], truncated

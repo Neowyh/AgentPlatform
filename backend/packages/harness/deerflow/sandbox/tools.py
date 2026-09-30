@@ -26,6 +26,7 @@ from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 from deerflow.constants import DEFAULT_SKILLS_CONTAINER_PATH
 from deerflow.runtime.secret_context import read_active_secrets
 from deerflow.runtime.user_context import resolve_runtime_user_id
+from deerflow.sandbox.encoding import encoding_label_of, with_encoding_prefix
 from deerflow.sandbox.exceptions import (
     SandboxError,
     SandboxNotFoundError,
@@ -622,7 +623,14 @@ def _format_grep_results(root_path: str, matches: list[GrepMatch], truncated: bo
     lines = [f"Found {len(matches)} matches under {root_path}"]
     if truncated:
         lines[0] += f" (showing first {len(matches)})"
-    lines.extend(f"{match.path}:{match.line_number}: {match.line}" for match in matches)
+    # Scanner output keeps each file's matches contiguous, so a label change
+    # on a path boundary marks the start of a fallback-decoded file's group.
+    previous_path: str | None = None
+    for match in matches:
+        if match.encoding and match.path != previous_path:
+            lines.append(f"[encoding: {match.encoding}]")
+        previous_path = match.path
+        lines.append(f"{match.path}:{match.line_number}: {match.line}")
     if truncated:
         lines.append("Results truncated. Narrow the path or add a glob filter.")
     return "\n".join(lines)
@@ -2315,6 +2323,7 @@ def grep_tool(
                     path=mask_local_paths_in_output(match.path, thread_data),
                     line_number=match.line_number,
                     line=match.line,
+                    encoding=match.encoding,
                 )
                 for match in matches
             ]
@@ -2370,7 +2379,11 @@ def _read_file_from_sandbox(
     start_line: int | None = None,
     end_line: int | None = None,
 ) -> str:
-    """Read through the sandbox while preserving provider-owned mount paths."""
+    """Read through the sandbox while preserving provider-owned mount paths.
+
+    Sandboxes that sniff source encodings return ``DecodedText`` carrying the
+    sniffed label; plain ``str`` from other sandboxes means "no label".
+    """
     sandbox = ensure_sandbox_initialized(runtime)
     ensure_thread_directories_exist(runtime)
     if is_local_sandbox(runtime):
@@ -2384,11 +2397,13 @@ def read_current_file_content(runtime: Runtime | None, path: str) -> str:
     """Read the full current content of ``path`` using read_file's resolution rules.
 
     Shared by ``read_file_tool`` and ``ReadBeforeWriteMiddleware`` (issue #3857)
-    so the gate hashes exactly the bytes the read tool would see. Raises
-    ``FileNotFoundError`` when the file does not exist; other sandbox errors
-    propagate to the caller.
+    so the gate hashes exactly the bytes the read tool would see. GB-fallback
+    hits carry the ``[encoding: ...]`` marker line, matching read_file's
+    output. Raises ``FileNotFoundError`` when the file does not exist; other
+    sandbox errors propagate to the caller.
     """
-    return _read_file_from_sandbox(runtime, path)
+    content = _read_file_from_sandbox(runtime, path)
+    return with_encoding_prefix(content, encoding_label_of(content))
 
 
 @tool("read_file", parse_docstring=True)
@@ -2430,6 +2445,7 @@ def read_file_tool(
             if start_line is not None and start_line > 1:
                 return "(start_line exceeds file length)"
             return "(empty)"
+        content = with_encoding_prefix(content, encoding_label_of(content))
         try:
             from deerflow.config.app_config import get_app_config
 
@@ -2449,7 +2465,7 @@ def read_file_tool(
     except UnicodeDecodeError:
         return (
             f"Error: cannot read '{requested_path}' as text — it appears to be a binary file "
-            "(e.g. .xlsx, .pdf, or an image). read_file only supports UTF-8 text. Use bash with a "
+            "(e.g. .xlsx, .pdf, or an image). read_file supports UTF-8 and GB18030 text. Use bash with a "
             "suitable library instead (pandas/openpyxl for spreadsheets), or view_image for images."
         )
     except Exception as e:

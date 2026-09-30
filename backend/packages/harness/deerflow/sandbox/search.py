@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from deerflow.sandbox.encoding import sniff_decode, universal_newline_lines
+
 IGNORE_PATTERNS = [
     ".git",
     ".svn",
@@ -66,6 +68,10 @@ class GrepMatch:
     path: str
     line_number: int
     line: str
+    #: Non-None when the file was decoded by a fallback encoding (e.g.
+    #: ``"GB18030"``); output formatters surface ``[encoding: <label>]`` for
+    #: those files. ``None`` means UTF-8/ASCII.
+    encoding: str | None = None
 
 
 # ``should_ignore_name`` runs once per directory entry during glob/grep tree
@@ -205,21 +211,31 @@ def find_grep_matches(
                 continue
             if file_path.stat().st_size > max_file_size or is_binary_file(file_path):
                 continue
-            with file_path.open(encoding="utf-8", errors="replace") as handle:
-                for line_number, line in enumerate(handle, start=1):
-                    if len(line) > _max_line_chars:
-                        continue
-                    if regex.search(line):
-                        matches.append(
-                            GrepMatch(
-                                path=str(file_path),
-                                line_number=line_number,
-                                line=truncate_line(line, line_summary_length),
-                            )
+            # Sniff the whole file once (UTF-8 -> UTF-8 BOM -> GB18030); strict
+            # decoding replaces the old errors="replace" silent mojibake. Files
+            # that no encoding accepts are treated like binary files: skipped.
+            # (OSError on the byte read is handled by the outer handler below.)
+            try:
+                text, encoding_label = sniff_decode(file_path.read_bytes())
+            except UnicodeDecodeError:
+                continue
+            # Shared universal-newline contract keeps line numbers aligned
+            # with read_file's line slicing.
+            for line_number, line in enumerate(universal_newline_lines(text), start=1):
+                if len(line) > _max_line_chars:
+                    continue
+                if regex.search(line):
+                    matches.append(
+                        GrepMatch(
+                            path=str(file_path),
+                            line_number=line_number,
+                            line=truncate_line(line, line_summary_length),
+                            encoding=encoding_label,
                         )
-                        if len(matches) >= max_results:
-                            truncated = True
-                            return matches, truncated
+                    )
+                    if len(matches) >= max_results:
+                        truncated = True
+                        return matches, truncated
         except OSError:
             continue
 

@@ -834,8 +834,11 @@ class TestLocalSandboxProviderMounts:
         # The container path should be preserved through roundtrip
         assert "/mnt/data/config.json" in result
 
-    def test_read_file_line_range_streams_without_full_read(self, tmp_path):
-        """Bounded line reads should stream without slurping the whole file."""
+    def test_read_file_line_range_reads_file_in_single_pass(self, tmp_path):
+        """Encoding sniffing (UTF-8 -> UTF-8 BOM -> GB18030) needs the whole
+        byte stream once; a ranged read must still open and read the file in
+        exactly one pass, with the line slice happening in memory — repeated
+        full reads stay forbidden."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
         big_file = data_dir / "huge.log"
@@ -848,7 +851,9 @@ class TestLocalSandboxProviderMounts:
             ],
         )
 
-        class GuardedFile:
+        read_calls: list[int] = []
+
+        class CountingFile:
             def __init__(self, wrapped):
                 self._wrapped = wrapped
 
@@ -859,14 +864,9 @@ class TestLocalSandboxProviderMounts:
             def __exit__(self, exc_type, exc, tb):
                 return self._wrapped.__exit__(exc_type, exc, tb)
 
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                return next(self._wrapped)
-
             def read(self, *args, **kwargs):
-                raise AssertionError("full read() should not be used for ranged reads")
+                read_calls.append(1)
+                return self._wrapped.read(*args, **kwargs)
 
             def __getattr__(self, name):
                 return getattr(self._wrapped, name)
@@ -874,17 +874,21 @@ class TestLocalSandboxProviderMounts:
         import builtins
 
         real_open = builtins.open
+        open_modes: list[str] = []
 
-        def guarded_open(file, *args, **kwargs):
+        def counting_open(file, *args, **kwargs):
             handle = real_open(file, *args, **kwargs)
             if Path(file) == big_file:
-                return GuardedFile(handle)
+                open_modes.append(kwargs.get("mode", args[0] if args else "r"))
+                return CountingFile(handle)
             return handle
 
-        with patch("builtins.open", side_effect=guarded_open):
+        with patch("builtins.open", side_effect=counting_open):
             content = sandbox.read_file("/mnt/data/huge.log", start_line=1, end_line=10)
 
         assert content == "\n".join(f"line {i}" for i in range(1, 11))
+        assert open_modes == ["rb"]
+        assert len(read_calls) == 1
 
     def test_read_file_single_sided_line_ranges_supported(self, tmp_path):
         """LocalSandbox should support partial reads when only one bound is provided."""
