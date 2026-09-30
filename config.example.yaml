@@ -54,14 +54,18 @@ knowledge:
 # The same zero-argument class list applies to both lead and subagent runtimes;
 # lead-only vs subagent-only configuration is not expressible yet. Treat these
 # files as trusted operator config because middleware classes execute code.
-# Uncomment this block to define middlewares in config.yaml. Leaving it commented
-# lets extensions_config.json remain the source of truth for this legacy
-# config-declared middleware list. Packaged plugins use the `plugins:` block below.
-# extensions:
-#   middlewares:
-#     - my_company.deerflow_middlewares:DomainGuardMiddleware
-#     - my_company.deerflow_middlewares:LatencyStampingMiddleware
-#     - app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware  # server-expanded code-evidence summary (the intranet profile enables this)
+# Packaged plugins use the `plugins:` block below; extensions_config.json can
+# still declare additional middlewares (this block overrides shared fields).
+extensions:
+  middlewares:
+    # Surfaces the server-expanded code-evidence package summary (fault-zeroing
+    # evidence flow) to the lead agent. Zero-argument AgentMiddleware; see
+    # backend/app/agentplatform/code_evidence_context_middleware.py. The
+    # middleware is inert unless the run context carries a code-evidence package.
+    - app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware
+    # Additional middlewares (examples):
+    # - my_company.deerflow_middlewares:DomainGuardMiddleware
+    # - my_company.deerflow_middlewares:LatencyStampingMiddleware
 
 # ============================================================================
 # Tracing / Observability (Monocle)

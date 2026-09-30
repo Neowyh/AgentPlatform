@@ -183,12 +183,18 @@ def test_resolve_checkpoint_graph_cache_max_tolerates_stub_configs() -> None:
     assert resolve_checkpoint_graph_cache_max(stub, "accessor_graph_max", 64) == 3
 
 
-def test_config_example_does_not_enable_empty_extensions_block_by_default():
-    config_example_path = Path(__file__).resolve().parents[2] / "config.example.yaml"
+def test_default_profile_configs_declare_code_evidence_context_middleware():
+    """The default (config.example.yaml) and intranet profiles register the
+    code-evidence package reminder middleware through the config-declared
+    ``extensions.middlewares`` surface, so the trusted summary is injected on
+    local/default deployments too (fault-zeroing toolchain T2)."""
+    for config_name in ("config.example.yaml", "config.intranet.yaml"):
+        config_path = Path(__file__).resolve().parents[2] / config_name
 
-    config_data = yaml.safe_load(config_example_path.read_text(encoding="utf-8"))
+        config_data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-    assert "extensions" not in config_data
+        middlewares = config_data["extensions"]["middlewares"]
+        assert "app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware" in middlewares, config_name
 
 
 def test_app_config_defaults_missing_database_to_sqlite(tmp_path, monkeypatch):

@@ -105,3 +105,21 @@ def test_reinjects_for_a_different_package():
 def test_no_messages_returns_none():
     mw = CodeEvidenceContextMiddleware()
     assert mw.before_agent({"messages": []}, _runtime(_manifest())) is None
+
+
+def test_extensions_loader_instantiates_middleware_from_declared_path():
+    """The config-declared ``extensions.middlewares`` surface loads this
+    middleware with its zero-argument constructor — the contract the default
+    profile (config.example.yaml) and the intranet profile both rely on."""
+    from types import SimpleNamespace
+
+    from deerflow.agents.middlewares.configured_extensions import load_configured_extension_middlewares
+    from deerflow.config.extensions_config import ExtensionsConfig
+
+    declared_path = "app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware"
+    app_config = SimpleNamespace(extensions=ExtensionsConfig(middlewares=[declared_path]))
+
+    loaded = load_configured_extension_middlewares(app_config)
+
+    assert len(loaded) == 1
+    assert isinstance(loaded[0], CodeEvidenceContextMiddleware)
