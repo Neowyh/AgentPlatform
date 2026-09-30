@@ -229,11 +229,15 @@ def _contract_fixtures():
 class _StubAgent:
     """写齐契约合法产物的 agent 节点桩（test_fault_zeroing_worker_runtime 先例）。"""
 
-    def __init__(self, calls: list[str]) -> None:
+    def __init__(self, calls: list[str], *, inputs_seen: list[dict] | None = None, disclose_missing_side: bool = False) -> None:
         self.calls = calls
+        self.inputs_seen = inputs_seen
+        self.disclose_missing_side = disclose_missing_side
 
     async def run(self, context, params):
         self.calls.append(context.node_id)
+        if self.inputs_seen is not None:
+            self.inputs_seen.append(dict(context.inputs))
         if context.file_access:
             fixtures = _contract_fixtures()
             resolver = make_host_resolver(
@@ -259,7 +263,15 @@ class _StubAgent:
                         encoding="utf-8",
                     )
                 elif path.name == "zeroing_report.md":
-                    path.write_text(fixtures.valid_report(), encoding="utf-8")
+                    report = fixtures.valid_report()
+                    if self.disclose_missing_side:
+                        # 单缺侧 Run 的完成契约：覆盖矩阵与遗留风险都要披露缺侧。
+                        report = report.replace(
+                            "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |",
+                            "| 历史或复核记录 | 已覆盖 | 05_review_record.md | 无 |\n| 代码证据包未提供 | — | — | — |",
+                        )
+                        report = report.replace("暂无缺失资料风险；BE-02 仍待验证。", "代码证据包未提供；BE-02 仍待验证。")
+                    path.write_text(report, encoding="utf-8")
                 elif path.name == "fault_tree.svg":
                     path.write_text("<svg><rect/><text>fault tree</text></svg>", encoding="utf-8")
                 elif path.name == "analysis_process.svg":
@@ -437,3 +449,57 @@ async def test_chat_entry_single_missing_side_parks_the_same_kernel_pause(env) -
     }
     assert run.snapshot["entry"] == "expert"
     assert run.snapshot["contract_version"] == CONTRACT_VERSION
+
+
+# ---------------------------------------------------------------------------
+# Paused 全链路：paused → confirm → worker resume → agent 节点拿到含默认值的
+# inputs 且五件套写根可渲染（OCR 审查 F1 验收）。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_paused_then_confirmed_run_executes_with_declared_input_defaults(env, monkeypatch) -> None:
+    """单缺侧 paused Run 确认恢复后，agent 节点看到的 inputs 必须带定义默认值。
+
+    前端留空不发送、聊天工具只传证据字段：paused 落库若不填充默认值，
+    恢复后 ``output_base_dir`` 缺失 → 五件套写根渲染不出 → 契约门判 failed。
+    """
+
+    from app.agentplatform.fault_zeroing.kernel import FaultZeroingKernel
+
+    calls: list[str] = []
+    inputs_seen: list[dict] = []
+    agent = _StubAgent(calls, inputs_seen=inputs_seen, disclose_missing_side=True)
+
+    started = await _start_through_chat_entry(
+        env,
+        context_extra={"agent_name": "fault-zeroing"},
+        tool_call_id="tc-paused-chain",
+        code_package_id=None,
+    )
+    run_id = started["run_id"]
+    paused = await env.store.get_run(run_id)
+    assert paused is not None and paused.status == "paused"
+    # RED 断言 1：paused inputs 含定义声明的默认值。
+    assert paused.inputs["output_base_dir"] == "/mnt/user-data/outputs"
+    assert paused.inputs["evidence_mode"] == "hybrid"
+
+    confirmed = await FaultZeroingKernel(env.store).confirm_evidence(
+        run_id,
+        payload={"input_snapshot_hash": started["input_snapshot_hash"]},
+        confirmed_by=OWNER,
+    )
+    assert confirmed["missing_evidence_sides"] == ["code_evidence_package"]
+
+    _freeze_skill_view(env, run_id)
+    await _drive_queue_to_emptiness(env, monkeypatch, agent)
+
+    resumed = await env.store.get_run(run_id)
+    assert resumed is not None
+    # RED 断言 2：真实 worker 执行整张图，agent 节点拿到的 inputs 带默认值，
+    # 且五件套写根全部可渲染为宿主路径（桩内 assert host is not None）。
+    assert resumed.inputs["output_base_dir"] == "/mnt/user-data/outputs"
+    assert len(calls) == 9
+    assert inputs_seen and all(item.get("output_base_dir") == "/mnt/user-data/outputs" for item in inputs_seen)
+    outputs_host = _outputs_host(resumed)
+    assert {path.name for path in outputs_host.iterdir() if path.is_file()} == set(REQUIRED_OUTPUTS)

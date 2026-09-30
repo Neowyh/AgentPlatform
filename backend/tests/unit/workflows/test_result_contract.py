@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -10,10 +12,22 @@ import yaml
 from app.agentplatform.workflows.v2.file_roots import make_host_resolver
 from app.agentplatform.workflows.v2.parser import parse_workflow_v2
 from app.agentplatform.workflows.v2.result_contract import enforce_result_contract
+from tests.support import result_contract_validators as _stubs
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
-VALIDATOR = "tests.support.result_contract_validators"
+# The parser (and the runtime gate) only accept validators under the trusted
+# platform namespace, so the controllable stubs are re-exported through a
+# test-process-only module registered under ``app.agentplatform.*`` — the
+# declarations the tests publish stay within the policy they pin.  Kept short
+# enough that error summaries (60-char cap) still name the validator.
+_GATE_STUB_MODULE = "app.agentplatform.test_gate_stubs"
+_gate_stub = types.ModuleType(_GATE_STUB_MODULE)
+for _name in ("accepting_validator", "rejecting_validator", "exploding_validator", "non_list_validator", "none_validator", "recording_validator"):
+    setattr(_gate_stub, _name, getattr(_stubs, _name))
+sys.modules[_GATE_STUB_MODULE] = _gate_stub
+
+VALIDATOR = _GATE_STUB_MODULE
 
 
 def _workflow(nodes: list[dict], validator: str | None = None) -> object:
@@ -117,6 +131,64 @@ def test_malformed_validator_result_fails_closed() -> None:
 
     assert violation is not None
     assert violation.code == "result_contract_validator_error"
+
+
+def test_validator_returning_none_fails_closed() -> None:
+    """A validator returning ``None`` is a broken result, not a pass.
+
+    Only an empty list means the artifacts pass; ``None`` (or any other
+    non-list result) is a malformed verdict and must fail the run closed.
+    """
+
+    workflow = _workflow([_write_node()], validator=f"{VALIDATOR}:none_validator")
+
+    violation = enforce_result_contract(workflow, run_inputs={}, run_snapshot={}, resolver=lambda path: "/host")
+
+    assert violation is not None
+    assert violation.code == "result_contract_validator_error"
+    assert "None" in violation.summary or "none" in violation.summary.lower()
+
+
+# ---------------------------------------------------------------------------
+# Trusted namespace: a declared validator must live under the platform's own
+# package — arbitrary modules would let a published definition import (and
+# therefore execute) anything importable.
+# ---------------------------------------------------------------------------
+
+
+def _parse(validator: str):
+    definition: dict = {
+        "schema_version": 2,
+        "name": "gated",
+        "inputs": {},
+        "state": {},
+        "entrypoint": "only",
+        "nodes": [{"id": "only", "type": "action", "action": {"kind": "tool", "name": "finish"}}],
+        "edges": [],
+        "result_contract": {"validator": validator},
+    }
+    return parse_workflow_v2(yaml.safe_dump(definition))
+
+
+@pytest.mark.parametrize("validator", ["os:system", "shutil:rmtree", "json:loads", "tests.support.result_contract_validators:accepting_validator"])
+def test_parser_rejects_validators_outside_the_trusted_namespace(validator: str) -> None:
+    with pytest.raises(ValueError, match="invalid result_contract"):
+        _parse(validator)
+
+
+def test_parser_accepts_a_trusted_namespace_validator() -> None:
+    workflow = _parse("app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract")
+
+    assert workflow.result_contract is not None
+
+
+def test_runtime_loader_shares_the_trusted_namespace_rule() -> None:
+    """Runtime gate and parser share one loading rule (definition drift)."""
+
+    from app.agentplatform.workflows.v2.result_contract import load_result_contract_validator
+
+    with pytest.raises(ValueError, match="trusted platform namespace"):
+        load_result_contract_validator("shutil:rmtree")
 
 
 def test_validator_receives_common_artifact_root_and_run_snapshot(

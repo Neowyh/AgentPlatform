@@ -496,6 +496,44 @@ def test_confirm_succeeds_while_description_unchanged(kernel_env) -> None:
     assert store.commands and store.commands[0][2] == "resume"
 
 
+def test_confirmation_rejected_when_the_paused_snapshot_write_fails(kernel_env) -> None:
+    """paused 检查通过后、快照写入前 Run 状态迁移（写入返回 False）→ 确认被拒。
+
+    check-then-act 竞态必须 fail-closed：不提交 resume 命令，留下可审计的
+    拒绝事件，而不是让一个已离开 paused 的 Run 被静默恢复。
+    """
+
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs={"upload_dir": "/u"},
+            created_by="user-1",
+        )
+    )
+    interrupt = store.runs[started.run_id].snapshot["interrupt"][0]
+
+    async def _losing_race(run_id, snapshot):
+        return False
+
+    store.update_paused_run_snapshot = _losing_race
+
+    with pytest.raises(kernel_mod.ConfirmationStaleError) as excinfo:
+        asyncio.run(
+            kernel.confirm_evidence(
+                started.run_id,
+                payload={"input_snapshot_hash": interrupt["input_snapshot_hash"]},
+                confirmed_by="user-1",
+            )
+        )
+
+    assert excinfo.value.reason_code == kernel_mod.REASON_RUN_NOT_PAUSED
+    assert not store.commands
+    rejections = [payload for _, event_type, payload in store.events if event_type == kernel_mod.EVENT_CONFIRMATION_REJECTED]
+    assert rejections and rejections[-1]["code"] == kernel_mod.REASON_RUN_NOT_PAUSED
+
+
 # ---------------------------------------------------------------------------
 # Ticket 03: contract-gated completion.
 # ---------------------------------------------------------------------------

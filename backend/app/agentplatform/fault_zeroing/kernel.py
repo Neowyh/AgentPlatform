@@ -314,6 +314,8 @@ class FaultZeroingKernel:
                     actor,
                     intake_snapshot={**pinned_snapshot, "interrupt": [payload]},
                     model_name=model_name,
+                    user_concurrency=user_concurrency,
+                    department_concurrency=department_concurrency,
                 )
             else:
                 await self._store.create_paused_run(
@@ -450,7 +452,20 @@ class FaultZeroingKernel:
         snapshot = {**dict(run.snapshot or {}), SNAPSHOT_INTAKE_KEY: confirmed_record}
         # No worker lease exists while the run is parked, so the confirmed
         # intake record persists through the paused-status-guarded write.
-        await self._store.update_paused_run_snapshot(run_id, snapshot)
+        # A False write means the run left ``paused`` between the check above
+        # and this write (check-then-act): fail closed instead of silently
+        # resuming something that is no longer parked for evidence.
+        confirmed = await self._store.update_paused_run_snapshot(run_id, snapshot)
+        if not confirmed:
+            await self._store.append_event(
+                run_id,
+                EVENT_CONFIRMATION_REJECTED,
+                {"code": REASON_RUN_NOT_PAUSED, "stage": "paused_snapshot_write"},
+            )
+            raise ConfirmationStaleError(
+                REASON_RUN_NOT_PAUSED,
+                "run is no longer paused for evidence confirmation",
+            )
         command = await self._store.submit_command(
             command_id or str(self._id_factory()),
             run_id,

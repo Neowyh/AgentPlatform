@@ -628,26 +628,40 @@ edges: []
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("validator", "expected_error_code"),
+    ("expect_validator_error", "expected_error_code"),
     [
-        ("tests.support.result_contract_validators:rejecting_validator", "result_contract_failed"),
-        ("tests.support.result_contract_validators:exploding_validator", "result_contract_validator_error"),
+        # Violation path: the bundled gate finds no artifacts on disk.
+        (False, "result_contract_failed"),
+        # Broken-validator path (fail-closed): the trusted gate raises on a
+        # malformed pinned intake record.
+        (True, "result_contract_validator_error"),
     ],
 )
 async def test_declared_result_contract_gate_fails_the_run_before_completion(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
     monkeypatch,
-    validator: str,
+    *,
+    expect_validator_error: bool,
     expected_error_code: str,
 ) -> None:
     """A declared contract gate runs after graph success and before the
     terminal state: violations (or a broken validator, fail-closed) must end
-    the run as ``failed`` with the violation summary on the run record and a
-    structured ``run_failed`` event — never silently complete."""
+    the run as ``failed`` with the summary on the run record and a structured
+    ``run_failed`` event — never silently complete."""
     monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    validator = "app.agentplatform.fault_zeroing.entries:evaluate_workflow_contract"
     definition = yaml.safe_load(CONTRACT_WORKFLOW_TEMPLATE.format(validator=validator))
-    await _make_canonical_run(durable_store, f"run-gate-{expected_error_code}", definition, {}, name="contract-gated")
+    run_id = "run-gate-contract-gate"
+    await _make_canonical_run(durable_store, run_id, definition, {}, name="contract-gated")
+    if expect_validator_error:
+        from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
+
+        async with durable_store.session_factory() as session:
+            run = await session.get(WorkflowV2RunRow, run_id)
+            assert run is not None
+            run.snapshot = {**run.snapshot, "evidence_intake": {"bogus": True}}
+            await session.commit()
     registry = ActionAdapterRegistry({("tool", "finish"): FinishAgent()})
     config = _make_config(tmp_path)
     monkeypatch.setattr("app.workflow_worker.build_canonical_registry", AsyncMock(return_value=registry))
@@ -661,14 +675,14 @@ async def test_declared_result_contract_gate_fails_the_run_before_completion(
 
     assert await WorkflowWorker(durable_store, execute, worker_id="worker-integration").run_once() is True
 
-    run = await durable_store.get_run(f"run-gate-{expected_error_code}")
+    run = await durable_store.get_run(run_id)
     assert run is not None and run.status == "failed"
     assert "Result Contract" in (run.error or "")
     events = await durable_store.list_events(run.run_id)
     assert events[-1].event_type == "run_failed"
     assert events[-1].payload["code"] == expected_error_code
-    if expected_error_code == "result_contract_failed":
-        assert events[-1].payload["violations"] == [{"message": "报告缺少章节 X"}, {"message": "证据引用悬空"}]
+    if not expect_validator_error:
+        assert events[-1].payload["violations"]
 
 
 @pytest.mark.asyncio

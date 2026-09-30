@@ -6,7 +6,8 @@ runner loads and calls the validator with the run's artifact root directory
 and the persisted run snapshot; a non-empty violation list turns the run
 into a ``failed`` terminal state before it is written.  The engine knows
 nothing about what the artifacts mean — the validator carries the semantics
-(fail-closed: a validator that cannot be loaded or that raises fails the run).
+(fail-closed: a validator that cannot be loaded, that raises, or that
+returns a malformed result fails the run).
 """
 
 from __future__ import annotations
@@ -29,18 +30,25 @@ from .schema import WorkflowV2
 
 # ``<module>:<function>`` with dotted Python identifiers on both sides.
 _VALIDATOR_PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$")
+# Only the platform's own package may be declared as a validator module: a
+# published definition naming any other importable module would let the
+# import (and therefore arbitrary module-level code) run inside the engine.
+TRUSTED_VALIDATOR_NAMESPACE = "app.agentplatform"
 
 
 def load_result_contract_validator(validator: str) -> Callable[..., Any]:
     """Import and return a declared ``<module>:<function>`` validator.
 
-    Raises ``ValueError`` for a malformed path or a non-callable target and
-    ``ModuleNotFoundError``/``ImportError`` for an unimportable module, so
-    static parsing and the runtime gate share one loading rule.
+    Raises ``ValueError`` for a malformed path, a module outside the trusted
+    platform namespace (``app.agentplatform.*``), or a non-callable target,
+    and ``ModuleNotFoundError``/``ImportError`` for an unimportable module,
+    so static parsing and the runtime gate share one loading rule.
     """
     if not _VALIDATOR_PATH.fullmatch(validator):
         raise ValueError(f"result_contract.validator must be '<module>:<function>': '{validator}'")
     module_name, function_name = validator.rsplit(":", 1)
+    if module_name != TRUSTED_VALIDATOR_NAMESPACE and not module_name.startswith(f"{TRUSTED_VALIDATOR_NAMESPACE}."):
+        raise ValueError(f"result_contract.validator must live in the trusted platform namespace '{TRUSTED_VALIDATOR_NAMESPACE}.*': '{validator}'")
     module = importlib.import_module(module_name)
     attribute = getattr(module, function_name, None)
     if not callable(attribute):
@@ -143,10 +151,11 @@ def enforce_result_contract(
     """Evaluate a declared result contract after graph success.
 
     Returns ``None`` when the workflow declares no contract or the validator
-    passes.  Otherwise returns the structured run error the caller must emit
-    and raise, so the run ends ``failed`` with the violation summary on the
-    run record.  A validator that cannot be loaded, that raises, or that
-    returns a malformed result fails the run closed.
+    passes (an empty violation list).  Otherwise returns the structured run
+    error the caller must emit and raise, so the run ends ``failed`` with the
+    violation summary on the run record.  A validator that cannot be loaded,
+    that raises, or that returns a malformed result (``None``, a non-list, or
+    a list with non-string items) fails the run closed.
     """
     spec = workflow.result_contract
     if spec is None:
@@ -157,11 +166,14 @@ def enforce_result_contract(
         violations = _invoke_validator(validator, outputs_dir, run_snapshot, emit_event)
     except Exception as exc:
         return WorkflowResultContractValidatorError(spec.validator, str(exc))
-    if violations is None or violations == []:
-        return None
-    if not isinstance(violations, list) or not all(isinstance(item, str) for item in violations):
-        return WorkflowResultContractValidatorError(
-            spec.validator,
-            f"validator returned a non-list result: {type(violations).__name__}",
-        )
-    return WorkflowResultContractViolation(violations)
+    # Only an empty list passes. ``None`` — and any other non-list result — is
+    # a malformed verdict and fails the run closed, exactly like a validator
+    # that could not be loaded or that raised.
+    if isinstance(violations, list):
+        if all(isinstance(item, str) for item in violations):
+            return None if not violations else WorkflowResultContractViolation(violations)
+        return WorkflowResultContractValidatorError(spec.validator, "validator returned non-string violations")
+    return WorkflowResultContractValidatorError(
+        spec.validator,
+        f"validator returned a non-list result: {type(violations).__name__}",
+    )

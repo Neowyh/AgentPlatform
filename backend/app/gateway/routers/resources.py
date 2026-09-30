@@ -59,6 +59,7 @@ from app.agentplatform.resource_service import (
 from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 from app.agentplatform.resources.skill_validation import _validate_skill_frontmatter
 from app.agentplatform.workflow_runtime import (
+    WorkflowConcurrencyExceeded,
     WorkflowRunError,
     WorkflowV2Store,
     collect_artifacts,
@@ -2175,10 +2176,8 @@ async def create_workflow_run(
             )
         except EvidenceIntakeRejected as exc:
             raise _intake_rejection(exc) from exc
-        except RuntimeError as exc:
-            if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
-                raise HTTPException(429, str(exc)) from exc
-            raise
+        except WorkflowConcurrencyExceeded as exc:
+            raise HTTPException(429, str(exc)) from exc
         return _kernel_launch_response(resource_id, result, body.model_name)
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
@@ -2190,10 +2189,8 @@ async def create_workflow_run(
             user_concurrency=runtime.user_concurrency,
             department_concurrency=runtime.department_concurrency,
         )
-    except RuntimeError as exc:
-        if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
-            raise HTTPException(429, str(exc)) from exc
-        raise
+    except WorkflowConcurrencyExceeded as exc:
+        raise HTTPException(429, str(exc)) from exc
     return {
         "run_id": run.run_id,
         "status": run.status,
@@ -2274,9 +2271,12 @@ async def create_workflow_run_with_files(
         except EvidenceIntakeRejected as exc:
             _cleanup_run_user_data(run_id, user_id)
             raise _intake_rejection(exc) from exc
-        except RuntimeError as exc:
+        except Exception as exc:
+            # Any failure after materialization leaves the pre-created upload
+            # workspace behind: clean it first, then keep the established
+            # error mapping (429 only for the concurrency limits).
             _cleanup_run_user_data(run_id, user_id)
-            if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
+            if isinstance(exc, WorkflowConcurrencyExceeded):
                 raise HTTPException(429, str(exc)) from exc
             raise
         # Same response shape as the plain with-files path: the stored code

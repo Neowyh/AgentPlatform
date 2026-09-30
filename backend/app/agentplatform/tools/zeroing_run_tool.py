@@ -28,6 +28,7 @@ chain (visible + use-authorized workflow resource) — no bypass.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
@@ -55,7 +56,7 @@ from app.agentplatform.resources.service import (
     ResourcePermissionDenied,
     ResourceService,
 )
-from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.store import WorkflowConcurrencyExceeded, WorkflowV2Store
 from deerflow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 from deerflow.runtime.user_context import resolve_runtime_user_id
 from deerflow.tools.types import Runtime
@@ -257,7 +258,14 @@ def _materialize_code_package(thread_id: str, user_id: str, code_package_id: str
 
 
 def _discard_run_user_data(run_id: str, user_id: str) -> None:
-    shutil.rmtree(get_paths().thread_dir(run_id, user_id=user_id) / "user-data", ignore_errors=True)
+    """Best-effort removal of data materialized under a run id that never
+    became a Run.  A leftover directory must never mask the original failure,
+    but it is logged for observability instead of failing silently."""
+
+    user_data = get_paths().thread_dir(run_id, user_id=user_id) / "user-data"
+    shutil.rmtree(user_data, ignore_errors=True)
+    if user_data.exists():
+        logger.warning("failed to discard user data for uncreated run %s (user %s)", run_id, user_id)
 
 
 @tool("start_zeroing_run", parse_docstring=True)
@@ -335,13 +343,16 @@ async def _start_zeroing_run(
                 f"工作流 {ZEROING_WORKFLOW_SLUG} 未声明 Result Contract，拒绝经聊天入口发起",
             )
 
+        # Evidence materialization is blocking filesystem I/O: offload it so
+        # the event loop stays responsive (repo convention, setup_agent_tool).
         upload_dir = ""
         if upload_paths:
-            _materialize_uploads(thread_id, user_id, upload_paths, run_id)
+            await asyncio.to_thread(_materialize_uploads, thread_id, user_id, upload_paths, run_id)
             upload_dir = f"{VIRTUAL_PATH_PREFIX}/uploads"
         code_package_source = ""
         if code_package_id:
-            code_package_source = _materialize_code_package(thread_id, user_id, code_package_id, run_id).source_virtual_path
+            manifest = await asyncio.to_thread(_materialize_code_package, thread_id, user_id, code_package_id, run_id)
+            code_package_source = manifest.source_virtual_path
 
         limits = _workflow_runtime()
         result = await FaultZeroingKernel(WorkflowV2Store(_session_factory())).start_run(
@@ -370,8 +381,12 @@ async def _start_zeroing_run(
             next_action=_GUIDANCE_NEXT_ACTION,
         )
     except (ResourceNotFound, ResourcePermissionDenied) as exc:
+        # Raised by the RBAC lookup before materialization (cleanup is then an
+        # idempotent no-op) or by the canonical freeze afterwards.
+        _discard_run_user_data(run_id, user_id)
         return _tool_error(tool_call_id, "workflow_not_usable", f"归零工作流不可用或无使用权限：{exc}")
     except ResourceError as exc:
+        _discard_run_user_data(run_id, user_id)
         return _tool_error(tool_call_id, "workflow_not_usable", f"归零工作流不可用：{exc}")
     except _MaterializationError as exc:
         _discard_run_user_data(run_id, user_id)
@@ -380,9 +395,12 @@ async def _start_zeroing_run(
     except (ValueError, OSError) as exc:
         _discard_run_user_data(run_id, user_id)
         return _tool_error(tool_call_id, "evidence_materialization_failed", f"证据物化失败：{exc}", next_action=_GUIDANCE_NEXT_ACTION)
-    except RuntimeError as exc:
-        if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
-            return _tool_error(tool_call_id, str(exc), "并发运行的归零工作流数量已达上限，请稍后再试")
+    except WorkflowConcurrencyExceeded as exc:
+        # The run was not created: the materialized evidence must not stay
+        # behind in the unclaimed run workspace.
+        _discard_run_user_data(run_id, user_id)
+        return _tool_error(tool_call_id, str(exc), "并发运行的归零工作流数量已达上限，请稍后再试")
+    except RuntimeError:
         _discard_run_user_data(run_id, user_id)
         raise
 
@@ -530,16 +548,22 @@ async def check_zeroing_run_tool(
         return _tool_error(tool_call_id, "run_not_bridgable", f"归零 Run 状态当前不可回桥: {run.status}")
 
     # Terminal: bridge the artifacts into the chat thread (契约违规同样可取).
+    # Blocking copy I/O runs off the event loop (repo convention).
     paths = get_paths()
     run_outputs_dir = paths.sandbox_outputs_dir(run_id, user_id=str(run.created_by))
     thread_outputs_dir = paths.sandbox_outputs_dir(thread_id, user_id=user_id)
-    thread_outputs_dir.mkdir(parents=True, exist_ok=True)
-    presented: list[str] = []
-    for name in REQUIRED_OUTPUTS:
-        source = run_outputs_dir / name
-        if source.is_file():
-            shutil.copyfile(source, thread_outputs_dir / name)
-            presented.append(f"{VIRTUAL_PATH_PREFIX}/outputs/{name}")
+
+    def _copy_presentable_outputs() -> list[str]:
+        thread_outputs_dir.mkdir(parents=True, exist_ok=True)
+        presented: list[str] = []
+        for name in REQUIRED_OUTPUTS:
+            source = run_outputs_dir / name
+            if source.is_file():
+                shutil.copyfile(source, thread_outputs_dir / name)
+                presented.append(f"{VIRTUAL_PATH_PREFIX}/outputs/{name}")
+        return presented
+
+    presented = await asyncio.to_thread(_copy_presentable_outputs)
 
     payload: dict[str, Any] = {
         "run_id": run_id,

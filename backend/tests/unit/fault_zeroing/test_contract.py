@@ -268,6 +268,19 @@ def test_missing_output_reason_code(tmp_path: Path) -> None:
     assert "output_missing" in codes_of(verdict)
 
 
+def test_non_utf8_fault_tree_yields_a_structured_finding(tmp_path: Path) -> None:
+    """非法 UTF-8 的 fault_tree.json → 结构化 verdict（artifact_not_utf8），不崩溃。"""
+
+    contract = load_contract()
+    output_dir = write_outputs(tmp_path)
+    (output_dir / "fault_tree.json").write_bytes(b"\xff\xfe{\x00not utf-8")
+
+    verdict = contract.evaluate_result_contract(output_dir)
+
+    assert not verdict.ok
+    assert "artifact_not_utf8" in codes_of(verdict)
+
+
 def test_unsupported_contract_version_is_explicit(tmp_path: Path) -> None:
     contract = load_contract()
     verdict = contract.evaluate_result_contract(write_outputs(tmp_path), contract_version="0.9.0")

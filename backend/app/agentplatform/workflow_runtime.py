@@ -25,13 +25,14 @@ from app.agentplatform.workflows.v2.file_roots import (
 from app.agentplatform.workflows.v2.parser import parse_workflow_v2
 from app.agentplatform.workflows.v2.result_contract import enforce_result_contract
 from app.agentplatform.workflows.v2.run_record import RunRecordWriter
-from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.store import WorkflowConcurrencyExceeded, WorkflowV2Store
 from app.agentplatform.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
 __all__ = [
     "ActionAdapterRegistry",
     "RunRecordWriter",
     "WorkflowCancelled",
+    "WorkflowConcurrencyExceeded",
     "WorkflowGraphCompiler",
     "WorkflowInvalidRootsError",
     "WorkflowMissingInputRootsError",

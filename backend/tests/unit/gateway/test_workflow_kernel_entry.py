@@ -44,7 +44,10 @@ def _definition(*, with_contract: bool) -> dict:
     definition = {
         "schema_version": 2,
         "name": "fault-zeroing",
-        "inputs": {},
+        "inputs": {
+            "evidence_mode": {"type": "string", "default": "hybrid"},
+            "output_base_dir": {"type": "string", "default": "/mnt/user-data/outputs"},
+        },
         "state": {},
         "entrypoint": "only",
         "nodes": [{"id": "only", "type": "action", "action": {"kind": "tool", "name": "finish"}}],
@@ -163,6 +166,60 @@ async def test_single_missing_side_parks_a_paused_run_with_missing_side_info(env
     store = resources.WorkflowV2Store(env.factory)
     events = await store.list_events(runs[0].run_id)
     assert any(event.event_type == "interrupted" and event.payload["code"] == "intake_confirmation_required" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_paused_run_inputs_carry_the_declared_defaults(env) -> None:
+    """单缺侧暂停的 Run 也要应用定义声明的输入默认值。
+
+    前端留空不发送、聊天工具只传证据字段：paused 创建路径若原样落库
+    inputs，确认恢复后 ``output_base_dir`` 等默认值缺失，五件套写根全部
+    无法渲染，契约门必然判 failed。
+    """
+
+    response = await resources.create_workflow_run(
+        "wf-contract",
+        body=WorkflowRunRequest(inputs=dict(DOCUMENT_ONLY_INPUTS)),
+        current_user=_user(UserRole.USER, "owner-1"),
+    )
+
+    assert response["status"] == "paused"
+    runs = await _run_rows(env.factory)
+    assert runs[0].inputs["output_base_dir"] == "/mnt/user-data/outputs"
+    assert runs[0].inputs["evidence_mode"] == "hybrid"
+    assert runs[0].inputs["problem_description"] == DOCUMENT_ONLY_INPUTS["problem_description"]
+
+
+@pytest.mark.asyncio
+async def test_paused_launch_enforces_concurrency_limits(env, monkeypatch) -> None:
+    """达到并发上限时发起单缺侧：按既有并发语义 4xx，且不创建 paused Run。"""
+
+    monkeypatch.setattr(
+        resources,
+        "get_app_config",
+        lambda: SimpleNamespace(
+            workflow_runtime=SimpleNamespace(user_concurrency=1, department_concurrency=None),
+            get_model_config=lambda name: None,
+        ),
+    )
+
+    started = await resources.create_workflow_run(
+        "wf-contract",
+        body=WorkflowRunRequest(inputs=dict(FULL_EVIDENCE_INPUTS)),
+        current_user=_user(UserRole.USER, "owner-1"),
+    )
+    assert started["status"] == "queued"
+
+    with pytest.raises(HTTPException) as excinfo:
+        await resources.create_workflow_run(
+            "wf-contract",
+            body=WorkflowRunRequest(inputs=dict(DOCUMENT_ONLY_INPUTS)),
+            current_user=_user(UserRole.USER, "owner-1"),
+        )
+
+    assert excinfo.value.status_code == 429
+    runs = await _run_rows(env.factory)
+    assert len(runs) == 1 and runs[0].status == "queued"
 
 
 @pytest.mark.asyncio
@@ -318,6 +375,52 @@ async def test_with_files_kernel_launch_binds_materialized_files_to_the_created_
     # the point is that the parked Run owns the pre-materialized workspace.
     assert response["status"] == "paused"
     assert response["run_id"] == stored_under["run_id"]
+
+
+@pytest.mark.asyncio
+async def test_with_files_kernel_launch_cleans_uploads_on_unexpected_error(env, tmp_path, monkeypatch) -> None:
+    """内核分支抛出非 Runtime 异常（如存储层错误）时，上传目录必须被清理。"""
+
+    import io
+
+    from sqlalchemy.exc import SQLAlchemyError
+    from starlette.datastructures import UploadFile
+
+    from deerflow.config.paths import Paths
+
+    base = tmp_path / "base"
+    monkeypatch.setattr(resources, "get_paths", lambda: Paths(base))
+
+    class _ExplodingKernel:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def start_run(self, **kwargs):
+            raise SQLAlchemyError("store exploded")
+
+    monkeypatch.setattr(resources, "FaultZeroingKernel", _ExplodingKernel)
+
+    real_store_files = resources._store_workflow_run_files
+    recorded: dict[str, str] = {}
+
+    async def _recording_store_files(*, run_id, user_id, files):
+        result = await real_store_files(run_id=run_id, user_id=user_id, files=files)
+        recorded["run_id"] = run_id
+        return result
+
+    monkeypatch.setattr(resources, "_store_workflow_run_files", _recording_store_files)
+
+    with pytest.raises(SQLAlchemyError):
+        await resources.create_workflow_run_with_files(
+            "wf-contract",
+            inputs='{"problem_description": "主轴电机过热报警"}',
+            model_name=None,
+            files=[UploadFile(file=io.BytesIO(b"evidence"), filename="log.txt")],
+            current_user=_user(UserRole.USER, "owner-1"),
+        )
+
+    uploads_dir = Paths(base).sandbox_uploads_dir(recorded["run_id"], user_id="owner-1")
+    assert not uploads_dir.exists() or list(uploads_dir.iterdir()) == []
 
 
 @pytest.mark.asyncio

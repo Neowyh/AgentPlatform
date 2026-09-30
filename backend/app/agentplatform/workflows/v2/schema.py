@@ -154,8 +154,9 @@ class ResultContractSpec(BaseModel):
     the graph succeeds, the runner calls it with the run's artifact root
     directory and the persisted run snapshot; it must return a list of
     violation messages (empty list = the artifacts pass).  A non-empty list
-    fails the run; a validator that cannot be loaded or that raises fails the
-    run too (fail-closed).  Workflows without this declaration are unaffected.
+    fails the run; a validator that cannot be loaded, that raises, or that
+    returns a malformed result (``None`` or a non-list) fails the run too
+    (fail-closed).  Workflows without this declaration are unaffected.
     """
 
     validator: str = Field(min_length=1)

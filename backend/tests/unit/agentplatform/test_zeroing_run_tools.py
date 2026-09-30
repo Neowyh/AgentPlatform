@@ -517,6 +517,75 @@ async def test_upload_path_outside_the_thread_uploads_is_rejected(env) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 创建失败分支的物化清理：Run 未落地（或未创建）时，已物化的证据不得残留。
+# ---------------------------------------------------------------------------
+
+
+def _pin_run_id(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Pin the tool's generated run id so the workspace can be asserted."""
+
+    import uuid as uuid_mod
+
+    fixed = uuid_mod.UUID("00000000-0000-0000-0000-000000000abc")
+    monkeypatch.setattr(zeroing_run_tool.uuid, "uuid4", lambda: fixed)
+    return str(fixed)
+
+
+@pytest.mark.asyncio
+async def test_concurrency_limit_discards_materialized_run_data(env, monkeypatch) -> None:
+    from app.agentplatform.workflows.v2.store import WorkflowConcurrencyExceeded
+
+    upload = _seed_upload(env, "log.txt")
+    run_id = _pin_run_id(monkeypatch)
+
+    async def _at_limit(self, **kwargs):
+        raise WorkflowConcurrencyExceeded("workflow_user_concurrency_exceeded")
+
+    monkeypatch.setattr(zeroing_run_tool.FaultZeroingKernel, "start_run", _at_limit)
+
+    result = await zeroing_run_tool.start_zeroing_run_tool.coroutine(
+        runtime=_runtime(),
+        problem_description=PROBLEM,
+        upload_paths=[upload],
+        tool_call_id="tc-conc",
+    )
+
+    payload = _payload(result)
+    assert payload["created"] is False
+    assert payload["reason_code"] == "workflow_user_concurrency_exceeded"
+    # 并发超限 = Run 未创建：上传已物化进该 run id 的工作区，必须清掉。
+    assert (env.paths.sandbox_uploads_dir(run_id, user_id="owner-1") / "log.txt").exists() is False
+    assert (env.paths.thread_dir(run_id, user_id="owner-1") / "user-data").exists() is False
+
+
+@pytest.mark.asyncio
+async def test_resource_error_after_materialization_discards_run_data(env, monkeypatch) -> None:
+    """ResourceError 在物化之后触发（canonical 快照冲突）也要清理物化数据。"""
+
+    from app.agentplatform.resources.service import ResourceConflict
+
+    upload = _seed_upload(env, "log.txt")
+    run_id = _pin_run_id(monkeypatch)
+
+    async def _snapshot_conflict(self, **kwargs):
+        raise ResourceConflict("Run already has a resource snapshot")
+
+    monkeypatch.setattr(zeroing_run_tool.FaultZeroingKernel, "start_run", _snapshot_conflict)
+
+    result = await zeroing_run_tool.start_zeroing_run_tool.coroutine(
+        runtime=_runtime(),
+        problem_description=PROBLEM,
+        upload_paths=[upload],
+        tool_call_id="tc-reserr",
+    )
+
+    payload = _payload(result)
+    assert payload["created"] is False
+    assert payload["reason_code"] == "workflow_not_usable"
+    assert (env.paths.thread_dir(run_id, user_id="owner-1") / "user-data").exists() is False
+
+
+# ---------------------------------------------------------------------------
 # 线程级集成：发起 → 暂停 → 确认 → 完成 → 产物回桥全链路。
 # ---------------------------------------------------------------------------
 

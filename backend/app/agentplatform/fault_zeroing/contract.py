@@ -238,6 +238,9 @@ def _read_text(path: Path, sink: _Sink) -> str:
 def _load_json(path: Path, sink: _Sink) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        sink.add("artifact_not_utf8", f"{path.name} is not valid UTF-8", artifact=path.name)
+        return None
     except json.JSONDecodeError as exc:
         sink.add("json_invalid", f"{path.name} is invalid JSON: {exc}", artifact=path.name)
         return None

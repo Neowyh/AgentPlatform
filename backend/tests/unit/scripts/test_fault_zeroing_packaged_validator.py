@@ -86,6 +86,23 @@ def test_packaged_cli_reports_violations_with_nonzero_exit(tmp_path: Path) -> No
     assert "fault_tree.svg" in completed.stderr
 
 
+def test_packaged_cli_reports_non_utf8_artifact_as_a_structured_finding(tmp_path: Path) -> None:
+    """非法 UTF-8 的 fault_tree.json → 结构化 verdict（artifact_not_utf8），不崩溃。"""
+
+    fixtures = _contract_fixtures()
+    outputs = fixtures.write_outputs(tmp_path, fault_tree=fixtures.valid_fault_tree(), report=fixtures.valid_report())
+    (outputs / "fault_tree.json").write_bytes(b"\xff\xfe{\x00not utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, str(PACKAGED), "--outputs-dir", str(outputs), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode == 1
+    assert "artifact_not_utf8" in completed.stdout
+
+
 def test_skill_text_points_at_the_mounted_validator_path() -> None:
     skill = (REPO_ROOT / "resources" / "skills" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
     soul = (REPO_ROOT / "resources" / "agents" / "fault-zeroing" / "SOUL.md").read_text(encoding="utf-8")

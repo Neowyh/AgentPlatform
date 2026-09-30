@@ -28,6 +28,10 @@ def non_list_validator(outputs_dir: str, run_snapshot: dict) -> Any:
     return "ok"
 
 
+def none_validator(outputs_dir: str, run_snapshot: dict) -> Any:
+    return None
+
+
 def recording_validator(outputs_dir: str, run_snapshot: dict) -> list[str]:
     RECORDED_OUTPUTS_DIR.append(str(outputs_dir))
     RECORDED_SNAPSHOTS.append(run_snapshot)
