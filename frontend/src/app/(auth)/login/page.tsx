@@ -13,6 +13,11 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
+interface AuthProvider {
+  id: string;
+  display_name: string;
+}
+
 /**
  * Validate next parameter
  * Prevent open redirect attacks
@@ -58,10 +63,21 @@ export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<AuthProvider[]>([]);
 
   // Get next parameter for validated redirect
   const nextParam = searchParams.get("next");
   const redirectPath = validateNextParam(nextParam) ?? "/workspace";
+  const ssoError = searchParams.get("error");
+
+  useEffect(() => {
+    if (!ssoError) return;
+
+    const errorMessage =
+      t.auth.errors[ssoError as keyof typeof t.auth.errors] ??
+      t.auth.authFailed;
+    toast.error(errorMessage);
+  }, [ssoError, t]);
 
   // Redirect if already authenticated (client-side, post-login)
   useEffect(() => {
@@ -91,6 +107,40 @@ export default function LoginPage() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+
+    void fetch("/api/v1/auth/providers", { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { providers?: unknown } | null) => {
+        if (!Array.isArray(data?.providers)) return;
+
+        setSsoProviders(
+          data.providers.filter(
+            (provider): provider is AuthProvider =>
+              typeof provider === "object" &&
+              provider !== null &&
+              "id" in provider &&
+              "display_name" in provider &&
+              typeof provider.id === "string" &&
+              provider.id.length > 0 &&
+              typeof provider.display_name === "string" &&
+              provider.display_name.length > 0,
+          ),
+        );
+      })
+      .catch(() => {
+        // An unavailable SSO provider must not prevent email login.
+      })
+      .finally(() => clearTimeout(timeout));
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +257,30 @@ export default function LoginPage() {
                 : t.auth.createAccount}
           </Button>
         </form>
+
+        {isLogin && ssoProviders.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-muted-foreground type-body text-center">
+              {t.auth.orContinueWith}
+            </p>
+            {ssoProviders.map((provider) => {
+              const params = new URLSearchParams({
+                next: redirectPath,
+                remember_me: String(rememberMe),
+              });
+
+              return (
+                <a
+                  key={provider.id}
+                  href={`/api/v1/auth/oauth/${encodeURIComponent(provider.id)}?${params.toString()}`}
+                  className="border-input bg-background hover:bg-accent hover:text-accent-foreground type-body flex h-10 w-full items-center justify-center rounded-md border px-4 py-2 font-medium transition-colors"
+                >
+                  {t.auth.continueWith(provider.display_name)}
+                </a>
+              );
+            })}
+          </div>
+        )}
 
         <div className="type-body text-center">
           <button

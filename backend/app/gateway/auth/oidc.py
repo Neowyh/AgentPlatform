@@ -93,7 +93,13 @@ class OIDCService:
 
     # ── Discovery ──────────────────────────────────────────────────────────
 
-    async def discover(self, issuer: str, overrides: dict[str, str | None] | None = None) -> OIDCMetadata:
+    async def discover(
+        self,
+        issuer: str,
+        overrides: dict[str, str | None] | None = None,
+        *,
+        force_refresh: bool = False,
+    ) -> OIDCMetadata:
         """Fetch and cache OIDC discovery metadata from the issuer.
 
         ``overrides`` may contain endpoint URIs to override discovery values
@@ -101,7 +107,7 @@ class OIDCService:
         """
         now = time.time()
         cached = self._metadata_cache.get(issuer)
-        if cached and now - cached[0] < self._metadata_ttl:
+        if cached and now - cached[0] < self._metadata_ttl and not force_refresh:
             return self._metadata_from_dict(cached[1], overrides)
 
         discovery_url = issuer.rstrip("/") + OIDC_DISCOVERY_PATH

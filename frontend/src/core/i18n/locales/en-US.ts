@@ -1584,6 +1584,17 @@ export const enUS: Translations = {
     errorTooManyAttempts: "Too many login attempts. Please try again later.",
     errorInvalidCredentials: "Invalid email or password",
     errorNetwork: "Network error. Please try again.",
+    orContinueWith: "Or continue with",
+    continueWith: (provider: string) => `Continue with ${provider}`,
+    authFailed: "Authentication failed.",
+    errors: {
+      sso_failed: "SSO login failed. Please try again or use email login.",
+      sso_cancelled: "SSO login was cancelled.",
+      sso_account_exists:
+        "An account with this email already exists. Please sign in with your password or contact your administrator.",
+      sso_not_allowed:
+        "SSO login is not allowed for your account. Contact your administrator.",
+    },
   },
   workflows: {
     knowledgeSnapshot: {

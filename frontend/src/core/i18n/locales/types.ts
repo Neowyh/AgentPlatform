@@ -1232,6 +1232,15 @@ export interface Translations {
     errorTooManyAttempts: string;
     errorInvalidCredentials: string;
     errorNetwork: string;
+    orContinueWith: string;
+    continueWith: (provider: string) => string;
+    authFailed: string;
+    errors: {
+      sso_failed: string;
+      sso_cancelled: string;
+      sso_account_exists: string;
+      sso_not_allowed: string;
+    };
   };
 
   // Workflows

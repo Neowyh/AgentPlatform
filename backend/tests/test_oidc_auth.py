@@ -1,3 +1,5 @@
+import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -48,9 +50,157 @@ async def test_oidc_existing_local_account_blocks_sso_login_even_when_unverified
             identity=_identity(email_verified=False),
             local_provider=local_provider,
         )
-
     assert exc_info.value.status_code == 409
     local_provider.update_user.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auth_provider_list_only_includes_reachable_oidc_providers(monkeypatch):
+    from app.gateway.routers.auth import list_auth_providers
+
+    providers = {
+        "available": OIDCProviderConfig(display_name="Company Login", issuer="http://idp.intranet/realm", client_id="deer-flow"),
+        "offline": OIDCProviderConfig(display_name="Offline Login", issuer="https://offline.example.com", client_id="deer-flow"),
+    }
+    monkeypatch.setattr(
+        "deerflow.config.app_config.get_app_config",
+        lambda: SimpleNamespace(auth=SimpleNamespace(oidc=SimpleNamespace(enabled=True, providers=providers))),
+    )
+    oidc_service = AsyncMock()
+    oidc_service.discover.side_effect = [object(), OIDCError("issuer unavailable")]
+    monkeypatch.setattr("app.gateway.routers.auth._get_oidc_service", lambda: oidc_service)
+
+    result = await list_auth_providers()
+
+    assert result == {"providers": [{"id": "available", "display_name": "Company Login", "type": "oidc"}]}
+    assert oidc_service.discover.await_count == 2
+    assert oidc_service.discover.await_args_list[0].args[0] == "http://idp.intranet/realm"
+    assert all(call.kwargs.get("force_refresh") is True for call in oidc_service.discover.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_oidc_login_discovery_failure_returns_user_to_login(monkeypatch):
+    from starlette.requests import Request
+
+    from app.gateway.routers.auth import oauth_login
+
+    provider = OIDCProviderConfig(display_name="Company Login", issuer="http://idp.intranet/realm", client_id="deer-flow")
+    monkeypatch.setattr(
+        "deerflow.config.app_config.get_app_config",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(
+                oidc=SimpleNamespace(
+                    enabled=True,
+                    frontend_base_url="http://frontend.internal",
+                    providers={"company": provider},
+                )
+            )
+        ),
+    )
+    oidc_service = AsyncMock()
+    oidc_service.discover.side_effect = OIDCError("issuer unavailable")
+    monkeypatch.setattr("app.gateway.routers.auth._get_oidc_service", lambda: oidc_service)
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/v1/auth/oauth/company",
+            "raw_path": b"/api/v1/auth/oauth/company",
+            "query_string": b"",
+            "headers": [],
+            "server": ("gateway", 8001),
+            "client": ("127.0.0.1", 12345),
+        }
+    )
+
+    response = await oauth_login(request, "company", next="/workspace", remember_me=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://frontend.internal/login?error=sso_failed"
+
+
+@pytest.mark.asyncio
+async def test_oidc_user_cancellation_returns_to_login_with_cancellation_message(monkeypatch):
+    from starlette.requests import Request
+
+    from app.gateway.routers.auth import oauth_callback
+
+    monkeypatch.setattr(
+        "deerflow.config.app_config.get_app_config",
+        lambda: SimpleNamespace(auth=SimpleNamespace(oidc=SimpleNamespace(enabled=False, frontend_base_url="http://frontend.internal"))),
+    )
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/v1/auth/callback/company",
+            "raw_path": b"/api/v1/auth/callback/company",
+            "query_string": b"",
+            "headers": [],
+            "server": ("gateway", 8001),
+            "client": ("127.0.0.1", 12345),
+        }
+    )
+
+    response = await oauth_callback(request, "company", error="access_denied")
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://frontend.internal/login?error=sso_cancelled"
+
+
+@pytest.mark.asyncio
+async def test_oidc_callback_discovery_failure_returns_user_to_login(monkeypatch):
+    from starlette.requests import Request
+
+    from app.gateway.auth.oidc_state import OIDCStatePayload
+    from app.gateway.routers.auth import oauth_callback
+
+    provider = OIDCProviderConfig(display_name="Company Login", issuer="http://idp.intranet/realm", client_id="deer-flow")
+    monkeypatch.setattr(
+        "deerflow.config.app_config.get_app_config",
+        lambda: SimpleNamespace(
+            auth=SimpleNamespace(
+                oidc=SimpleNamespace(
+                    enabled=True,
+                    frontend_base_url="http://frontend.internal",
+                    providers={"company": provider},
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "app.gateway.routers.auth.get_state_cookie",
+        lambda *_args: OIDCStatePayload(provider="company", state="state-value"),
+    )
+    oidc_service = AsyncMock()
+    oidc_service.discover.side_effect = OIDCError("issuer unavailable")
+    monkeypatch.setattr("app.gateway.routers.auth._get_oidc_service", lambda: oidc_service)
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/v1/auth/callback/company",
+            "raw_path": b"/api/v1/auth/callback/company",
+            "query_string": b"",
+            "headers": [],
+            "server": ("gateway", 8001),
+            "client": ("127.0.0.1", 12345),
+        }
+    )
+
+    response = await oauth_callback(request, "company", code="auth-code", state="state-value")
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://frontend.internal/login?error=sso_failed"
 
 
 @pytest.mark.asyncio
@@ -356,6 +506,30 @@ async def test_oidc_discover_accepts_issuer_with_trailing_slash_difference(monke
     metadata = await service.discover("https://issuer.example.com")
 
     assert metadata.issuer == "https://issuer.example.com/"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_oidc_discover_force_refresh_checks_issuer_even_when_metadata_is_cached(monkeypatch):
+    service = OIDCService()
+    issuer = "http://idp.intranet/realm"
+    cached_metadata = {
+        "issuer": issuer,
+        "authorization_endpoint": f"{issuer}/auth",
+        "token_endpoint": f"{issuer}/token",
+        "jwks_uri": f"{issuer}/jwks",
+    }
+    service._metadata_cache[issuer] = (time.time(), cached_metadata)
+    response = SimpleNamespace(
+        raise_for_status=lambda: None,
+        json=lambda: cached_metadata,
+    )
+    http_get = AsyncMock(return_value=response)
+    monkeypatch.setattr(service._http, "get", http_get)
+
+    await service.discover(issuer, force_refresh=True)
+
+    http_get.assert_awaited_once_with(f"{issuer}/.well-known/openid-configuration")
     await service.close()
 
 

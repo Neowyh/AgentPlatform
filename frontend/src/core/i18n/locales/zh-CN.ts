@@ -1508,6 +1508,16 @@ export const zhCN: Translations = {
     errorTooManyAttempts: "登录尝试次数过多，请稍后重试",
     errorInvalidCredentials: "邮箱或密码错误",
     errorNetwork: "网络错误，请稍后重试",
+    orContinueWith: "或使用以下方式登录",
+    continueWith: (provider: string) => `使用 ${provider} 登录`,
+    authFailed: "身份验证失败。",
+    errors: {
+      sso_failed: "SSO 登录失败，请重试或使用邮箱登录。",
+      sso_cancelled: "SSO 登录已取消。",
+      sso_account_exists:
+        "该邮箱对应的账号已存在。请使用密码登录或联系管理员。",
+      sso_not_allowed: "你的账号不允许使用 SSO 登录。请联系管理员。",
+    },
   },
   workflows: {
     knowledgeSnapshot: {

@@ -974,8 +974,8 @@ def _resolve_oidc_redirect_uri(request: Request, provider_id: str, provider_conf
 async def list_auth_providers():
     """List enabled SSO providers for the login page.
 
-    Returns only safe frontend metadata — no secrets, endpoints, or
-    internal configuration.
+    Returns only safe frontend metadata for providers whose issuer is
+    reachable from the Gateway — no secrets, endpoints, or internal config.
     """
     from deerflow.config.app_config import get_app_config
 
@@ -985,15 +985,28 @@ async def list_auth_providers():
     if not oidc_config.enabled:
         return {"providers": []}
 
-    providers = []
-    for provider_id, provider_cfg in oidc_config.providers.items():
-        providers.append(
-            {
-                "id": provider_id,
-                "display_name": provider_cfg.display_name,
-                "type": "oidc",
-            }
-        )
+    service = _get_oidc_service()
+
+    async def provider_is_available(provider_id: str, provider_cfg: OIDCProviderConfig) -> dict[str, str] | None:
+        try:
+            await service.discover(
+                provider_cfg.issuer,
+                {
+                    "authorization_endpoint": provider_cfg.authorization_endpoint,
+                    "token_endpoint": provider_cfg.token_endpoint,
+                    "userinfo_endpoint": provider_cfg.userinfo_endpoint,
+                    "jwks_uri": provider_cfg.jwks_uri,
+                },
+                force_refresh=True,
+            )
+        except Exception as exc:
+            logger.warning("OIDC provider %s is unavailable: %s", provider_id, exc)
+            return None
+
+        return {"id": provider_id, "display_name": provider_cfg.display_name, "type": "oidc"}
+
+    checked_providers = await asyncio.gather(*(provider_is_available(provider_id, provider_cfg) for provider_id, provider_cfg in oidc_config.providers.items()))
+    providers = [provider for provider in checked_providers if provider is not None]
     return {"providers": providers}
 
 
@@ -1049,7 +1062,8 @@ async def oauth_login(
         metadata = await service.discover(provider_config.issuer, overrides)
     except OIDCError as exc:
         logger.error("OIDC discovery failed for provider %s: %s", provider, exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to connect to SSO provider")
+        redirect = _build_error_redirect(oidc_config.frontend_base_url, "sso_failed")
+        return RedirectResponse(url=redirect, status_code=status.HTTP_302_FOUND)
 
     auth_url = service.build_authorization_url(
         metadata=metadata,
@@ -1100,7 +1114,8 @@ async def oauth_callback(
     # ── Provider error ───────────────────────────────────────────────
     if error:
         logger.warning("OIDC provider returned error for %s: %s (description: %s)", provider, error, error_description)
-        redirect = _build_error_redirect(oidc_config.frontend_base_url, "sso_failed")
+        error_code = "sso_cancelled" if error == "access_denied" else "sso_failed"
+        redirect = _build_error_redirect(oidc_config.frontend_base_url, error_code)
         return RedirectResponse(url=redirect, status_code=status.HTTP_302_FOUND)
 
     if not oidc_config.enabled:
@@ -1139,7 +1154,8 @@ async def oauth_callback(
         metadata = await service.discover(provider_config.issuer, overrides)
     except OIDCError as exc:
         logger.error("OIDC discovery failed for provider %s during callback: %s", provider, exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to connect to SSO provider")
+        redirect = _build_error_redirect(oidc_config.frontend_base_url, "sso_failed")
+        return RedirectResponse(url=redirect, status_code=status.HTTP_302_FOUND)
 
     # ── Authenticate ─────────────────────────────────────────────────
     try:

@@ -87,6 +87,15 @@ vi.mock("@/core/i18n/hooks", () => ({
         errorAccountDisabled: "Account disabled",
         errorTooManyAttempts: "Too many attempts",
         errorNetwork: "Network error. Please try again.",
+        orContinueWith: "Or continue with",
+        continueWith: (provider: string) => `Continue with ${provider}`,
+        authFailed: "Authentication failed.",
+        errors: {
+          sso_failed: "SSO login failed. Please try again or use email login.",
+          sso_cancelled: "SSO login was cancelled.",
+          sso_account_exists: "This account already exists.",
+          sso_not_allowed: "SSO login is not allowed.",
+        },
       },
       login: {
         rememberMe: "Keep me signed in",
@@ -134,6 +143,110 @@ describe("LoginPage", () => {
     render(<LoginPage />);
     expect(screen.getByText("Sign in to your account")).toBeInTheDocument();
     expect(screen.getByText("Sign In")).toBeInTheDocument();
+  });
+
+  test("shows configured enterprise login and carries the selected destination", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/v1/auth/providers") {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              providers: [
+                { id: "internal-idp", display_name: "Company Login" },
+              ],
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ needs_setup: false }),
+      });
+    });
+    mockGetParam.mockReturnValue("/workspace/chats/thread-1");
+
+    render(<LoginPage />);
+
+    const rememberCheckbox = screen.getByRole("checkbox", {
+      name: /keep me signed in/i,
+    });
+    const loginLink = await screen.findByRole("link", {
+      name: "Continue with Company Login",
+    });
+    expect(loginLink).toHaveAttribute(
+      "href",
+      "/api/v1/auth/oauth/internal-idp?next=%2Fworkspace%2Fchats%2Fthread-1&remember_me=false",
+    );
+
+    fireEvent.click(rememberCheckbox);
+    await waitFor(() => {
+      expect(loginLink).toHaveAttribute(
+        "href",
+        "/api/v1/auth/oauth/internal-idp?next=%2Fworkspace%2Fchats%2Fthread-1&remember_me=true",
+      );
+    });
+  });
+
+  test("does not show enterprise login when the provider lookup fails", async () => {
+    mockFetch.mockImplementation((url: string) =>
+      url === "/api/v1/auth/providers"
+        ? Promise.reject(new Error("Gateway unavailable"))
+        : Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ needs_setup: false }),
+          }),
+    );
+
+    render(<LoginPage />);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/providers",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(
+      screen.queryByRole("link", { name: /Continue with/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
+  });
+
+  test("returns from cancelled enterprise login to a usable email login form", () => {
+    mockGetParam.mockReturnValue("sso_cancelled");
+
+    render(<LoginPage />);
+
+    expect(screen.getByText("SSO login was cancelled.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled();
+  });
+
+  test("hides enterprise login while creating an email account", async () => {
+    mockFetch.mockImplementation((url: string) =>
+      url === "/api/v1/auth/providers"
+        ? Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                providers: [{ id: "company", display_name: "Company Login" }],
+              }),
+          })
+        : Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ needs_setup: false }),
+          }),
+    );
+
+    render(<LoginPage />);
+
+    await screen.findByRole("link", { name: "Continue with Company Login" });
+    fireEvent.click(screen.getByText("Don't have an account? Sign up"));
+
+    expect(
+      screen.queryByRole("link", { name: "Continue with Company Login" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
   });
 
   test("renders email and password inputs", () => {
