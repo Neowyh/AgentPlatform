@@ -88,6 +88,10 @@ vi.mock("@/core/i18n/hooks", () => ({
         errorTooManyAttempts: "Too many attempts",
         errorNetwork: "Network error. Please try again.",
       },
+      login: {
+        rememberMe: "Keep me signed in",
+        rememberMeDescription: "Keep this session on this device.",
+      },
     },
   }),
 }));
@@ -136,6 +140,55 @@ describe("LoginPage", () => {
     render(<LoginPage />);
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  test("defaults remember login to unchecked and submits the selected choice", async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/v1/auth/setup-status") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ needs_setup: false }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    render(<LoginPage />);
+
+    const rememberCheckbox = screen.getByRole("checkbox", {
+      name: /keep me signed in/i,
+    });
+    expect(rememberCheckbox).not.toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "user@test.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "password123" },
+    });
+    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/login/local",
+        expect.objectContaining({
+          body: "username=user%40test.com&password=password123&remember_me=false",
+        }),
+      );
+    });
+
+    fireEvent.click(rememberCheckbox);
+    await waitFor(() => expect(screen.getByText("Sign In")).toBeEnabled());
+    fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/login/local",
+        expect.objectContaining({
+          body: "username=user%40test.com&password=password123&remember_me=true",
+        }),
+      );
+    });
   });
 
   test("renders sign up toggle", () => {
@@ -426,7 +479,7 @@ describe("LoginPage", () => {
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "username=user%40test.com&password=password123",
+          body: "username=user%40test.com&password=password123&remember_me=false",
           credentials: "include",
           signal: expect.any(AbortSignal),
         }),

@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { RememberSessionOption } from "@/components/auth/remember-session-option";
 import { Button } from "@/components/ui/button";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Get next parameter for validated redirect
@@ -102,7 +104,7 @@ export default function LoginPage() {
         ? "/api/v1/auth/login/local"
         : "/api/v1/auth/register";
       const body = isLogin
-        ? `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+        ? `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}&remember_me=${rememberMe}`
         : JSON.stringify({ email, password });
 
       const headers: HeadersInit = isLogin
@@ -189,6 +191,13 @@ export default function LoginPage() {
               minLength={isLogin ? 6 : 8}
             />
           </div>
+
+          {isLogin && (
+            <RememberSessionOption
+              checked={rememberMe}
+              onCheckedChange={setRememberMe}
+            />
+          )}
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
