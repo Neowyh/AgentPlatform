@@ -1,5 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as renderBase, screen, waitFor, act } from "@testing-library/react";
+import {
+  render as renderBase,
+  screen,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useSearchParams } from "next/navigation";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -11,13 +16,17 @@ vi.mock("@/core/suggestions/hooks", () => ({
 }));
 
 vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: { id: "u1", email: "user@test.com", system_role: "user" } }),
+  useAuth: () => ({
+    user: { id: "u1", email: "user@test.com", system_role: "user" },
+  }),
 }));
 
 const render = (ui: React.ReactElement, options?: any) =>
   renderBase(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
     >
       {ui}
     </QueryClientProvider>,
@@ -60,15 +69,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         reasoningEffortHigh: "High",
         reasoningEffortHighDescription: "Full-dimensional Logic Deduction",
         searchModels: "Search models...",
-        surpriseMe: "Surprise",
-        surpriseMePrompt: "Surprise me",
         followupLoading: "Generating follow-up questions...",
         followupConfirmTitle: "Send suggestion?",
         followupConfirmDescription: "You already have text in the input.",
         followupConfirmAppend: "Append & send",
         followupConfirmReplace: "Replace & send",
-        suggestions: [],
-        suggestionsCreate: [],
       },
     },
   }),
@@ -431,7 +436,9 @@ describe("InputBox pendingTemplate", () => {
     mockTextInputContext.value = template;
     rerender(
       <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
       >
         <InputBox
           {...defaultProps()}
@@ -495,7 +502,9 @@ describe("InputBox pendingTemplate", () => {
 
     rerender(
       <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
       >
         <InputBox
           {...defaultProps()}

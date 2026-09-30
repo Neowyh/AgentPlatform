@@ -181,8 +181,6 @@ describe("zhCN locale", () => {
       reasoningEffortHigh: "高",
       reasoningEffortHighDescription: "全维度逻辑推演 + 多路径验证 + 反推校验",
       searchModels: "搜索模型...",
-      surpriseMe: "小惊喜",
-      surpriseMePrompt: "给我一个小惊喜吧",
       followupLoading: "正在生成可能的后续问题...",
       followupConfirmTitle: "发送建议问题？",
       followupConfirmDescription: "当前输入框已有内容，选择发送方式。",
@@ -195,54 +193,6 @@ describe("zhCN locale", () => {
         expect(zhCN.inputBox).toHaveProperty(key, value);
       });
     }
-
-    describe("suggestions", () => {
-      it("is an array with 4 items", () => {
-        expect(zhCN.inputBox.suggestions).toHaveLength(4);
-      });
-
-      it("each item has suggestion, prompt, and icon", () => {
-        for (const item of zhCN.inputBox.suggestions) {
-          expect(item).toHaveProperty("suggestion");
-          expect(item).toHaveProperty("prompt");
-          expect(item).toHaveProperty("icon");
-          expect(typeof item.suggestion).toBe("string");
-          expect(typeof item.prompt).toBe("string");
-        }
-      });
-
-      it("has correct suggestion labels", () => {
-        const labels = zhCN.inputBox.suggestions.map((s) => s.suggestion);
-        expect(labels).toEqual(["写作", "研究", "收集", "学习"]);
-      });
-    });
-
-    describe("suggestionsCreate", () => {
-      it("is an array with 5 items (including separator)", () => {
-        expect(zhCN.inputBox.suggestionsCreate).toHaveLength(5);
-      });
-
-      it("has a separator at index 3", () => {
-        const sep = zhCN.inputBox.suggestionsCreate[3];
-        expect(sep).toEqual({ type: "separator" });
-      });
-
-      it("has correct suggestion labels", () => {
-        const labels = zhCN.inputBox.suggestionsCreate
-          .filter((s) => !("type" in s))
-          .map((s) => (s as { suggestion: string }).suggestion);
-        expect(labels).toEqual(["网页", "图片", "视频", "技能"]);
-      });
-
-      it("non-separator items have icon", () => {
-        for (const item of zhCN.inputBox.suggestionsCreate) {
-          if (!("type" in item)) {
-            expect(item).toHaveProperty("icon");
-            expect(item).toHaveProperty("prompt");
-          }
-        }
-      });
-    });
   });
 
   // =======================================================================

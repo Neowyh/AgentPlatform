@@ -115,30 +115,6 @@ describe("en-US translations", () => {
       expect(enUS.inputBox.followupConfirmAppend).toBeTruthy();
       expect(enUS.inputBox.followupConfirmReplace).toBeTruthy();
     });
-
-    it("has suggestions array with correct structure", () => {
-      expect(Array.isArray(enUS.inputBox.suggestions)).toBe(true);
-      expect(enUS.inputBox.suggestions.length).toBeGreaterThanOrEqual(4);
-      for (const item of enUS.inputBox.suggestions) {
-        expect(item).toHaveProperty("suggestion");
-        expect(item).toHaveProperty("prompt");
-        expect(item).toHaveProperty("icon");
-        expect(typeof item.suggestion).toBe("string");
-        expect(typeof item.prompt).toBe("string");
-      }
-    });
-
-    it("has suggestionsCreate array with separator", () => {
-      expect(Array.isArray(enUS.inputBox.suggestionsCreate)).toBe(true);
-      const separators = enUS.inputBox.suggestionsCreate.filter(
-        (s) => "type" in s && s.type === "separator",
-      );
-      expect(separators.length).toBe(1);
-      const nonSeparators = enUS.inputBox.suggestionsCreate.filter(
-        (s) => !("type" in s),
-      );
-      expect(nonSeparators.length).toBeGreaterThanOrEqual(3);
-    });
   });
 
   describe("sidebar section", () => {

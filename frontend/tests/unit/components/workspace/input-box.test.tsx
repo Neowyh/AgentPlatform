@@ -107,8 +107,6 @@ vi.mock("@/core/i18n/hooks", () => ({
         reasoningEffortHigh: "High",
         reasoningEffortHighDescription: "Full-dimensional Logic Deduction",
         searchModels: "Search models...",
-        surpriseMe: "Surprise",
-        surpriseMePrompt: "Surprise me",
         followupLoading: "Generating follow-up questions...",
         followupConfirmTitle: "Send suggestion?",
         followupConfirmDescription: "You already have text in the input.",
@@ -130,15 +128,6 @@ vi.mock("@/core/i18n/hooks", () => ({
         compactSkipped: "The current context does not need compaction yet.",
         compactFailed: "Context compaction failed.",
         pleaseWaitStreaming: "Please wait for the current response to finish.",
-        suggestions: [
-          { suggestion: "Write", prompt: "Write a blog post about [topic]" },
-          { suggestion: "Research", prompt: "Research [topic]" },
-        ],
-        suggestionsCreate: [
-          { suggestion: "Webpage", prompt: "Create a webpage about [topic]" },
-          { type: "separator" },
-          { suggestion: "Skill", prompt: "Build a skill with skill-creator" },
-        ],
       },
     },
   }),
@@ -1552,6 +1541,16 @@ describe("InputBox", () => {
       render(<InputBox {...defaultProps()} isWelcomeMode />);
       const container = screen.getByTestId("input-box");
       expect(container.className).toContain("gap-5");
+    });
+
+    test("does not render static prompt suggestions below the new-chat composer", () => {
+      render(<InputBox {...defaultProps()} isWelcomeMode />);
+
+      expect(screen.queryByText("Surprise")).not.toBeInTheDocument();
+      expect(screen.queryByText("Write")).not.toBeInTheDocument();
+      expect(screen.queryByText("Research")).not.toBeInTheDocument();
+      expect(screen.queryByText("Create")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("suggestions")).not.toBeInTheDocument();
     });
 
     test("enlarges and left-aligns welcome input text", () => {

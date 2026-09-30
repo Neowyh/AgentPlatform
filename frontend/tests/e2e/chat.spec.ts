@@ -236,6 +236,40 @@ test.describe("Chat workspace", () => {
     await expect(page.getByRole("button", { name: /load more/i })).toBeHidden();
   });
 
+  test("new chat keeps scenario quick entries without static composer prompts", async ({
+    page,
+  }) => {
+    await page.goto("/workspace/chats/new", { waitUntil: "domcontentloaded" });
+
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId("input-box").getByTestId("suggestions"),
+    ).toHaveCount(0);
+
+    const scenarioTab = page
+      .getByTestId("scenario-tabs")
+      .getByRole("tab")
+      .first();
+    await expect(scenarioTab).toBeVisible();
+    await scenarioTab.click();
+
+    const agentEntry = page
+      .getByTestId("agent-pill-bar")
+      .getByRole("tab")
+      .first();
+    await expect(agentEntry).toBeVisible();
+    await agentEntry.click();
+
+    const taskEntry = page
+      .getByTestId("task-chip-bar")
+      .getByRole("tab")
+      .first();
+    await expect(taskEntry).toBeVisible();
+    await taskEntry.click();
+    await expect(textarea).toHaveValue(/请处理以下 Word 文档/);
+  });
+
   test("shows the localized AI disclaimer", async ({ page }) => {
     await page.goto("/workspace/chats/new");
     await page.evaluate(() => {

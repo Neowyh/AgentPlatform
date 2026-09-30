@@ -221,8 +221,6 @@ describe("enUS locale comprehensive", () => {
       reasoningEffortHighDescription:
         "Full-dimensional Logic Deduction + Multi-path Verification + Backward Check",
       searchModels: "Search models...",
-      surpriseMe: "Surprise",
-      surpriseMePrompt: "Surprise me",
       followupLoading: "Generating follow-up questions...",
       followupConfirmTitle: "Send suggestion?",
       followupConfirmDescription:
@@ -236,61 +234,6 @@ describe("enUS locale comprehensive", () => {
         expect(enUS.inputBox).toHaveProperty(key, value);
       });
     }
-
-    describe("suggestions", () => {
-      it("is an array with 4 items", () => {
-        expect(enUS.inputBox.suggestions).toHaveLength(4);
-      });
-
-      it("each item has suggestion, prompt, and icon", () => {
-        for (const item of enUS.inputBox.suggestions) {
-          expect(item).toHaveProperty("suggestion");
-          expect(item).toHaveProperty("prompt");
-          expect(item).toHaveProperty("icon");
-          expect(typeof item.suggestion).toBe("string");
-          expect(typeof item.prompt).toBe("string");
-        }
-      });
-
-      it("has correct suggestion labels", () => {
-        const labels = enUS.inputBox.suggestions.map((s) => s.suggestion);
-        expect(labels).toEqual(["Write", "Research", "Collect", "Learn"]);
-      });
-
-      it("each prompt is non-empty", () => {
-        for (const item of enUS.inputBox.suggestions) {
-          expect(item.prompt.trim().length).toBeGreaterThan(0);
-        }
-      });
-    });
-
-    describe("suggestionsCreate", () => {
-      it("is an array with 5 items (including separator)", () => {
-        expect(enUS.inputBox.suggestionsCreate).toHaveLength(5);
-      });
-
-      it("has a separator at index 3", () => {
-        const sep = enUS.inputBox.suggestionsCreate[3];
-        expect(sep).toEqual({ type: "separator" });
-      });
-
-      it("has correct suggestion labels", () => {
-        const labels = enUS.inputBox.suggestionsCreate
-          .filter((s) => !("type" in s))
-          .map((s) => (s as { suggestion: string }).suggestion);
-        expect(labels).toEqual(["Webpage", "Image", "Video", "Skill"]);
-      });
-
-      it("non-separator items have icon and prompt", () => {
-        for (const item of enUS.inputBox.suggestionsCreate) {
-          if (!("type" in item)) {
-            expect(item).toHaveProperty("icon");
-            expect(item).toHaveProperty("prompt");
-            expect(typeof (item as { prompt: string }).prompt).toBe("string");
-          }
-        }
-      });
-    });
   });
 
   // =======================================================================
