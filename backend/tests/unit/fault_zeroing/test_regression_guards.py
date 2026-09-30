@@ -9,6 +9,8 @@ Each test pins one historically observed failure mode so it cannot return:
 5. 错误 Workflow 路径 — the acceptance harness points at the real YAML.
 6. validator 未执行   — the acceptance report records a contract evaluation.
 7. 文件存在即成功     — non-empty-but-broken artifacts never complete a run.
+8. 枚举漂移           — node prompts cite the unified rule source instead of
+   restating the enum/grading lists owned by evidence_rules.md and the schema.
 """
 
 from __future__ import annotations
@@ -136,6 +138,50 @@ def test_acceptance_harness_points_at_real_workflow_and_runs_contract() -> None:
     assert '"validator_run": True' in source
     assert "evaluate_completion" in source
     assert "FaultZeroingKernel" in source
+
+
+def test_node_prompts_cite_rule_source_instead_of_inlining_enums(workflow_yaml: dict) -> None:
+    """Dedup guard (ticket 05 / spec user story 7): workflow node prompts cite
+    the unified rule source and the output schema instead of restating grading
+    enums and grade rules, while the schema keeps enforcing them. Without this
+    guard the inline lists drift again on the next edit (枚举漂移)."""
+
+    SKILL_DIR = REPO_ROOT / "resources" / "skills" / "fault-zeroing"
+
+    def prompt_of(node: dict) -> str:
+        action = node.get("action") or {}
+        params = action.get("params") or {}
+        return (params.get("prompt") or "") + (params.get("system_prompt") or "")
+
+    # The rule-consuming nodes must name the unified rule source before acting.
+    for node_id in ("evidence_collection", "evidence_assessment", "assessment_review"):
+        prompt = prompt_of(_node(workflow_yaml, node_id))
+        assert "evidence_rules.md" in prompt, f"{node_id} must cite evidence_rules.md"
+        assert "唯一来源" in prompt, f"{node_id} must present evidence_rules.md as the single source"
+
+    # No node prompt restates the enum lists owned by fault_tree.schema.json.
+    owned_enum_lists = (
+        "pending / in_progress / passed / failed / blocked",
+        "confirmed / rejected / to_verify / not_applicable",
+    )
+    for node in workflow_yaml["nodes"]:
+        prompt = prompt_of(node)
+        for enum_list in owned_enum_lists:
+            assert enum_list not in prompt, f"{node['id']} restates the enum list owned by fault_tree.schema.json: {enum_list!r}"
+
+    # Grade rules are not restated inside the assessment prompts either.
+    for node_id in ("evidence_assessment", "assessment_review"):
+        prompt = prompt_of(_node(workflow_yaml, node_id))
+        assert "A/B 级" not in prompt, f"{node_id} restates the A/B grade rule owned by evidence_rules.md"
+        assert "C 级" not in prompt, f"{node_id} restates the C grade rule owned by evidence_rules.md"
+
+    # The constraints stay machine-enforced: the schema enums are intact and
+    # the static-alert confidence cap lives in the unified rule source.
+    schema = json.loads((SKILL_DIR / "templates" / "fault_tree.schema.json").read_text(encoding="utf-8"))
+    assert set(schema["$defs"]["verification_status"]["enum"]) == {"pending", "in_progress", "passed", "failed", "blocked"}
+    assert set(schema["$defs"]["conclusion_status"]["enum"]) == {"confirmed", "rejected", "to_verify", "not_applicable"}
+    rules = (SKILL_DIR / "references" / "evidence_rules.md").read_text(encoding="utf-8")
+    assert "high_risk_candidate" in rules, "the static-alert confidence cap must live in evidence_rules.md"
 
 
 def test_file_existence_alone_never_completes_a_run(tmp_path: Path) -> None:
