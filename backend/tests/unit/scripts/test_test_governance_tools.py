@@ -8,12 +8,8 @@ from test_preflight import LANES, _minimum_python, _mkdir_probe
 
 def test_inventory_assigns_exclusive_backend_lanes() -> None:
     assert _lanes(Path("backend/tests/unit/test_widget.py")) == ["backend-standard"]
-    assert _lanes(Path("backend/tests/unit/test_serial_widget.py")) == [
-        "backend-serial"
-    ]
-    assert _lanes(Path("backend/tests/blocking_io/test_widget.py")) == [
-        "backend-blocking-io"
-    ]
+    assert _lanes(Path("backend/tests/unit/test_serial_widget.py")) == ["backend-serial"]
+    assert _lanes(Path("backend/tests/blocking_io/test_widget.py")) == ["backend-blocking-io"]
 
 
 def test_inventory_keeps_special_frontend_lanes_visible() -> None:
@@ -23,12 +19,8 @@ def test_inventory_keeps_special_frontend_lanes_visible() -> None:
         "frontend-smoke",
         "frontend-mock-e2e",
     ]
-    assert _lanes(
-        Path("frontend/tests/e2e-real-backend/real-backend-render.spec.ts")
-    ) == ["frontend-real"]
-    assert _lanes(Path("frontend/tests/e2e/stagehand/chat-interactions.spec.ts")) == [
-        "frontend-stagehand"
-    ]
+    assert _lanes(Path("frontend/tests/e2e-real-backend/real-backend-render.spec.ts")) == ["frontend-real"]
+    assert _lanes(Path("frontend/tests/e2e/stagehand/chat-interactions.spec.ts")) == ["frontend-stagehand"]
 
 
 def test_preflight_declares_every_runner_lane() -> None:

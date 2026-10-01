@@ -72,9 +72,7 @@ class DeviceControlService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create_pairing(
-        self, owner_id: str, *, base_url: str = "/device-pair"
-    ) -> PairingChallenge:
+    async def create_pairing(self, owner_id: str, *, base_url: str = "/device-pair") -> PairingChallenge:
         code, digest = new_pairing_code()
         pairing_id = str(uuid4())
         expires_at = datetime.now(UTC) + PAIRING_TTL
@@ -101,13 +99,7 @@ class DeviceControlService:
         capabilities: list[str],
         policy_hash: str | None,
     ) -> DeviceClaim:
-        pairing = (
-            await self.session.execute(
-                select(PairingSessionModel)
-                .where(PairingSessionModel.code_digest == hash_secret(pairing_code))
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
+        pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.code_digest == hash_secret(pairing_code)).with_for_update())).scalar_one_or_none()
         if pairing is None:
             raise DeviceControlError("PAIRING_INVALID", "pairing code invalid", 400)
         try:
@@ -118,16 +110,8 @@ class DeviceControlService:
                 consumed=pairing.status != PairingStatus.OPEN,
             )
         except PairingError as exc:
-            code = (
-                "PAIRING_EXPIRED"
-                if "expired" in str(exc)
-                else "PAIRING_ALREADY_USED"
-                if "already used" in str(exc)
-                else "PAIRING_INVALID"
-            )
-            raise DeviceControlError(
-                code, str(exc), 409 if code != "PAIRING_INVALID" else 400
-            ) from exc
+            code = "PAIRING_EXPIRED" if "expired" in str(exc) else "PAIRING_ALREADY_USED" if "already used" in str(exc) else "PAIRING_INVALID"
+            raise DeviceControlError(code, str(exc), 409 if code != "PAIRING_INVALID" else 400) from exc
 
         device = DeviceModel(
             id=str(uuid4()),
@@ -160,20 +144,10 @@ class DeviceControlService:
         await self.session.refresh(device)
         return DeviceClaim(device, pairing.id, claim_token, claim_expires_at)
 
-    async def confirm_pairing(
-        self, pairing_id: str, *, owner_id: str, code: str
-    ) -> DeviceModel:
-        pairing = (
-            await self.session.execute(
-                select(PairingSessionModel)
-                .where(PairingSessionModel.id == pairing_id)
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
+    async def confirm_pairing(self, pairing_id: str, *, owner_id: str, code: str) -> DeviceModel:
+        pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.id == pairing_id).with_for_update())).scalar_one_or_none()
         if pairing is None or pairing.owner_id != owner_id:
-            raise DeviceControlError(
-                "PAIRING_NOT_FOUND", "pairing challenge is not available", 404
-            )
+            raise DeviceControlError("PAIRING_NOT_FOUND", "pairing challenge is not available", 404)
         if pairing.status != PairingStatus.CLAIMED:
             raise DeviceControlError(
                 "PAIRING_NOT_CONFIRMABLE",
@@ -181,16 +155,10 @@ class DeviceControlService:
                 409,
             )
         try:
-            consume_pairing_code(
-                pairing.code_digest, code, expires_at=pairing.expires_at, consumed=False
-            )
+            consume_pairing_code(pairing.code_digest, code, expires_at=pairing.expires_at, consumed=False)
         except PairingError as exc:
-            code_name = (
-                "PAIRING_EXPIRED" if "expired" in str(exc) else "PAIRING_INVALID"
-            )
-            raise DeviceControlError(
-                code_name, str(exc), 409 if code_name == "PAIRING_EXPIRED" else 400
-            ) from exc
+            code_name = "PAIRING_EXPIRED" if "expired" in str(exc) else "PAIRING_INVALID"
+            raise DeviceControlError(code_name, str(exc), 409 if code_name == "PAIRING_EXPIRED" else 400) from exc
         device = await self._get_device(pairing.device_id or "")
         pairing.status = PairingStatus.CONFIRMED
         pairing.confirmed_at = datetime.now(UTC)
@@ -198,37 +166,23 @@ class DeviceControlService:
         await self.session.refresh(device)
         return device
 
-    async def complete_registration(
-        self, *, device_id: str, public_key: str, claim_token: str
-    ) -> RegisteredDevice:
-        pairing = (
-            await self.session.execute(
-                select(PairingSessionModel)
-                .where(PairingSessionModel.device_id == device_id)
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
+    async def complete_registration(self, *, device_id: str, public_key: str, claim_token: str) -> RegisteredDevice:
+        pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.device_id == device_id).with_for_update())).scalar_one_or_none()
         if pairing is None or pairing.status != PairingStatus.CONFIRMED:
             raise DeviceControlError(
                 "PAIRING_NOT_CONFIRMED",
                 "owner confirmation is required before registration",
                 409,
             )
-        if pairing.claim_expires_at is None or _as_utc(
-            pairing.claim_expires_at
-        ) <= datetime.now(UTC):
+        if pairing.claim_expires_at is None or _as_utc(pairing.claim_expires_at) <= datetime.now(UTC):
             pairing.status = PairingStatus.EXPIRED
             await self.session.commit()
             raise DeviceControlError("PAIRING_EXPIRED", "device claim expired", 409)
         if pairing.claim_token_digest != hash_secret(claim_token):
-            raise DeviceControlError(
-                "PAIRING_CLAIM_INVALID", "device claim token is invalid", 401
-            )
+            raise DeviceControlError("PAIRING_CLAIM_INVALID", "device claim token is invalid", 401)
         device = await self._get_device(device_id)
         if device.public_key != public_key:
-            raise DeviceControlError(
-                "DEVICE_KEY_MISMATCH", "device public key does not match the claim", 401
-            )
+            raise DeviceControlError("DEVICE_KEY_MISMATCH", "device public key does not match the claim", 401)
         token = secrets.token_urlsafe(32)
         session_expires_at = datetime.now(UTC) + DEVICE_SESSION_TTL
         session_id = str(uuid4())
@@ -251,9 +205,7 @@ class DeviceControlService:
             stmt = stmt.where(DeviceModel.owner_id == owner_id)
         return list((await self.session.execute(stmt)).scalars())
 
-    async def get_device(
-        self, device_id: str, *, actor_id: str, is_admin: bool
-    ) -> DeviceModel:
+    async def get_device(self, device_id: str, *, actor_id: str, is_admin: bool) -> DeviceModel:
         device = await self._get_device(device_id)
         if not is_admin and device.owner_id != actor_id:
             raise DeviceControlError(
@@ -274,9 +226,7 @@ class DeviceControlService:
         device = await self._get_device(device_id)
         if device.status in {DeviceStatus.REVOKED, DeviceStatus.BLOCKED}:
             raise DeviceControlError(
-                "DEVICE_REVOKED"
-                if device.status == DeviceStatus.REVOKED
-                else "DEVICE_BLOCKED",
+                "DEVICE_REVOKED" if device.status == DeviceStatus.REVOKED else "DEVICE_BLOCKED",
                 "device cannot connect",
                 403,
             )
@@ -305,9 +255,7 @@ class DeviceControlService:
         await self.session.refresh(device)
         return device
 
-    async def revoke(
-        self, device_id: str, *, actor_id: str, is_admin: bool
-    ) -> DeviceModel:
+    async def revoke(self, device_id: str, *, actor_id: str, is_admin: bool) -> DeviceModel:
         device = await self._get_device(device_id)
         if device.owner_id != actor_id and not is_admin:
             raise DeviceControlError(
@@ -319,28 +267,18 @@ class DeviceControlService:
             validate_device_transition(device.status, DeviceStatus.REVOKED)
             device.status = DeviceStatus.REVOKED
             device.revoked_at = datetime.now(UTC)
-        await self.session.execute(
-            DeviceSessionModel.__table__.update()
-            .where(DeviceSessionModel.device_id == device_id)
-            .values(disconnected_at=datetime.now(UTC))
-        )
+        await self.session.execute(DeviceSessionModel.__table__.update().where(DeviceSessionModel.device_id == device_id).values(disconnected_at=datetime.now(UTC)))
         await self.session.commit()
         await self.session.refresh(device)
         return device
 
     async def _get_device(self, device_id: str) -> DeviceModel:
-        device = (
-            await self.session.execute(
-                select(DeviceModel).where(DeviceModel.id == device_id)
-            )
-        ).scalar_one_or_none()
+        device = (await self.session.execute(select(DeviceModel).where(DeviceModel.id == device_id))).scalar_one_or_none()
         if device is None:
             raise DeviceControlError("DEVICE_NOT_FOUND", "device not found", 404)
         return device
 
-    async def _authorized_session(
-        self, device_id: str, token: str
-    ) -> tuple[DeviceModel, DeviceSessionModel]:
+    async def _authorized_session(self, device_id: str, token: str) -> tuple[DeviceModel, DeviceSessionModel]:
         device = await self._get_device(device_id)
         device_session = (
             await self.session.execute(
@@ -351,15 +289,7 @@ class DeviceControlService:
                 )
             )
         ).scalar_one_or_none()
-        expires_at = (
-            device_session.expires_at.replace(tzinfo=UTC)
-            if device_session is not None and device_session.expires_at.tzinfo is None
-            else device_session.expires_at
-            if device_session is not None
-            else None
-        )
+        expires_at = device_session.expires_at.replace(tzinfo=UTC) if device_session is not None and device_session.expires_at.tzinfo is None else device_session.expires_at if device_session is not None else None
         if device_session is None or expires_at <= datetime.now(UTC):
-            raise DeviceControlError(
-                "DEVICE_SESSION_INVALID", "device session invalid or expired", 401
-            )
+            raise DeviceControlError("DEVICE_SESSION_INVALID", "device session invalid or expired", 401)
         return device, device_session

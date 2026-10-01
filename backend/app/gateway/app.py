@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from deerflow_extension_api import EXTENSION_PRINCIPAL_RESOLVER_KEY, ExtensionPrincipal
@@ -44,15 +44,21 @@ from app.gateway.routers import (
     mcp_tasks,
     memory,
     models,
+    project_documents,
+    project_thread_files,
+    projects,
     resources,
     runs,
     scheduled_tasks,
+    skills,
     subagent_batches,
     suggestions,
     thread_runs,
     threads,
     tools,
+    trash,
     uploads,
+    user_preferences,
     visibility_applications,
 )
 from app.gateway.trace_middleware import TraceMiddleware
@@ -446,6 +452,78 @@ async def _knowledge_reconciliation_loop() -> None:
             logger.exception("Knowledge reconciliation pass failed (non-fatal)")
 
 
+async def _run_startup_trash_sweep(app: FastAPI, startup_config) -> None:
+    """One trash retention sweep at gateway startup (Phase-2 spec §8.3).
+
+    Runs beside the lazy trigger on the trash listing — no daemon, no
+    scheduler (§15.9). Sweeps every user (``user_id=None``) with the
+    configured retention window, including the full reconciliation. A sweep
+    failure is logged and never blocks gateway readiness; the lifespan runs
+    this as a background task and awaits it (bounded) on shutdown, cancelling
+    it when the budget runs out.
+    """
+    try:
+        from deerflow.config.paths import get_paths
+        from deerflow.config.projects_config import ProjectsConfig
+        from deerflow.projects.trash import run_trash_retention_sweep
+
+        project_document_repo = getattr(app.state, "project_document_repo", None)
+        if project_document_repo is None:
+            return
+        projects_config = getattr(startup_config, "projects", None)
+        retention_days = projects_config.trash_retention_days if projects_config is not None else ProjectsConfig().trash_retention_days
+        sweep_report = await run_trash_retention_sweep(project_document_repo, get_paths(), retention_days=retention_days, user_id=None)
+        if sweep_report.purged or sweep_report.orphans_removed or sweep_report.staging_removed or sweep_report.content_missing:
+            logger.info(
+                "Trash retention sweep: purged=%d failures=%d orphans=%d staging=%d content_missing=%d",
+                sweep_report.purged,
+                sweep_report.purge_failures,
+                sweep_report.orphans_removed,
+                sweep_report.staging_removed,
+                len(sweep_report.content_missing),
+            )
+    except Exception:
+        logger.warning("Trash retention sweep skipped", exc_info=True)
+
+
+async def _shutdown_startup_trash_sweep(app: FastAPI) -> None:
+    """Bounded shutdown wait for the background startup sweep (§8.3).
+
+    Waits ``_SHUTDOWN_HOOK_TIMEOUT_SECONDS`` for an in-flight sweep and
+    cancels it when the budget runs out. The shield keeps that wait bounded
+    without killing the sweep, so an overrun must be cancelled here: the
+    all-users reconciliation reads through the document repo and the DB
+    engine, and leaving it running would have it walk rows and files while
+    the teardown below disposes both underneath it.
+    """
+    task = getattr(app.state, "startup_trash_sweep_task", None)
+    if task is None or task.done():
+        return
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+    except TimeoutError:
+        # Cancellation lands at the sweep's next await; ``_run_startup_trash_sweep``
+        # only catches ``Exception``, so ``CancelledError`` propagates. A
+        # ``cancel()`` that returns False means the sweep finished inside the
+        # window between the deadline firing and this call — report that as
+        # the late finish it is, not as a cancellation that never happened.
+        cancelled = task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        if cancelled:
+            logger.warning(
+                "Startup trash sweep exceeded %.1fs during shutdown; cancelled and proceeding with worker exit.",
+                _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+            )
+        else:
+            logger.info(
+                "Startup trash sweep finished just after the %.1fs shutdown budget; proceeding with worker exit.",
+                _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+            )
+    except Exception:
+        logger.exception("Startup trash sweep failed during shutdown")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -459,6 +537,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # snapshot on `app.state` to keep that contract enforceable.
     try:
         startup_config = get_app_config()
+        from deerflow.config.subagent_batches_config import SubagentBatchesConfig
+        from deerflow.config.subagent_runtime_config import SubagentRuntimeConfig
+        from deerflow.subagents.capacity import configure_subagent_execution_capacity
+
+        subagent_runtime_config = getattr(startup_config, "subagent_runtime", None)
+        if not isinstance(subagent_runtime_config, SubagentRuntimeConfig):
+            subagent_runtime_config = SubagentRuntimeConfig()
+        subagent_batches_config = getattr(startup_config, "subagent_batches", None)
+        if not isinstance(subagent_batches_config, SubagentBatchesConfig):
+            subagent_batches_config = SubagentBatchesConfig()
+        configure_subagent_execution_capacity(subagent_runtime_config)
         apply_logging_level(startup_config.log_level)
         logger.info("Configuration loaded successfully")
     except Exception as e:
@@ -518,14 +607,144 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # runs. Orphan files are only reported; startup never deletes them.
         await _reconcile_canonical_resource_storage()
 
-        # Start IM channel service if any channels are configured
+        # Phase-2 trash tier (§8.3): one retention sweep at startup, beside
+        # the lazy trigger on the trash listing — no daemon, no scheduler.
+        # Runs after langgraph_runtime so app.state.project_document_repo is
+        # available. The per-user reconciliation walks every row and file, so
+        # it is scheduled as a background task: gateway readiness never waits
+        # on it, a failure is logged by the task itself, and shutdown awaits
+        # the in-flight sweep (bounded, cancelled on overrun) before the
+        # runtime is torn down.
+        app.state.startup_trash_sweep_task = asyncio.create_task(_run_startup_trash_sweep(app, startup_config))
+
+        try:
+            from app.gateway.services import launch_scheduled_thread_run
+            from app.scheduler import ScheduledTaskService
+
+            if getattr(app.state, "scheduled_task_repo", None) is not None and getattr(app.state, "scheduled_task_run_repo", None) is not None:
+                scheduled_task_service = ScheduledTaskService(
+                    task_repo=app.state.scheduled_task_repo,
+                    task_run_repo=app.state.scheduled_task_run_repo,
+                    launch_run=lambda **kwargs: launch_scheduled_thread_run(app=app, **kwargs),
+                    poll_interval_seconds=startup_config.scheduler.poll_interval_seconds,
+                    lease_seconds=startup_config.scheduler.lease_seconds,
+                    max_concurrent_runs=startup_config.scheduler.max_concurrent_runs,
+                    queue_timeout_seconds=startup_config.scheduler.queue_timeout_seconds,
+                    multi_instance=startup_config.scheduler.multi_instance,
+                    run_lease_grace_seconds=startup_config.run_ownership.grace_seconds,
+                )
+                app.state.scheduled_task_service = scheduled_task_service
+                if startup_config.scheduler.enabled:
+                    await scheduled_task_service.start()
+        except Exception:
+            logger.exception("Failed to initialize scheduled task service")
+            # If an enabled scheduler rejects start(), keep that rejection as a
+            # lifespan failure instead of exposing a half-started service.
+            if startup_config.scheduler.enabled:
+                raise
+
+        # Start IM channel service only after scheduler recovery succeeds, so a
+        # fail-closed scheduler startup cannot strand channel-owned tasks before
+        # the lifespan reaches its normal shutdown boundary.
         try:
             from app.channels.service import start_channel_service
 
-            channel_service = await start_channel_service(startup_config)
+            # Closure over `app` (mirrors ScheduledTaskService's `launch_run`
+            # above) rather than resolving `app.state.stream_bridge` here
+            # directly: `stream_bridge` is a STARTUP_ONLY_FIELDS singleton set
+            # once, above, by `langgraph_runtime(app, startup_config)`, so
+            # either shape is safe by construction — the closure is just the
+            # more defensive/consistent-with-precedent form, and it is what
+            # ChannelManager's follow-up-drain watcher (issue #4121 Slice 2)
+            # uses to reach the same StreamBridge every other run consumer
+            # goes through `get_stream_bridge(request)` for.
+            channel_service = await start_channel_service(
+                startup_config,
+                get_stream_bridge=lambda: getattr(app.state, "stream_bridge", None),
+            )
             logger.info("Channel service started: %s", channel_service.get_status())
         except Exception:
             logger.exception("No IM channels configured or channel service failed to start")
+
+        from app.gateway.services import launch_mcp_task_notification_run
+        from app.mcp_tasks import McpTaskService
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.config.mcp_tasks_config import McpTasksConfig
+        from deerflow.mcp.task_tool_caller import McpTaskToolCaller
+        from deerflow.mcp.tasks import (
+            ORDINARY_MCP_TASK_DRIVER,
+            McpTaskDriverRegistry,
+            OrdinaryMcpTaskDriver,
+        )
+        from deerflow.mcp.tasks.runtime import (
+            configured_task_toolset_count,
+            set_mcp_task_config_snapshot,
+            set_mcp_task_submitter,
+            validate_mcp_task_runtime_configuration,
+        )
+
+        task_extensions_config = ExtensionsConfig.from_file()
+        mcp_tasks_config = getattr(startup_config, "mcp_tasks", McpTasksConfig())
+        mcp_task_repo = getattr(app.state, "mcp_task_repo", None)
+        app.state.mcp_tasks_available = False
+        set_mcp_task_submitter(None)
+        set_mcp_task_config_snapshot(task_extensions_config)
+        validate_mcp_task_runtime_configuration(
+            mcp_tasks_config=mcp_tasks_config,
+            extensions_config=task_extensions_config,
+            repository_available=mcp_task_repo is not None,
+        )
+        if mcp_task_repo is not None:
+            mcp_task_drivers = McpTaskDriverRegistry()
+            if configured_task_toolset_count(task_extensions_config):
+                mcp_task_drivers.register(
+                    ORDINARY_MCP_TASK_DRIVER,
+                    OrdinaryMcpTaskDriver(McpTaskToolCaller(task_extensions_config)),
+                )
+            mcp_task_service = McpTaskService(
+                repository=mcp_task_repo,
+                drivers=mcp_task_drivers,
+                poll_interval_seconds=mcp_tasks_config.poll_interval_seconds,
+                lease_seconds=mcp_tasks_config.lease_seconds,
+                max_concurrent_polls=mcp_tasks_config.max_concurrent_polls,
+                max_poll_backoff_seconds=mcp_tasks_config.max_poll_backoff_seconds,
+                input_required_poll_interval_seconds=mcp_tasks_config.input_required_poll_interval_seconds,
+                tracking_degraded_after_errors=mcp_tasks_config.tracking_degraded_after_errors,
+                max_result_bytes=mcp_tasks_config.max_result_bytes,
+                result_preview_max_chars=mcp_tasks_config.result_preview_max_chars,
+                launch_notification=lambda **kwargs: launch_mcp_task_notification_run(app=app, **kwargs),
+                get_run=lambda run_id, **kwargs: app.state.run_manager.get(
+                    run_id,
+                    raise_on_store_error=True,
+                    **kwargs,
+                ),
+            )
+            app.state.mcp_task_drivers = mcp_task_drivers
+            app.state.mcp_task_service = mcp_task_service
+            if mcp_tasks_config.enabled:
+                await mcp_task_service.start()
+                set_mcp_task_submitter(mcp_task_service)
+                app.state.mcp_tasks_available = True
+
+        from app.subagent_batches import SubagentBatchService
+        from deerflow.subagents.batch_runtime import set_subagent_batch_submitter
+
+        batch_repo = getattr(app.state, "subagent_batch_repo", None)
+        app.state.subagent_batches_available = False
+        set_subagent_batch_submitter(None)
+        if subagent_batches_config.enabled and batch_repo is None:
+            raise RuntimeError("subagent_batches.enabled requires database.backend sqlite or postgres")
+        if batch_repo is not None:
+            batch_service = SubagentBatchService(
+                repository=batch_repo,
+                config=subagent_batches_config,
+                runtime_config=subagent_runtime_config,
+            )
+            app.state.subagent_batch_service = batch_service
+            if subagent_batches_config.enabled:
+                await batch_service.start()
+                set_subagent_batch_submitter(batch_service)
+                app.state.subagent_batches_available = True
 
         # Periodic published-revision reconciliation (read-only, ticket 05).
         # Disabled unless knowledge.reconciliation_interval_seconds > 0.
@@ -534,6 +753,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
 
         reconciliation_task.cancel()
+        await _shutdown_startup_trash_sweep(app)
         try:
             await reconciliation_task
         except asyncio.CancelledError:
@@ -880,6 +1100,18 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Thread cleanup API is mounted at /api/threads/{thread_id}
     app.include_router(threads.router)
 
+    # Projects API is mounted at /api/projects (v2.1.0 convergence). The
+    # scheduled-tasks router stays at its local mount position below, and the
+    # upstream agents/subagents routers are deliberately NOT mounted: local
+    # baseline keeps agent management behind the enterprise experts entries
+    # (ledger D4), so their API surface is not newly exposed by this merge.
+    app.include_router(projects.router)
+    # Project document shelf API is mounted at /api/projects/{id}/documents
+    app.include_router(project_documents.router)
+    # Project conversation-files view is mounted at /api/projects/{id}/thread-files
+    app.include_router(project_thread_files.router)
+    # Trash API is mounted at /api/trash
+    app.include_router(trash.router)
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)
 
@@ -894,6 +1126,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Auth API is mounted at /api/v1/auth
     app.include_router(auth.router)
+    app.include_router(user_preferences.router)
 
     # Feedback API is mounted at /api/threads/{thread_id}/runs/{run_id}/feedback
     app.include_router(feedback.router)
@@ -923,6 +1156,12 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Upstream convergence routers: the frontend entries that ship with the
     # merged tree call these, so mount them exactly like deerflow main does.
     app.include_router(features.router)
+
+    # Upstream v2.1.0: the merged capabilities skills tab mounts the upstream
+    # SkillGallery/SkillExportDialog, whose enable/export calls target
+    # /api/skills/custom*. Mount the skills router so the shipped UI resolves
+    # (AuthMiddleware + authz route permissions guard it like every router).
+    app.include_router(skills.router)
 
     # Integrations API is mounted at /api/integrations
     app.include_router(integrations.router)

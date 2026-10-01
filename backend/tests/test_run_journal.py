@@ -4,12 +4,16 @@ Uses MemoryRunEventStore as the backend for direct event inspection.
 """
 
 import asyncio
+import threading
 import weakref
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.outputs import ChatGeneration, LLMResult
 
 from deerflow.runtime.events.store.memory import MemoryRunEventStore
 from deerflow.runtime.journal import RunJournal
@@ -18,6 +22,151 @@ from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
 def test_run_journal_is_marked_as_loop_bound():
     assert RunJournal.deerflow_loop_bound is True
+
+
+def test_tool_promotion_claim_is_atomic_across_parallel_sync_wrappers():
+    journal = RunJournal("r-claim", "t-claim", MemoryRunEventStore())
+    barrier = Barrier(16)
+
+    def claim():
+        barrier.wait()
+        return journal.claim_tool_promotions(["mcp_a"])
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(lambda _: claim(), range(16)))
+
+    assert sum((result for result in results), []) == ["mcp_a"]
+
+
+@pytest.mark.anyio
+async def test_cross_thread_middleware_events_are_serialized_on_owner_loop():
+    store = MemoryRunEventStore()
+    journal = RunJournal("r-thread", "t-thread", store, flush_threshold=1)
+    owner_thread_id = threading.get_ident()
+    put_thread_ids: list[int] = []
+    original_put = journal._put
+
+    def tracked_put(**kwargs) -> None:
+        put_thread_ids.append(threading.get_ident())
+        original_put(**kwargs)
+
+    journal._put = tracked_put
+
+    def record_from_tool_worker() -> None:
+        journal.record_middleware(
+            "tool_progress",
+            name="ToolProgressMiddleware",
+            hook="wrap_tool_call",
+            action="warn",
+            changes={"from_phase": "active", "to_phase": "warned"},
+        )
+
+    await asyncio.to_thread(record_from_tool_worker)
+    await journal.flush()
+
+    assert put_thread_ids == [owner_thread_id]
+    events = await store.list_events("t-thread", "r-thread")
+    assert [event["event_type"] for event in events] == ["middleware:tool_progress"]
+    assert events[0]["content"]["changes"]["to_phase"] == "warned"
+
+
+def test_middleware_event_without_owner_loop_keeps_cross_thread_append():
+    store = MemoryRunEventStore()
+    journal = RunJournal("r-sync", "t-sync", store, flush_threshold=100)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(
+            journal.record_middleware,
+            "tool_progress",
+            name="ToolProgressMiddleware",
+            hook="wrap_tool_call",
+            action="warn",
+            changes={"from_phase": "active", "to_phase": "warned"},
+        ).result(timeout=5)
+
+    asyncio.run(journal.flush())
+    events = asyncio.run(store.list_events("t-sync", "r-sync"))
+    assert [event["event_type"] for event in events] == ["middleware:tool_progress"]
+
+
+def test_middleware_event_uses_owner_loop_identity_after_loop_moves_threads():
+    loop = asyncio.new_event_loop()
+
+    async def build_journal():
+        return RunJournal("r-moved", "t-moved", MemoryRunEventStore(), flush_threshold=100)
+
+    journal = loop.run_until_complete(build_journal())
+
+    async def record_on_current_loop() -> int:
+        journal.record_middleware(
+            "tool_progress",
+            name="ToolProgressMiddleware",
+            hook="wrap_tool_call",
+            action="warn",
+            changes={},
+        )
+        return len(journal._buffer)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        buffered = pool.submit(loop.run_until_complete, record_on_current_loop()).result(timeout=5)
+
+    assert buffered == 1
+    loop.run_until_complete(journal.flush())
+    loop.close()
+
+
+@pytest.mark.anyio
+async def test_cross_thread_append_during_explicit_flush_is_not_flushed_concurrently():
+    class BlockingStore(MemoryRunEventStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.active_writes = 0
+            self.max_active_writes = 0
+
+        async def put_batch(self, events):
+            self.active_writes += 1
+            self.max_active_writes = max(self.max_active_writes, self.active_writes)
+            if not self.started.is_set():
+                self.started.set()
+                await self.release.wait()
+            try:
+                await super().put_batch(events)
+            finally:
+                self.active_writes -= 1
+
+    store = BlockingStore()
+    journal = RunJournal("r-flush", "t-flush", store, flush_threshold=1)
+    journal._buffer.append(
+        journal._make_event(
+            event_type="middleware:test",
+            category="middleware",
+            content={},
+        )
+    )
+    flush_task = asyncio.create_task(journal.flush())
+    await store.started.wait()
+
+    await asyncio.to_thread(
+        journal.record_middleware,
+        "tool_progress",
+        name="ToolProgressMiddleware",
+        hook="wrap_tool_call",
+        action="warn",
+        changes={},
+    )
+    await asyncio.sleep(0)
+    assert store.max_active_writes == 1
+
+    store.release.set()
+    await flush_task
+    assert store.max_active_writes == 1
+    events = await store.list_events("t-flush", "r-flush")
+    assert [event["event_type"] for event in events] == [
+        "middleware:test",
+        "middleware:tool_progress",
+    ]
 
 
 @pytest.mark.anyio
@@ -37,9 +186,7 @@ async def test_close_flushes_and_detaches_runtime_dependencies():
         progress_reporter=reporter,
         flush_threshold=100,
     )
-    journal.record_middleware(
-        "test", name="test", hook="after", action="record", changes={}
-    )
+    journal.record_middleware("test", name="test", hook="after", action="record", changes={})
 
     await journal.close()
 
@@ -52,6 +199,24 @@ async def test_close_flushes_and_detaches_runtime_dependencies():
     await asyncio.sleep(0)
     assert store_ref() is None
     assert reporter_ref() is None
+
+
+@pytest.mark.anyio
+async def test_closed_on_llm_end_returns_before_touching_response_or_state():
+    store = MemoryRunEventStore()
+    journal = RunJournal("r-closed-callback", "t-closed-callback", store)
+    await journal.close()
+    completion_before = journal.get_completion_data()
+
+    # A plain object has no generations attribute, so this also pins the
+    # early return ahead of response inspection.
+    journal.on_llm_end(object(), run_id=uuid4(), tags=["lead_agent"])
+
+    assert journal.get_completion_data() == completion_before
+    assert journal._pending_llm_response is None
+    assert journal._buffer == []
+    assert journal._counted_message_llm_run_ids == set()
+    assert journal._counted_llm_run_ids == set()
 
 
 @pytest.mark.anyio
@@ -69,9 +234,7 @@ async def test_close_preserves_buffer_and_dependencies_when_flush_fails():
 
     store = FailOnceRunEventStore()
     journal = RunJournal("r-close-retry", "t-close-retry", store, flush_threshold=100)
-    journal.record_middleware(
-        "test", name="test", hook="after", action="record", changes={}
-    )
+    journal.record_middleware("test", name="test", hook="after", action="record", changes={})
 
     with pytest.raises(RuntimeError, match="transient store failure"):
         await journal.close()
@@ -90,6 +253,73 @@ async def test_close_preserves_buffer_and_dependencies_when_flush_fails():
 
 
 @pytest.mark.anyio
+async def test_close_retries_pending_no_usage_response_without_duplication():
+    class FailOnceRunEventStore(MemoryRunEventStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.put_batch_calls = 0
+
+        async def put_batch(self, events):
+            self.put_batch_calls += 1
+            if self.put_batch_calls == 1:
+                raise RuntimeError("transient store failure")
+            return await super().put_batch(events)
+
+    async def progress_reporter(snapshot):
+        del snapshot
+
+    store = FailOnceRunEventStore()
+    journal = RunJournal(
+        "r-close-pending-retry",
+        "t-close-pending-retry",
+        store,
+        flush_threshold=100,
+        progress_reporter=progress_reporter,
+    )
+    journal.record_middleware("before", name="test", hook="after", action="record", changes={})
+    journal.on_llm_end(
+        _make_llm_response("Canonical without usage"),
+        run_id=uuid4(),
+        parent_run_id=None,
+        tags=["lead_agent"],
+    )
+
+    assert journal._pending_llm_response is not None
+    assert journal.get_completion_data()["message_count"] == 0
+
+    with pytest.raises(RuntimeError, match="transient store failure"):
+        await journal.close()
+
+    assert journal._closed is False
+    assert journal._store is store
+    assert journal._progress_reporter is progress_reporter
+    assert journal._pending_llm_response is None
+    assert [event["event_type"] for event in journal._buffer] == [
+        "middleware:before",
+        "llm.ai.response",
+    ]
+    assert journal.get_completion_data()["message_count"] == 1
+    assert journal.get_completion_data()["last_ai_message"] == "Canonical without usage"
+
+    await journal.close()
+
+    events = await store.list_events("t-close-pending-retry", "r-close-pending-retry")
+    assert [event["event_type"] for event in events] == [
+        "middleware:before",
+        "llm.ai.response",
+    ]
+    responses = [event for event in events if event["event_type"] == "llm.ai.response"]
+    assert len(responses) == 1
+    assert responses[0]["content"]["content"] == "Canonical without usage"
+    assert responses[0]["content"]["usage_metadata"] is None
+    assert responses[0]["metadata"]["usage"] == {}
+    assert journal.get_completion_data()["message_count"] == 1
+    assert journal._closed is True
+    assert journal._store is None
+    assert journal._progress_reporter is None
+
+
+@pytest.mark.anyio
 async def test_close_without_flush_discards_buffer_and_detaches_runtime_dependencies():
     class TrackingRunEventStore(MemoryRunEventStore):
         def __init__(self) -> None:
@@ -101,12 +331,8 @@ async def test_close_without_flush_discards_buffer_and_detaches_runtime_dependen
             return await super().put_batch(events)
 
     store = TrackingRunEventStore()
-    journal = RunJournal(
-        "r-close-discard", "t-close-discard", store, flush_threshold=100
-    )
-    journal.record_middleware(
-        "test", name="test", hook="after", action="record", changes={}
-    )
+    journal = RunJournal("r-close-discard", "t-close-discard", store, flush_threshold=100)
+    journal.record_middleware("test", name="test", hook="after", action="record", changes={})
 
     await journal.close(flush=False)
 
@@ -119,12 +345,8 @@ async def test_close_without_flush_discards_buffer_and_detaches_runtime_dependen
 @pytest.mark.anyio
 async def test_close_without_flush_detaches_when_cancellation_interrupts_pending_task_cleanup():
     store = MemoryRunEventStore()
-    journal = RunJournal(
-        "r-close-cancelled", "t-close-cancelled", store, flush_threshold=100
-    )
-    journal.record_middleware(
-        "test", name="test", hook="after", action="record", changes={}
-    )
+    journal = RunJournal("r-close-cancelled", "t-close-cancelled", store, flush_threshold=100)
+    journal.record_middleware("test", name="test", hook="after", action="record", changes={})
     first_cancellation_seen = asyncio.Event()
 
     async def stubborn_pending_flush() -> None:
@@ -157,9 +379,7 @@ def journal_setup():
     return j, store
 
 
-def _make_llm_response(
-    content="Hello", usage=None, tool_calls=None, additional_kwargs=None
-):
+def _make_llm_response(content="Hello", usage=None, tool_calls=None, additional_kwargs=None):
     """Create a mock LLM response with a message.
 
     model_dump() returns checkpoint-aligned format matching real AIMessage.
@@ -195,15 +415,17 @@ def _make_llm_response(
     return response
 
 
+def _combine_llm_responses(*responses):
+    response = MagicMock()
+    response.generations = [generation for item in responses for generation in item.generations]
+    return response
+
+
 class TestLlmCallbacks:
     @pytest.mark.anyio
-    async def test_on_chat_model_start_persists_original_user_input_without_mutating_model_message(
-        self, journal_setup
-    ):
+    async def test_on_chat_model_start_persists_original_user_input_without_mutating_model_message(self, journal_setup):
         j, store = journal_setup
-        wrapped_content = (
-            "--- BEGIN USER INPUT ---\nShow revenue\n--- END USER INPUT ---"
-        )
+        wrapped_content = "--- BEGIN USER INPUT ---\nShow revenue\n--- END USER INPUT ---"
         model_message = HumanMessage(
             content=wrapped_content,
             id="human-1",
@@ -213,23 +435,17 @@ class TestLlmCallbacks:
             },
         )
 
-        j.on_chat_model_start(
-            {}, [[model_message]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[model_message]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
         assert j._first_human_msg == "Show revenue"
         events = await store.list_events("t1", "r1")
-        human_event = next(
-            event for event in events if event["event_type"] == "llm.human.input"
-        )
+        human_event = next(event for event in events if event["event_type"] == "llm.human.input")
         assert human_event["content"]["content"] == "Show revenue"
         assert human_event["content"]["id"] == "human-1"
         assert human_event["content"]["additional_kwargs"] == {"channel": "web"}
         assert model_message.content == wrapped_content
-        assert (
-            model_message.additional_kwargs[ORIGINAL_USER_CONTENT_KEY] == "Show revenue"
-        )
+        assert model_message.additional_kwargs[ORIGINAL_USER_CONTENT_KEY] == "Show revenue"
 
     @pytest.mark.anyio
     async def test_on_llm_end_produces_trace_event(self, journal_setup):
@@ -248,9 +464,7 @@ class TestLlmCallbacks:
         assert len(trace_events) == 1
         assert trace_events[0]["category"] == "message"
 
-    def test_on_llm_new_token_logs_only_first_non_empty_token(
-        self, journal_setup, caplog
-    ):
+    def test_on_llm_new_token_logs_only_first_non_empty_token(self, journal_setup, caplog):
         j, _ = journal_setup
         run_id = uuid4()
         j.on_llm_start({}, [], run_id=run_id, tags=["lead_agent"])
@@ -260,9 +474,7 @@ class TestLlmCallbacks:
             j.on_llm_new_token("A", run_id=run_id, tags=["lead_agent"])
             j.on_llm_new_token("B", run_id=run_id, tags=["lead_agent"])
 
-        records = [
-            record.message for record in caplog.records if "stage=llm" in record.message
-        ]
+        records = [record.message for record in caplog.records if "stage=llm" in record.message]
         assert len(records) == 1
         assert "llm_ttft_ms=" in records[0]
 
@@ -286,9 +498,7 @@ class TestLlmCallbacks:
         assert messages[0]["content"]["content"] == "Answer"
 
     @pytest.mark.anyio
-    async def test_on_llm_end_with_tool_calls_produces_ai_tool_call(
-        self, journal_setup
-    ):
+    async def test_on_llm_end_with_tool_calls_produces_ai_tool_call(self, journal_setup):
         """LLM response with pending tool_calls emits llm.ai.response with tool_calls in content."""
         j, store = journal_setup
         run_id = uuid4()
@@ -448,9 +658,7 @@ class TestToolCallbacks:
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
-        tool_msg = ToolMessage(
-            content="results", tool_call_id="call_1", name="web_search"
-        )
+        tool_msg = ToolMessage(content="results", tool_call_id="call_1", name="web_search")
         j.on_tool_end(tool_msg, run_id=uuid4())
         await j.flush()
         messages = await store.list_messages("t1")
@@ -465,9 +673,7 @@ class TestToolCallbacks:
         from langgraph.types import Command
 
         j, store = journal_setup
-        inner = ToolMessage(
-            content="file list", tool_call_id="call_2", name="present_files"
-        )
+        inner = ToolMessage(content="file list", tool_call_id="call_2", name="present_files")
         cmd = Command(update={"messages": [inner]})
         j.on_tool_end(cmd, run_id=uuid4())
         await j.flush()
@@ -489,9 +695,7 @@ class TestToolCallbacks:
 
 class TestFinalToolMessageReconciliation:
     @pytest.mark.anyio
-    async def test_root_chain_end_reconciles_missing_ask_clarification_tool_message(
-        self, journal_setup
-    ):
+    async def test_root_chain_end_reconciles_missing_ask_clarification_tool_message(self, journal_setup):
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
@@ -529,15 +733,10 @@ class TestFinalToolMessageReconciliation:
         tool_results = [m for m in messages if m["event_type"] == "llm.tool.result"]
         assert len(tool_results) == 1
         assert tool_results[0]["content"]["name"] == "ask_clarification"
-        assert (
-            tool_results[0]["content"]["artifact"]["human_input"]["request_id"]
-            == "clarification:call_clarify"
-        )
+        assert tool_results[0]["content"]["artifact"]["human_input"]["request_id"] == "clarification:call_clarify"
 
     @pytest.mark.anyio
-    async def test_root_chain_end_does_not_duplicate_tool_message_captured_by_on_tool_end(
-        self, journal_setup
-    ):
+    async def test_root_chain_end_does_not_duplicate_tool_message_captured_by_on_tool_end(self, journal_setup):
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
@@ -571,9 +770,7 @@ class TestFinalToolMessageReconciliation:
         assert len(tool_results) == 1
 
     @pytest.mark.anyio
-    async def test_root_chain_end_ignores_retained_old_tool_message_from_previous_run(
-        self, journal_setup
-    ):
+    async def test_root_chain_end_ignores_retained_old_tool_message_from_previous_run(self, journal_setup):
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
@@ -592,9 +789,7 @@ class TestFinalToolMessageReconciliation:
             parent_run_id=None,
             tags=["lead_agent"],
         )
-        retained_old_tool_msg = ToolMessage(
-            content="Old question", tool_call_id="call_old", name="ask_clarification"
-        )
+        retained_old_tool_msg = ToolMessage(content="Old question", tool_call_id="call_old", name="ask_clarification")
 
         j.on_chain_end({"messages": [retained_old_tool_msg]}, run_id=uuid4())
         await j.flush()
@@ -630,9 +825,7 @@ class TestFinalToolMessageReconciliation:
             parent_run_id=None,
             tags=["subagent:general-purpose"],
         )
-        tool_msg = ToolMessage(
-            content="Search result", tool_call_id="call_search", name="web_search"
-        )
+        tool_msg = ToolMessage(content="Search result", tool_call_id="call_search", name="web_search")
 
         j.on_chain_end({"messages": [tool_msg]}, run_id=uuid4())
         await j.flush()
@@ -641,9 +834,7 @@ class TestFinalToolMessageReconciliation:
         assert not any(m["event_type"] == "llm.tool.result" for m in messages)
 
     @pytest.mark.anyio
-    async def test_root_chain_end_ignores_hidden_ask_clarification_tool_message(
-        self, journal_setup
-    ):
+    async def test_root_chain_end_ignores_hidden_ask_clarification_tool_message(self, journal_setup):
         from langchain_core.messages import ToolMessage
 
         j, store = journal_setup
@@ -676,9 +867,7 @@ class TestFinalToolMessageReconciliation:
         assert not any(m["event_type"] == "llm.tool.result" for m in messages)
 
     @pytest.mark.anyio
-    async def test_root_chain_end_reconciles_any_middleware_short_circuited_tool_message(
-        self, journal_setup
-    ):
+    async def test_root_chain_end_reconciles_any_middleware_short_circuited_tool_message(self, journal_setup):
         """A middleware that blocks a tool call still returns a user-visible result.
 
         ReadBeforeWriteMiddleware answers a blocked ``write_file`` with an error
@@ -739,23 +928,27 @@ class TestBufferFlush:
         j, store = journal_setup
         j._flush_threshold = 2
         # Each on_llm_end emits 1 event
-        j.on_llm_end(
-            _make_llm_response("A"),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
+        usage = {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        j.on_llm_end(_make_llm_response("A", usage=usage), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
         assert len(j._buffer) == 1
-        j.on_llm_end(
-            _make_llm_response("B"),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
+        j.on_llm_end(_make_llm_response("B", usage=usage), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
         # At threshold the buffer should have been flushed asynchronously
         await asyncio.sleep(0.1)
         events = await store.list_events("t1", "r1")
         assert len(events) >= 2
+
+    @pytest.mark.anyio
+    async def test_pending_response_counts_toward_flush_threshold(self, journal_setup):
+        j, store = journal_setup
+        j._flush_threshold = 2
+        j.record_middleware("before", name="BeforeMiddleware", hook="after_model", action="record", changes={})
+
+        j.on_llm_end(_make_llm_response("Pending"), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        await asyncio.sleep(0.1)
+
+        assert j._pending_llm_response is None
+        events = await store.list_events("t1", "r1")
+        assert [event["event_type"] for event in events] == ["middleware:before", "llm.ai.response"]
 
     @pytest.mark.anyio
     async def test_events_retained_when_no_loop(self, journal_setup):
@@ -792,7 +985,7 @@ class TestFeedGeneration:
     """
 
     @pytest.mark.anyio
-    async def test_buffering_alone_does_not_advance_it(self, journal_setup):
+    async def test_pending_response_alone_does_not_advance_it(self, journal_setup):
         j, _store = journal_setup
         j.on_llm_end(
             _make_llm_response("A"),
@@ -801,7 +994,8 @@ class TestFeedGeneration:
             tags=["lead_agent"],
         )
 
-        assert len(j._buffer) == 1
+        assert j._buffer == []
+        assert j._pending_llm_response is not None
         assert j.feed_generation == 0
 
     @pytest.mark.anyio
@@ -809,12 +1003,8 @@ class TestFeedGeneration:
         j, _store = journal_setup
         j._flush_threshold = 1
 
-        j.on_llm_end(
-            _make_llm_response("A"),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
+        usage = {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        j.on_llm_end(_make_llm_response("A", usage=usage), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
         await asyncio.sleep(0.1)
 
         assert j.feed_generation == 1
@@ -864,10 +1054,7 @@ class TestIdentifyCaller:
 
     def test_middleware_tag(self, journal_setup):
         j, _ = journal_setup
-        assert (
-            j._identify_caller(["middleware:summarization"])
-            == "middleware:summarization"
-        )
+        assert j._identify_caller(["middleware:summarization"]) == "middleware:summarization"
 
     def test_no_tags_returns_lead_agent(self, journal_setup):
         j, _ = journal_setup
@@ -917,9 +1104,7 @@ class TestConvenienceFields:
         assert data["first_human_message"] == "What is AI?"
 
     @pytest.mark.anyio
-    async def test_completion_data_counts_human_ai_and_tool_messages(
-        self, journal_setup
-    ):
+    async def test_completion_data_counts_human_ai_and_tool_messages(self, journal_setup):
         from langchain_core.messages import HumanMessage, ToolMessage
 
         j, _ = journal_setup
@@ -947,9 +1132,7 @@ class TestConvenienceFields:
         assert data["last_ai_message"] == "Answer"
 
     @pytest.mark.anyio
-    async def test_tool_call_only_ai_does_not_clear_last_ai_message(
-        self, journal_setup
-    ):
+    async def test_tool_call_only_ai_does_not_clear_last_ai_message(self, journal_setup):
         j, _ = journal_setup
         j.on_llm_end(
             _make_llm_response("Useful answer"),
@@ -958,13 +1141,12 @@ class TestConvenienceFields:
             tags=["lead_agent"],
         )
         j.on_llm_end(
-            _make_llm_response(
-                "", tool_calls=[{"id": "call_1", "name": "search", "args": {}}]
-            ),
+            _make_llm_response("", tool_calls=[{"id": "call_1", "name": "search", "args": {}}]),
             run_id=uuid4(),
             parent_run_id=None,
             tags=["lead_agent"],
         )
+        await j.flush()
 
         data = j.get_completion_data()
 
@@ -972,9 +1154,7 @@ class TestConvenienceFields:
         assert data["last_ai_message"] == "Useful answer"
 
     @pytest.mark.anyio
-    async def test_last_ai_message_extracts_mixed_content_without_extra_newlines(
-        self, journal_setup
-    ):
+    async def test_last_ai_message_extracts_mixed_content_without_extra_newlines(self, journal_setup):
         j, _ = journal_setup
         j.on_llm_end(
             _make_llm_response(
@@ -989,6 +1169,7 @@ class TestConvenienceFields:
             parent_run_id=None,
             tags=["lead_agent"],
         )
+        await j.flush()
 
         data = j.get_completion_data()
 
@@ -998,12 +1179,8 @@ class TestConvenienceFields:
     @pytest.mark.anyio
     async def test_last_ai_message_extracts_mapping_content(self, journal_setup):
         j, _ = journal_setup
-        j.on_llm_end(
-            _make_llm_response({"content": "Nested answer"}),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
+        j.on_llm_end(_make_llm_response({"content": "Nested answer"}), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
 
         data = j.get_completion_data()
 
@@ -1011,9 +1188,7 @@ class TestConvenienceFields:
         assert data["last_ai_message"] == "Nested answer"
 
     @pytest.mark.anyio
-    async def test_duplicate_llm_run_id_does_not_double_count_message_summary(
-        self, journal_setup
-    ):
+    async def test_duplicate_llm_run_id_does_not_double_count_message_summary(self, journal_setup):
         j, _ = journal_setup
         run_id = uuid4()
 
@@ -1040,22 +1215,11 @@ class TestConvenienceFields:
         assert data["total_tokens"] == 15
 
     @pytest.mark.anyio
-    async def test_subagent_ai_does_not_overwrite_lead_last_ai_message(
-        self, journal_setup
-    ):
+    async def test_subagent_ai_does_not_overwrite_lead_last_ai_message(self, journal_setup):
         j, _ = journal_setup
-        j.on_llm_end(
-            _make_llm_response("Lead answer"),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
-        j.on_llm_end(
-            _make_llm_response("Subagent detail"),
-            run_id=uuid4(),
-            parent_run_id=None,
-            tags=["subagent:research"],
-        )
+        j.on_llm_end(_make_llm_response("Lead answer"), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        j.on_llm_end(_make_llm_response("Subagent detail"), run_id=uuid4(), parent_run_id=None, tags=["subagent:research"])
+        await j.flush()
 
         data = j.get_completion_data()
 
@@ -1120,9 +1284,7 @@ class TestMiddlewareEvents:
 
 class TestContextEvents:
     @pytest.mark.anyio
-    async def test_record_memory_context_is_readable_from_public_store_contract(
-        self, journal_setup
-    ):
+    async def test_record_memory_context_is_readable_from_public_store_contract(self, journal_setup):
         j, store = journal_setup
 
         j.record_memory_context(
@@ -1138,12 +1300,10 @@ class TestContextEvents:
         events = await store.list_events("t1", "r1", event_types=["context:memory"])
         assert len(events) == 1
         assert events[0]["category"] == "context"
-        assert events[0]["content"] == {"content_sha256": "a" * 64}
+        assert events[0]["content"] == {"content_sha256": "a" * 64, "project_context_revision": None, "project_shelf_revision": None}
 
     @pytest.mark.anyio
-    async def test_record_memory_context_can_retry_after_buffer_failure(
-        self, journal_setup, monkeypatch
-    ):
+    async def test_record_memory_context_can_retry_after_buffer_failure(self, journal_setup, monkeypatch):
         j, store = journal_setup
         original_put = j._put
         attempts = 0
@@ -1164,7 +1324,7 @@ class TestContextEvents:
 
         events = await store.list_events("t1", "r1", event_types=["context:memory"])
         assert len(events) == 1
-        assert events[0]["content"] == {"content_sha256": "a" * 64}
+        assert events[0]["content"] == {"content_sha256": "a" * 64, "project_context_revision": None, "project_shelf_revision": None}
 
 
 class TestCallerBucketing:
@@ -1266,27 +1426,317 @@ class TestCallerBucketing:
         assert j._lead_agent_tokens == 15
         assert j._llm_call_count == 1
 
-    def test_first_no_usage_second_with_usage(self, journal_setup):
-        """First callback with no usage must not block second callback with usage for same run_id."""
-        j, _ = journal_setup
+    @pytest.mark.anyio
+    async def test_dedup_same_run_id_persists_single_message(self, journal_setup):
+        """A re-fired on_llm_end for one run_id must persist the message once.
+
+        LangChain can deliver on_llm_end more than once for the same run_id.
+        Token accounting already dedups on that; the durable llm.ai.response
+        row must be deduped on the same premise, or count_messages and message
+        pagination (which read append-only rows without dedup) inflate.
+        """
+        j, store = journal_setup
         run_id = uuid4()
-        j.on_llm_end(
-            _make_llm_response("A", usage=None),
-            run_id=run_id,
-            parent_run_id=None,
-            tags=["lead_agent"],
-        )
-        assert str(run_id) not in j._counted_llm_run_ids
-        # Second callback for the same run_id with actual usage must still count
+        response = _make_llm_response("Answer")
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
+        messages = await store.list_messages("t1")
+        assert [m["event_type"] for m in messages] == ["llm.ai.response"]
+        assert await store.count_messages("t1") == 1
+        # The run summary counts the message exactly once as well.
+        assert j._msg_count == 1
+
+    @pytest.mark.anyio
+    async def test_adjacent_late_usage_enriches_canonical_response_only(self, journal_setup):
+        j, store = journal_setup
+        run_id = uuid4()
         usage = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        original_tool_calls = [{"id": "call-original", "name": "search", "args": {}}]
+        replay_tool_calls = [{"id": "call-replay", "name": "write_file", "args": {}}]
+
         j.on_llm_end(
-            _make_llm_response("A", usage=usage),
+            _make_llm_response(
+                "Canonical",
+                tool_calls=original_tool_calls,
+                additional_kwargs={
+                    "deerflow_error_fallback": True,
+                    "error_detail": "canonical fallback",
+                },
+            ),
             run_id=run_id,
             parent_run_id=None,
             tags=["lead_agent"],
         )
-        assert j._total_tokens == 15
-        assert j._lead_agent_tokens == 15
+        j.on_llm_end(
+            _make_llm_response(
+                "Replay",
+                usage=usage,
+                tool_calls=replay_tool_calls,
+                additional_kwargs={
+                    "deerflow_error_fallback": True,
+                    "error_detail": "replay fallback",
+                },
+            ),
+            run_id=run_id,
+            parent_run_id=None,
+            tags=["subagent:research"],
+        )
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == "Canonical"
+        assert messages[0]["content"]["tool_calls"] == original_tool_calls
+        assert messages[0]["content"]["additional_kwargs"]["error_detail"] == "canonical fallback"
+        assert messages[0]["content"]["usage_metadata"] == usage
+        assert messages[0]["metadata"]["caller"] == "lead_agent"
+        assert messages[0]["metadata"]["usage"] == usage
+        assert j._current_run_tool_call_names == {"call-original": "search"}
+        assert j.had_llm_error_fallback is True
+        assert j.llm_error_fallback_message == "canonical fallback"
+        assert j.get_completion_data()["last_ai_message"] == "Canonical"
+        assert j.get_completion_data()["lead_agent_tokens"] == 15
+        assert j.get_completion_data()["subagent_tokens"] == 0
+
+    @pytest.mark.anyio
+    async def test_same_message_object_replay_cannot_mutate_canonical_summary(self, journal_setup):
+        j, store = journal_setup
+        run_id = uuid4()
+        message = AIMessage(content="Canonical answer")
+        response = LLMResult(generations=[[ChatGeneration(message=message)]])
+
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        message.content = "Replay answer"
+        message.usage_metadata = {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "input_token_details": {"cache_read": 3},
+        }
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        message.usage_metadata["input_token_details"]["cache_read"] = 999
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == "Canonical answer"
+        expected_usage = {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "input_token_details": {"cache_read": 3},
+        }
+        assert messages[0]["metadata"]["usage"] == expected_usage
+        assert messages[0]["content"]["usage_metadata"] == expected_usage
+        assert j.get_completion_data()["message_count"] == 1
+        assert j.get_completion_data()["last_ai_message"] == "Canonical answer"
+
+    @pytest.mark.anyio
+    async def test_positive_usage_event_does_not_retain_nested_provider_metadata(self, journal_setup):
+        j, store = journal_setup
+        usage = {
+            "input_tokens": 8,
+            "output_tokens": 3,
+            "total_tokens": 11,
+            "output_token_details": {"reasoning": 2},
+        }
+        message = AIMessage(content="Canonical with usage", usage_metadata=usage)
+        response = LLMResult(generations=[[ChatGeneration(message=message)]])
+
+        j.on_llm_end(response, run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        message.usage_metadata["output_token_details"]["reasoning"] = 999
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["metadata"]["usage"]["output_token_details"] == {"reasoning": 2}
+        assert messages[0]["content"]["usage_metadata"]["output_token_details"] == {"reasoning": 2}
+
+    @pytest.mark.anyio
+    async def test_mutating_staged_message_before_flush_cannot_mutate_canonical_summary(self, journal_setup):
+        j, store = journal_setup
+        message = AIMessage(content="Canonical before flush")
+        response = LLMResult(generations=[[ChatGeneration(message=message)]])
+
+        j.on_llm_end(response, run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        message.content = "Mutation before flush"
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == "Canonical before flush"
+        assert j.get_completion_data()["message_count"] == 1
+        assert j.get_completion_data()["last_ai_message"] == "Canonical before flush"
+
+    @pytest.mark.anyio
+    async def test_nested_same_message_object_replay_cannot_mutate_canonical_summary(self, journal_setup):
+        j, store = journal_setup
+        run_id = uuid4()
+        message = AIMessage(content=[{"type": "text", "text": "Canonical nested answer"}])
+        response = LLMResult(generations=[[ChatGeneration(message=message)]])
+
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        message.content[0]["text"] = "Replay nested answer"
+        message.usage_metadata = {"input_tokens": 8, "output_tokens": 3, "total_tokens": 11}
+        j.on_llm_end(response, run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == [{"type": "text", "text": "Canonical nested answer"}]
+        assert messages[0]["content"]["usage_metadata"] == message.usage_metadata
+        assert j.get_completion_data()["message_count"] == 1
+        assert j.get_completion_data()["last_ai_message"] == "Canonical nested answer"
+
+    @pytest.mark.anyio
+    async def test_all_zero_usage_remains_pending_and_positive_usage_enriches_it(self, journal_setup):
+        j, store = journal_setup
+        run_id = uuid4()
+        zero_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        positive_usage = {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6}
+
+        j.on_llm_end(_make_llm_response("Zero usage", usage=zero_usage), run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        assert j._buffer == []
+        assert j._pending_llm_response is not None
+        assert j.get_completion_data()["message_count"] == 0
+
+        j.on_llm_end(_make_llm_response("Replay payload", usage=positive_usage), run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == "Zero usage"
+        assert messages[0]["content"]["usage_metadata"] == positive_usage
+        assert messages[0]["metadata"]["usage"] == positive_usage
+        assert j.get_completion_data()["message_count"] == 1
+        assert j.get_completion_data()["last_ai_message"] == "Zero usage"
+
+    @pytest.mark.anyio
+    async def test_replay_generation_length_cannot_change_canonical_set(self, journal_setup):
+        j, store = journal_setup
+        short_usage = {"input_tokens": 8, "output_tokens": 3, "total_tokens": 11}
+        extra_usage = {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        first_run_id = uuid4()
+        second_run_id = uuid4()
+
+        j.on_llm_end(
+            _combine_llm_responses(_make_llm_response("Canonical one"), _make_llm_response("Canonical two")),
+            run_id=first_run_id,
+            parent_run_id=None,
+            tags=["lead_agent"],
+        )
+        j.on_llm_end(
+            _make_llm_response("Short replay", usage=short_usage),
+            run_id=first_run_id,
+            parent_run_id=None,
+            tags=["lead_agent"],
+        )
+        j.on_llm_end(
+            _make_llm_response("Single canonical"),
+            run_id=second_run_id,
+            parent_run_id=None,
+            tags=["lead_agent"],
+        )
+        j.on_llm_end(
+            _combine_llm_responses(
+                _make_llm_response("Long replay one", usage=extra_usage),
+                _make_llm_response("Long replay two"),
+            ),
+            run_id=second_run_id,
+            parent_run_id=None,
+            tags=["lead_agent"],
+        )
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert [message["content"]["content"] for message in messages] == [
+            "Canonical one",
+            "Canonical two",
+            "Single canonical",
+        ]
+        assert messages[0]["metadata"]["usage"] == short_usage
+        assert messages[0]["content"]["usage_metadata"] == short_usage
+        assert messages[1]["metadata"]["usage"] == {}
+        assert messages[1]["content"]["usage_metadata"] is None
+        assert messages[2]["metadata"]["usage"] == extra_usage
+        assert messages[2]["content"]["usage_metadata"] == extra_usage
+        assert j.get_completion_data()["message_count"] == 3
+        assert j.get_completion_data()["last_ai_message"] == "Single canonical"
+
+    @pytest.mark.anyio
+    async def test_interleaved_late_usage_updates_summary_only(self, journal_setup):
+        j, store = journal_setup
+        first_run_id = uuid4()
+        second_run_id = uuid4()
+        usage = {"input_tokens": 9, "output_tokens": 4, "total_tokens": 13}
+
+        j.on_llm_end(_make_llm_response("First canonical"), run_id=first_run_id, parent_run_id=None, tags=["lead_agent"])
+        j.on_llm_end(_make_llm_response("Second canonical"), run_id=second_run_id, parent_run_id=None, tags=["lead_agent"])
+        j.on_llm_end(
+            _make_llm_response(
+                "Late replay",
+                usage=usage,
+                tool_calls=[{"id": "late-call", "name": "write_file", "args": {}}],
+                additional_kwargs={"deerflow_error_fallback": True, "error_detail": "late fallback"},
+            ),
+            run_id=first_run_id,
+            parent_run_id=None,
+            tags=["subagent:research"],
+        )
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert [message["content"]["content"] for message in messages] == ["First canonical", "Second canonical"]
+        assert messages[0]["metadata"]["usage"] == {}
+        assert messages[0]["content"]["usage_metadata"] is None
+        assert j.get_completion_data()["total_tokens"] == 13
+        assert j.get_completion_data()["lead_agent_tokens"] == 13
+        assert j.get_completion_data()["subagent_tokens"] == 0
+        assert j.get_completion_data()["message_count"] == 2
+        assert j.get_completion_data()["last_ai_message"] == "Second canonical"
+        assert "late-call" not in j._current_run_tool_call_names
+        assert j.had_llm_error_fallback is False
+
+    @pytest.mark.anyio
+    async def test_single_no_usage_response_persists_once_at_flush(self, journal_setup):
+        j, store = journal_setup
+
+        j.on_llm_end(_make_llm_response("No usage"), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        assert j._buffer == []
+        assert j._pending_llm_response is not None
+
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["content"]["content"] == "No usage"
+        assert messages[0]["metadata"]["usage"] == {}
+
+    @pytest.mark.anyio
+    async def test_distinct_run_ids_each_persist_a_message(self, journal_setup):
+        """The dedup guard is per run_id and must not drop distinct responses."""
+        j, store = journal_setup
+        j.on_llm_end(_make_llm_response("First"), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        j.on_llm_end(_make_llm_response("Second"), run_id=uuid4(), parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
+        assert await store.count_messages("t1") == 2
+
+    @pytest.mark.anyio
+    async def test_first_no_usage_second_with_usage(self, journal_setup):
+        """Late usage enriches the single canonical event and the run summary."""
+        j, store = journal_setup
+        run_id = uuid4()
+        j.on_llm_end(_make_llm_response("A", usage=None), run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        usage = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
+        j.on_llm_end(_make_llm_response("A", usage=usage), run_id=run_id, parent_run_id=None, tags=["lead_agent"])
+        await j.flush()
+
+        messages = await store.list_messages("t1")
+        assert len(messages) == 1
+        assert messages[0]["metadata"]["usage"] == usage
+        assert messages[0]["content"]["usage_metadata"] == usage
+        assert j.get_completion_data()["total_tokens"] == 15
 
     def test_track_token_usage_false_skips_buckets(self):
         """When token tracking is disabled, caller buckets stay at 0."""
@@ -1306,9 +1756,7 @@ class TestCallerBucketing:
         """LLM calls without explicit tags default to lead_agent bucket."""
         j, _ = journal_setup
         usage = {"input_tokens": 5, "output_tokens": 5, "total_tokens": 10}
-        j.on_llm_end(
-            _make_llm_response("Hi", usage=usage), run_id=uuid4(), parent_run_id=None
-        )
+        j.on_llm_end(_make_llm_response("Hi", usage=usage), run_id=uuid4(), parent_run_id=None)
         assert j._lead_agent_tokens == 10
         assert j._subagent_tokens == 0
         assert j._middleware_tokens == 0
@@ -1705,9 +2153,7 @@ class TestChatModelStartHumanMessage:
             content="Internal context",
             additional_kwargs={"hide_from_ui": True},
         )
-        j.on_chat_model_start(
-            {}, [[hidden_message]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[hidden_message]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
         assert j._first_human_msg is None
@@ -1729,31 +2175,19 @@ class TestChatModelStartHumanMessage:
                 "human_input_response": self._human_input_response(source=source),
             },
         )
-        j.on_chat_model_start(
-            {}, [[hidden_response]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[hidden_response]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
-        assert (
-            j._first_human_msg
-            == 'For your clarification "Which environment?", my answer is: staging'
-        )
+        assert j._first_human_msg == 'For your clarification "Which environment?", my answer is: staging'
         assert j.get_completion_data()["message_count"] == 1
         events = await store.list_events("t1", "r1")
         human_events = [e for e in events if e["event_type"] == "llm.human.input"]
         assert len(human_events) == 1
         assert human_events[0]["content"]["additional_kwargs"]["hide_from_ui"] is True
-        assert (
-            human_events[0]["content"]["additional_kwargs"]["human_input_response"][
-                "request_id"
-            ]
-            == "clarification:call-abc"
-        )
+        assert human_events[0]["content"]["additional_kwargs"]["human_input_response"]["request_id"] == "clarification:call-abc"
 
     @pytest.mark.anyio
-    async def test_hidden_human_input_response_wins_over_older_visible_prompt(
-        self, journal_setup
-    ):
+    async def test_hidden_human_input_response_wins_over_older_visible_prompt(self, journal_setup):
         """The latest hidden card reply is the run input, not an older visible prompt."""
         from langchain_core.messages import HumanMessage
 
@@ -1766,27 +2200,17 @@ class TestChatModelStartHumanMessage:
                 "human_input_response": self._human_input_response(),
             },
         )
-        j.on_chat_model_start(
-            {}, [[older_prompt, hidden_response]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[older_prompt, hidden_response]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
-        assert (
-            j._first_human_msg
-            == 'For your clarification "Which format?", my answer is: tutorial'
-        )
+        assert j._first_human_msg == 'For your clarification "Which format?", my answer is: tutorial'
         events = await store.list_events("t1", "r1")
         human_events = [e for e in events if e["event_type"] == "llm.human.input"]
         assert len(human_events) == 1
-        assert (
-            human_events[0]["content"]["content"]
-            == 'For your clarification "Which format?", my answer is: tutorial'
-        )
+        assert human_events[0]["content"]["content"] == 'For your clarification "Which format?", my answer is: tutorial'
 
     @pytest.mark.anyio
-    async def test_hidden_human_input_response_ignores_non_allowlisted_source(
-        self, journal_setup
-    ):
+    async def test_hidden_human_input_response_ignores_non_allowlisted_source(self, journal_setup):
         """Only explicit HumanInputCard sources are persisted while hidden."""
         from langchain_core.messages import HumanMessage
 
@@ -1795,14 +2219,10 @@ class TestChatModelStartHumanMessage:
             content="Internal approval response",
             additional_kwargs={
                 "hide_from_ui": True,
-                "human_input_response": self._human_input_response(
-                    source="future_approval"
-                ),
+                "human_input_response": self._human_input_response(source="future_approval"),
             },
         )
-        j.on_chat_model_start(
-            {}, [[hidden_response]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[hidden_response]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
         assert j._first_human_msg is None
@@ -1811,19 +2231,13 @@ class TestChatModelStartHumanMessage:
         assert not any(e["event_type"] == "llm.human.input" for e in events)
 
     @pytest.mark.anyio
-    async def test_legacy_summary_message_is_not_captured_as_user_input(
-        self, journal_setup
-    ):
+    async def test_legacy_summary_message_is_not_captured_as_user_input(self, journal_setup):
         """Legacy synthetic summaries are internal context even if hide_from_ui is absent."""
         from langchain_core.messages import HumanMessage
 
         j, store = journal_setup
-        legacy_summary = HumanMessage(
-            content="Older compressed conversation state", name="summary"
-        )
-        j.on_chat_model_start(
-            {}, [[legacy_summary]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        legacy_summary = HumanMessage(content="Older compressed conversation state", name="summary")
+        j.on_chat_model_start({}, [[legacy_summary]], run_id=uuid4(), tags=["lead_agent"])
         await j.flush()
 
         assert j._first_human_msg is None
@@ -1832,9 +2246,7 @@ class TestChatModelStartHumanMessage:
         assert not any(e["event_type"] == "llm.human.input" for e in events)
 
     @pytest.mark.anyio
-    async def test_visible_human_message_after_hidden_only_prompt_is_captured(
-        self, journal_setup
-    ):
+    async def test_visible_human_message_after_hidden_only_prompt_is_captured(self, journal_setup):
         """Skipping an internal-only prompt does not block later user input."""
         from langchain_core.messages import HumanMessage
 
@@ -1843,9 +2255,7 @@ class TestChatModelStartHumanMessage:
             content="Internal context",
             additional_kwargs={"hide_from_ui": True},
         )
-        j.on_chat_model_start(
-            {}, [[hidden_message]], run_id=uuid4(), tags=["lead_agent"]
-        )
+        j.on_chat_model_start({}, [[hidden_message]], run_id=uuid4(), tags=["lead_agent"])
         j.on_chat_model_start(
             {},
             [[HumanMessage(content="Real question")]],
@@ -1862,9 +2272,7 @@ class TestChatModelStartHumanMessage:
         assert human_events[0]["content"]["content"] == "Real question"
 
     @pytest.mark.anyio
-    async def test_summarization_prompt_does_not_capture_first_human_message(
-        self, journal_setup
-    ):
+    async def test_summarization_prompt_does_not_capture_first_human_message(self, journal_setup):
         """Internal summarization prompts must not replace the run's real user input."""
         from langchain_core.messages import HumanMessage
 
@@ -1896,9 +2304,7 @@ class TestChatModelStartHumanMessage:
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("tags", [["middleware:summarize"], ["subagent:research"]])
-    async def test_non_lead_human_prompts_are_not_captured_as_user_input(
-        self, journal_setup, tags
-    ):
+    async def test_non_lead_human_prompts_are_not_captured_as_user_input(self, journal_setup, tags):
         """Only lead-agent LLM starts create UI-facing human input events."""
         from langchain_core.messages import HumanMessage
 
@@ -1957,9 +2363,7 @@ class TestDeliveryTracking:
     def _register_tool_call(j: RunJournal, tool_call_id: str, name: str) -> None:
         from langchain_core.messages import AIMessage
 
-        ai = AIMessage(
-            content="", tool_calls=[{"id": tool_call_id, "name": name, "args": {}}]
-        )
+        ai = AIMessage(content="", tool_calls=[{"id": tool_call_id, "name": name, "args": {}}])
         j._remember_current_run_tool_calls(ai, caller="lead_agent")
 
     def test_callbacks_run_inline_to_serialize_parallel_mutations(self, journal_setup):
@@ -1971,18 +2375,14 @@ class TestDeliveryTracking:
         assert j.run_inline is True
 
     @pytest.mark.anyio
-    async def test_concurrent_callbacks_on_one_journal_are_serialized(
-        self, journal_setup
-    ):
+    async def test_concurrent_callbacks_on_one_journal_are_serialized(self, journal_setup):
         from langchain_core.callbacks.manager import ahandle_event
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
         j, _ = journal_setup
         commands = []
-        for index, path in enumerate(
-            ("report.md", "report.md", "appendix.md"), start=1
-        ):
+        for index, path in enumerate(("report.md", "report.md", "appendix.md"), start=1):
             tool_call_id = f"call_{index}"
             self._register_tool_call(j, tool_call_id, "present_files")
             commands.append(
@@ -2029,10 +2429,7 @@ class TestDeliveryTracking:
         from langgraph.types import Command
 
         store = MemoryRunEventStore()
-        journals = [
-            RunJournal(run_id, "t1", store, flush_threshold=100)
-            for run_id in ("r1", "r2")
-        ]
+        journals = [RunJournal(run_id, "t1", store, flush_threshold=100) for run_id in ("r1", "r2")]
 
         async def finish_run(journal: RunJournal, index: int) -> None:
             tool_call_id = f"call_run_{index}"
@@ -2055,30 +2452,19 @@ class TestDeliveryTracking:
             journal.record_delivery()
             await journal.flush()
 
-        await asyncio.gather(
-            *(
-                finish_run(journal, index)
-                for index, journal in enumerate(journals, start=1)
-            )
-        )
+        await asyncio.gather(*(finish_run(journal, index) for index, journal in enumerate(journals, start=1)))
 
         for index in (1, 2):
             events = await store.list_events("t1", f"r{index}")
-            content = next(e for e in events if e["event_type"] == "run.delivery")[
-                "content"
-            ]
+            content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
             assert content == {
                 "presented": 1,
                 "paths": [f"/mnt/user-data/outputs/report-{index}.md"],
-                "by_tool": {
-                    "present_files": [f"/mnt/user-data/outputs/report-{index}.md"]
-                },
+                "by_tool": {"present_files": [f"/mnt/user-data/outputs/report-{index}.md"]},
             }
 
     @pytest.mark.anyio
-    async def test_present_files_success_command_recorded_with_attribution(
-        self, journal_setup
-    ):
+    async def test_present_files_success_command_recorded_with_attribution(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2087,9 +2473,7 @@ class TestDeliveryTracking:
         cmd = Command(
             update={
                 "artifacts": ["/mnt/user-data/outputs/report.md"],
-                "messages": [
-                    ToolMessage("Successfully presented files", tool_call_id="call_1")
-                ],
+                "messages": [ToolMessage("Successfully presented files", tool_call_id="call_1")],
             }
         )
         j.on_tool_end(cmd, run_id=uuid4())
@@ -2102,15 +2486,11 @@ class TestDeliveryTracking:
         content = delivery[0]["content"]
         assert content["presented"] == 1
         assert content["paths"] == ["/mnt/user-data/outputs/report.md"]
-        assert content["by_tool"] == {
-            "present_files": ["/mnt/user-data/outputs/report.md"]
-        }
+        assert content["by_tool"] == {"present_files": ["/mnt/user-data/outputs/report.md"]}
         assert delivery[0]["category"] == "outputs"
 
     @pytest.mark.anyio
-    async def test_tool_callback_name_preserves_attribution_when_message_lookup_misses(
-        self, journal_setup
-    ):
+    async def test_tool_callback_name_preserves_attribution_when_message_lookup_misses(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2125,11 +2505,7 @@ class TestDeliveryTracking:
             Command(
                 update={
                     "artifacts": ["/mnt/user-data/outputs/report.md"],
-                    "messages": [
-                        ToolMessage(
-                            "Successfully presented files", tool_call_id="call_missing"
-                        )
-                    ],
+                    "messages": [ToolMessage("Successfully presented files", tool_call_id="call_missing")],
                 }
             ),
             run_id=tool_run_id,
@@ -2138,17 +2514,11 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
-        assert content["by_tool"] == {
-            "present_files": ["/mnt/user-data/outputs/report.md"]
-        }
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
+        assert content["by_tool"] == {"present_files": ["/mnt/user-data/outputs/report.md"]}
 
     @pytest.mark.anyio
-    async def test_command_with_multiple_messages_records_artifacts_once(
-        self, journal_setup
-    ):
+    async def test_command_with_multiple_messages_records_artifacts_once(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2158,9 +2528,7 @@ class TestDeliveryTracking:
             update={
                 "artifacts": ["/mnt/user-data/outputs/report.md"],
                 "messages": [
-                    ToolMessage(
-                        "Successfully presented files", tool_call_id="call_multi"
-                    ),
+                    ToolMessage("Successfully presented files", tool_call_id="call_multi"),
                     HumanMessage("Additional command message"),
                 ],
             }
@@ -2170,9 +2538,7 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
         assert content == {
             "presented": 1,
             "paths": ["/mnt/user-data/outputs/report.md"],
@@ -2180,9 +2546,7 @@ class TestDeliveryTracking:
         }
 
     @pytest.mark.anyio
-    async def test_command_with_multiple_tool_names_leaves_artifacts_unattributed(
-        self, journal_setup
-    ):
+    async def test_command_with_multiple_tool_names_leaves_artifacts_unattributed(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2196,12 +2560,8 @@ class TestDeliveryTracking:
                     "/mnt/user-data/outputs/shot.png",
                 ],
                 "messages": [
-                    ToolMessage(
-                        "Successfully presented files", tool_call_id="call_present"
-                    ),
-                    ToolMessage(
-                        "Saved browser screenshot", tool_call_id="call_browser"
-                    ),
+                    ToolMessage("Successfully presented files", tool_call_id="call_present"),
+                    ToolMessage("Saved browser screenshot", tool_call_id="call_browser"),
                 ],
             }
         )
@@ -2210,9 +2570,7 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
         assert content == {
             "presented": 2,
             "paths": [
@@ -2249,9 +2607,7 @@ class TestDeliveryTracking:
         assert delivery[0]["content"] == {"presented": 0, "paths": [], "by_tool": {}}
 
     @pytest.mark.anyio
-    async def test_browser_tool_artifacts_recorded_under_producing_tool(
-        self, journal_setup
-    ):
+    async def test_browser_tool_artifacts_recorded_under_producing_tool(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2260,9 +2616,7 @@ class TestDeliveryTracking:
         cmd = Command(
             update={
                 "artifacts": ["/mnt/user-data/outputs/shot.png"],
-                "messages": [
-                    ToolMessage("Saved browser screenshot", tool_call_id="call_3")
-                ],
+                "messages": [ToolMessage("Saved browser screenshot", tool_call_id="call_3")],
             }
         )
         j.on_tool_end(cmd, run_id=uuid4())
@@ -2270,13 +2624,9 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
         assert content["presented"] == 1
-        assert content["by_tool"] == {
-            "browser_screenshot": ["/mnt/user-data/outputs/shot.png"]
-        }
+        assert content["by_tool"] == {"browser_screenshot": ["/mnt/user-data/outputs/shot.png"]}
 
     @pytest.mark.anyio
     async def test_duplicate_path_tool_pair_recorded_once(self, journal_setup):
@@ -2290,11 +2640,7 @@ class TestDeliveryTracking:
                 Command(
                     update={
                         "artifacts": ["/mnt/user-data/outputs/report.md"],
-                        "messages": [
-                            ToolMessage(
-                                "Successfully presented files", tool_call_id="call_4"
-                            )
-                        ],
+                        "messages": [ToolMessage("Successfully presented files", tool_call_id="call_4")],
                     }
                 ),
                 run_id=uuid4(),
@@ -2303,16 +2649,12 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
         assert content["presented"] == 1
         assert content["paths"] == ["/mnt/user-data/outputs/report.md"]
 
     @pytest.mark.anyio
-    async def test_unattributed_artifacts_counted_without_by_tool_entry(
-        self, journal_setup
-    ):
+    async def test_unattributed_artifacts_counted_without_by_tool_entry(self, journal_setup):
         from langchain_core.messages import ToolMessage
         from langgraph.types import Command
 
@@ -2329,9 +2671,7 @@ class TestDeliveryTracking:
         await j.flush()
 
         events = await store.list_events("t1", "r1")
-        content = next(e for e in events if e["event_type"] == "run.delivery")[
-            "content"
-        ]
+        content = next(e for e in events if e["event_type"] == "run.delivery")["content"]
         assert content["presented"] == 1
         assert content["paths"] == ["/mnt/user-data/outputs/anon.txt"]
         assert content["by_tool"] == {}

@@ -1,10 +1,12 @@
 "use client";
 
 import { DownloadIcon } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  getTabularDelimiter,
   appendHtmlPreviewBaseHref,
   appendHtmlPreviewScrollRestoration,
   createHtmlPreviewScrollKey,
@@ -91,7 +93,9 @@ export function ArtifactDownloadFallback({
         </div>
         <div className="space-y-1">
           <div className="font-medium break-all">{filename}</div>
-          <div className="text-muted-foreground type-supporting">{fileType} file</div>
+          <div className="text-muted-foreground type-supporting">
+            {fileType} file
+          </div>
         </div>
         <p className="text-muted-foreground type-supporting">
           This file type cannot be previewed in the browser.
@@ -116,16 +120,26 @@ export function ArtifactDownloadFallback({
   );
 }
 
+const ArtifactTablePreview = dynamic(() =>
+  import("./artifact-table-preview").then(
+    (module) => module.ArtifactTablePreview,
+  ),
+);
+
 export function ArtifactFilePreview({
   content,
   language,
   scrollKey,
   url,
+  truncated = false,
+  active = true,
 }: {
   content: string;
   language: string;
   scrollKey: string;
   url?: string;
+  truncated?: boolean;
+  active?: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const scrollPositionRef = useRef({ x: 0, y: 0 });
@@ -204,6 +218,18 @@ export function ArtifactFilePreview({
     };
   }, [content, language, scrollKey, url]);
 
+  const delimiter = getTabularDelimiter(language);
+  if (delimiter !== null) {
+    return (
+      <ArtifactTablePreview
+        content={content}
+        delimiter={delimiter}
+        truncated={truncated}
+        identity={scrollKey}
+        active={active}
+      />
+    );
+  }
   if (language === "markdown") {
     return (
       <div className="size-full overflow-auto px-4 py-3">

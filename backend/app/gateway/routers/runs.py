@@ -8,7 +8,6 @@ is reused so that conversation history is preserved across calls.
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -29,14 +28,10 @@ from app.gateway.deps import (
     get_stream_bridge,
 )
 from app.gateway.pagination import trim_run_message_page
-from app.gateway.routers.thread_runs import RunCreateRequest
-from app.gateway.services import (
-    build_checkpoint_state_accessor,
-    sse_consumer,
-    start_run,
-    wait_for_run_completion,
-)
-from deerflow.runtime import serialize_channel_values
+from app.gateway.run_models import RunCreateRequest
+from app.gateway.services import abuild_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
+from deerflow.runtime import serialize_channel_values_for_api
+from deerflow.utils.thread_id import resolve_thread_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -54,9 +49,7 @@ def _restricted_receipt(receipt: dict) -> dict:
     }
 
 
-async def _readable_knowledge_base_ids(
-    current_user, knowledge_base_ids: set[str]
-) -> set[str] | None:
+async def _readable_knowledge_base_ids(current_user, knowledge_base_ids: set[str]) -> set[str] | None:
     """Resolve current read access without contacting a knowledge provider.
 
     ``None`` means that the request has no RBAC user (auth-disabled/test mode),
@@ -101,31 +94,18 @@ async def _authorize_receipts(receipts: list[dict], current_user) -> list[dict]:
     """Apply current KB visibility while retaining only frozen receipt fields."""
     if current_user is None:
         return receipts
-    knowledge_base_ids = {
-        str(receipt["knowledge_base_id"])
-        for receipt in receipts
-        if receipt.get("knowledge_base_id")
-    }
+    knowledge_base_ids = {str(receipt["knowledge_base_id"]) for receipt in receipts if receipt.get("knowledge_base_id")}
     readable_ids = await _readable_knowledge_base_ids(current_user, knowledge_base_ids)
     if readable_ids is None:
         return receipts
-    return [
-        receipt
-        if str(receipt.get("knowledge_base_id")) in readable_ids
-        else _restricted_receipt(receipt)
-        for receipt in receipts
-    ]
+    return [receipt if str(receipt.get("knowledge_base_id")) in readable_ids else _restricted_receipt(receipt) for receipt in receipts]
 
 
 def _resolve_thread_id(body: RunCreateRequest) -> str:
     """Return the thread_id from the request body, or generate a new one."""
     configurable = (body.config or {}).get("configurable")
-    thread_id = (
-        configurable.get("thread_id") if isinstance(configurable, Mapping) else None
-    )
-    if thread_id:
-        return str(thread_id)
-    return str(uuid.uuid4())
+    thread_id = configurable.get("thread_id") if isinstance(configurable, Mapping) else None
+    return resolve_thread_id(str(thread_id) if thread_id else None)
 
 
 def _has_requested_thread(body: RunCreateRequest) -> bool:
@@ -135,9 +115,7 @@ def _has_requested_thread(body: RunCreateRequest) -> bool:
 
 @router.post("/stream")
 @require_permission("runs", "create")
-async def stateless_stream(
-    body: RunCreateRequest, request: Request
-) -> StreamingResponse:
+async def stateless_stream(body: RunCreateRequest, request: Request) -> StreamingResponse:
     """Create a run and stream events via SSE.
 
     If ``config.configurable.thread_id`` is provided, the run is created
@@ -147,9 +125,7 @@ async def stateless_stream(
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
-    record = await start_run(
-        body, thread_id, request, require_existing_thread=_has_requested_thread(body)
-    )
+    record = await start_run(body, thread_id, request, require_existing_thread=_has_requested_thread(body))
 
     return StreamingResponse(
         sse_consumer(bridge, record, request, run_mgr),
@@ -175,9 +151,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
     thread_id = _resolve_thread_id(body)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
-    record = await start_run(
-        body, thread_id, request, require_existing_thread=_has_requested_thread(body)
-    )
+    record = await start_run(body, thread_id, request, require_existing_thread=_has_requested_thread(body))
 
     completed = True
     if record.task is not None:
@@ -185,7 +159,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
 
     if completed:
         try:
-            accessor, config = build_checkpoint_state_accessor(
+            accessor, config = await abuild_checkpoint_state_accessor(
                 request,
                 thread_id=thread_id,
                 assistant_id=body.assistant_id,
@@ -193,7 +167,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
             snapshot = await accessor.aget(config)
             snapshot_config = snapshot.config or {}
             if snapshot_config.get("configurable", {}).get("checkpoint_id"):
-                return serialize_channel_values(snapshot.values)
+                return serialize_channel_values_for_api(snapshot.values)
         except Exception:
             logger.exception("Failed to fetch final state for run %s", record.run_id)
 
@@ -257,35 +231,13 @@ async def run_evidence(
     """Return archived, caller-safe retrieval evidence for an owned Run."""
     run = await _resolve_run(run_id, request)
     metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
-    evidence = (
-        metadata.get("run_evidence")
-        if isinstance(metadata.get("run_evidence"), dict)
-        else {}
-    )
-    receipts = (
-        evidence.get("retrieval_receipts")
-        if isinstance(evidence.get("retrieval_receipts"), list)
-        else []
-    )
-    receipts = [
-        item
-        for item in receipts
-        if isinstance(item, dict) and item.get("receipt_kind") == "retrieval"
-    ]
-    knowledge_scope = (
-        evidence.get("knowledge_scope")
-        if isinstance(evidence.get("knowledge_scope"), dict)
-        else {}
-    )
-    bindings = (
-        knowledge_scope.get("bindings")
-        if isinstance(knowledge_scope.get("bindings"), dict)
-        else None
-    )
+    evidence = metadata.get("run_evidence") if isinstance(metadata.get("run_evidence"), dict) else {}
+    receipts = evidence.get("retrieval_receipts") if isinstance(evidence.get("retrieval_receipts"), list) else []
+    receipts = [item for item in receipts if isinstance(item, dict) and item.get("receipt_kind") == "retrieval"]
+    knowledge_scope = evidence.get("knowledge_scope") if isinstance(evidence.get("knowledge_scope"), dict) else {}
+    bindings = knowledge_scope.get("bindings") if isinstance(knowledge_scope.get("bindings"), dict) else None
     if bindings is not None:
-        receipts = [
-            item for item in receipts if item.get("logical_knowledge_base") in bindings
-        ]
+        receipts = [item for item in receipts if item.get("logical_knowledge_base") in bindings]
     # Direct callers in the embedded test/runtime path may invoke the wrapped
     # function without FastAPI resolving Query defaults.
     if not isinstance(evidence_id, str):
@@ -293,15 +245,7 @@ async def run_evidence(
     if receipt_id is not None:
         receipts = [item for item in receipts if item.get("receipt_id") == receipt_id]
     if evidence_id is not None:
-        receipts = [
-            item
-            for item in receipts
-            if any(
-                isinstance(candidate, dict)
-                and candidate.get("evidence_id") == evidence_id
-                for candidate in item.get("items", [])
-            )
-        ]
+        receipts = [item for item in receipts if any(isinstance(candidate, dict) and candidate.get("evidence_id") == evidence_id for candidate in item.get("items", []))]
     receipts = await _authorize_receipts(receipts, current_user)
     has_more = len(receipts) > 50
     return {

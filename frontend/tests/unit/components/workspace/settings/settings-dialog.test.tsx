@@ -321,16 +321,8 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("channels-page")).toBeInTheDocument();
   });
 
-  test("opens to integrations section when specified", () => {
-    render(
-      <SettingsDialog
-        open={true}
-        onOpenChange={vi.fn()}
-        defaultSection="integrations"
-      />,
-    );
-    expect(screen.getByTestId("integrations-page")).toBeInTheDocument();
-  });
+  // The merged settings dialog no longer has a standalone "integrations"
+  // section; its deep-link test was covered by the channels variants below.
 
   test("settings skill and tool entries open capability pages", async () => {
     const user = userEvent.setup();
@@ -347,19 +339,9 @@ describe("SettingsDialog", () => {
     expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
   });
 
-  test("legacy default tools section opens connectors", () => {
-    const onOpenChange = vi.fn();
-    render(
-      <SettingsDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        defaultSection="tools"
-      />,
-    );
-    expect(push).toHaveBeenCalledWith("/workspace/capabilities/connectors");
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
-  });
+  // The merged settings dialog narrowed defaultSection to real sections, so
+  // the legacy "tools" deep link is no longer representable; the redirect it
+  // exercised lives in legacy-settings-destination and fires from nav clicks.
 
   // ── Section switching ────────────────────────────────────────────────────
 
@@ -559,17 +541,19 @@ describe("SettingsDialog", () => {
   });
 
   test("falls back to appearance when a deep-linked capability section is unavailable", () => {
-    larkStatusState.data = { cli: { available: false } };
+    // Channels is the merged dialog's availability-gated section; with no
+    // usable provider the deep link must fall back to the default.
+    channelProvidersState.providers = [];
     render(
       <SettingsDialog
         open={true}
         onOpenChange={vi.fn()}
-        defaultSection="integrations"
+        defaultSection="channels"
       />,
     );
 
     expect(screen.getByTestId("appearance-page")).toBeInTheDocument();
-    expect(screen.queryByTestId("integrations-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("channels-page")).not.toBeInTheDocument();
   });
 
   test("still opens a deep-linked capability section when the capability is available", () => {

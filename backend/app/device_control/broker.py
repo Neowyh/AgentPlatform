@@ -223,13 +223,8 @@ class DeviceBroker:
             record.error = "device protocol is outdated"
             return record
         if authorization_snapshot is not None:
-            allowed = frozenset(
-                authorization_snapshot.get("effective_capabilities", ())
-            )
-            if (
-                authorization_snapshot.get("device_id") != device_id
-                or operation not in allowed
-            ):
+            allowed = frozenset(authorization_snapshot.get("effective_capabilities", ()))
+            if authorization_snapshot.get("device_id") != device_id or operation not in allowed:
                 record.status = TaskStatus.DENIED
                 record.error_code = "AUTHORIZATION_SNAPSHOT_INVALID"
                 record.error = "local task authorization is no longer valid"
@@ -272,19 +267,13 @@ class DeviceBroker:
                 task_id=record.task_id,
                 payload={"reason": "cancelled by caller"},
             )
-            await connection.websocket.send_text(
-                envelope.model_dump_json(by_alias=True)
-            )
+            await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
         return record
 
-    async def send_consent_decision(
-        self, task_id: str, *, approved: bool, actor_id: str
-    ) -> TaskRecord:
+    async def send_consent_decision(self, task_id: str, *, approved: bool, actor_id: str) -> TaskRecord:
         record = self._task(task_id)
         if record.status is not TaskStatus.CONSENT_REQUIRED:
-            raise ProtocolError(
-                "CONSENT_NOT_PENDING", "task is not waiting for consent"
-            )
+            raise ProtocolError("CONSENT_NOT_PENDING", "task is not waiting for consent")
         connection = self.connections.get(record.device_id)
         if connection is None or connection.session_id != record.session_id:
             record.status = TaskStatus.DEVICE_OFFLINE
@@ -307,9 +296,7 @@ class DeviceBroker:
         await connection.websocket.send_text(envelope.model_dump_json(by_alias=True))
         return record
 
-    async def receive(
-        self, connection: DeviceConnection, envelope: TaskEnvelope
-    ) -> TaskRecord | None:
+    async def receive(self, connection: DeviceConnection, envelope: TaskEnvelope) -> TaskRecord | None:
         envelope.verify(
             public_key=connection.public_key,
             expected_device_id=connection.device_id,
@@ -322,15 +309,11 @@ class DeviceBroker:
         if envelope.type == MessageType.CAPABILITY_UPDATE:
             values = envelope.payload.get("capabilities", ())
             if not isinstance(values, (list, tuple, set)):
-                raise ProtocolError(
-                    "CAPABILITIES_INVALID", "capability update is invalid"
-                )
+                raise ProtocolError("CAPABILITIES_INVALID", "capability update is invalid")
             connection.capabilities = frozenset(str(value) for value in values)
             descriptors = envelope.payload.get("tool_descriptors", {})
             if not isinstance(descriptors, dict):
-                raise ProtocolError(
-                    "TOOL_DESCRIPTORS_INVALID", "tool descriptors must be an object"
-                )
+                raise ProtocolError("TOOL_DESCRIPTORS_INVALID", "tool descriptors must be an object")
             normalized: dict[str, dict[str, Any]] = {}
             for name, descriptor in descriptors.items():
                 if not isinstance(name, str) or not isinstance(descriptor, dict):
@@ -361,18 +344,11 @@ class DeviceBroker:
             connection.tool_descriptors = normalized
             return None
         if envelope.task_id is None:
-            raise ProtocolError(
-                "TASK_ID_REQUIRED", "task lifecycle messages require task_id"
-            )
+            raise ProtocolError("TASK_ID_REQUIRED", "task lifecycle messages require task_id")
         record = self._task(envelope.task_id)
         self._expire_if_needed(record)
-        if (
-            record.device_id != connection.device_id
-            or record.session_id != connection.session_id
-        ):
-            raise ProtocolError(
-                "SESSION_MISMATCH", "task belongs to another device session"
-            )
+        if record.device_id != connection.device_id or record.session_id != connection.session_id:
+            raise ProtocolError("SESSION_MISMATCH", "task belongs to another device session")
         if record.status in {
             TaskStatus.COMPLETED,
             TaskStatus.CANCELLED,
@@ -388,12 +364,7 @@ class DeviceBroker:
         elif envelope.type == MessageType.CONSENT_REQUIRED:
             request_payload = envelope.payload.get("payload")
             request_hash = envelope.payload.get("request_hash")
-            if (
-                not isinstance(request_payload, dict)
-                or not isinstance(request_hash, str)
-                or request_hash != payload_digest(request_payload)
-                or request_payload != record.payload
-            ):
+            if not isinstance(request_payload, dict) or not isinstance(request_hash, str) or request_hash != payload_digest(request_payload) or request_payload != record.payload:
                 raise ProtocolError(
                     "CONSENT_HASH_MISMATCH",
                     "consent request does not match the task payload",
@@ -426,9 +397,7 @@ class DeviceBroker:
                 record.status = TaskStatus.COMPLETED
         elif envelope.type == MessageType.ERROR:
             record.error_code = str(envelope.payload.get("error_code", "DEVICE_ERROR"))
-            record.error = str(
-                envelope.payload.get("message", "device reported an error")
-            )
+            record.error = str(envelope.payload.get("message", "device reported an error"))
             record.receipt = envelope.payload.get("receipt")
             receipt_status = str((record.receipt or {}).get("status", "failed"))
             if receipt_status == "cancelled":
@@ -440,9 +409,7 @@ class DeviceBroker:
             else:
                 record.status = TaskStatus.FAILED
         else:
-            raise ProtocolError(
-                "MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}"
-            )
+            raise ProtocolError("MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}")
         if record.receipt is not None and record.task_id not in self._recorded_receipts:
             self._recorded_receipts.add(record.task_id)
             try:
@@ -450,9 +417,7 @@ class DeviceBroker:
                     record_local_execution_receipt,
                 )
 
-                record_local_execution_receipt(
-                    record.receipt, tool_call_id=record.tool_call_id
-                )
+                record_local_execution_receipt(record.receipt, tool_call_id=record.tool_call_id)
             except (ImportError, KeyError, RuntimeError, TypeError, ValueError):
                 pass
         return record

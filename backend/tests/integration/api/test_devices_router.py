@@ -105,9 +105,7 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(
         assert online.status_code == 200
         assert online.json()["status"] == "online"
 
-        offline = client.post(
-            f"/api/devices/{device_id}/disconnect", headers={"X-Device-Session": token}
-        )
+        offline = client.post(f"/api/devices/{device_id}/disconnect", headers={"X-Device-Session": token})
         assert offline.status_code == 200
         assert offline.json()["status"] == "offline"
 
@@ -237,9 +235,7 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(
     broker.connections.clear()
     broker.tasks.clear()
     device_key = Ed25519PrivateKey.generate()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
     server_task = asyncio.create_task(server.serve())
     try:
         for _ in range(100):
@@ -322,22 +318,14 @@ async def test_local_runtime_client_completes_echo_through_temporary_service(
 
 
 @pytest.mark.asyncio
-async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(
-    device_factory, tmp_path: Path
-) -> None:
+async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(device_factory, tmp_path: Path) -> None:
     """M9 gate: a configured stdio MCP server is reached only via Server task → Local Runtime → local MCP."""
     sys.path.insert(0, str(Path(__file__).parents[4] / "local-runtime"))
     from core.mcp import LocalMCPService, MCPSpec, MCPSupervisor
     from core.policy import LocalPolicy
     from core.transport import LocalRuntimeClient as RuntimeClient
 
-    fixture_server = (
-        Path(__file__).parents[4]
-        / "local-runtime"
-        / "tests"
-        / "fixtures"
-        / "filesystem_mcp_server.py"
-    )
+    fixture_server = Path(__file__).parents[4] / "local-runtime" / "tests" / "fixtures" / "filesystem_mcp_server.py"
     (tmp_path / "hello.txt").write_text("mcp over the broker", encoding="utf-8")
 
     app = FastAPI()
@@ -348,9 +336,7 @@ async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(
     broker.connections.clear()
     broker.tasks.clear()
     device_key = Ed25519PrivateKey.generate()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
     server_task = asyncio.create_task(server.serve())
     supervisor = MCPSupervisor(
         [
@@ -424,21 +410,11 @@ async def test_local_runtime_completes_mcp_task_through_broker_with_receipt(
             if runtime_task.done():
                 runtime_task.result()
             assert device["id"] in broker.connections
-            assert (
-                "local.mcp.fs.read_file"
-                in broker.connections[device["id"]].tool_descriptors
-            )
-            assert (
-                broker.connections[device["id"]].tool_descriptors[
-                    "local.mcp.fs.read_file"
-                ]["input_schema"]["type"]
-                == "object"
-            )
+            assert "local.mcp.fs.read_file" in broker.connections[device["id"]].tool_descriptors
+            assert broker.connections[device["id"]].tool_descriptors["local.mcp.fs.read_file"]["input_schema"]["type"] == "object"
 
             for _ in range(100):
-                capabilities = (
-                    await client.get(f"/api/devices/{device['id']}")
-                ).json()["capabilities"]
+                capabilities = (await client.get(f"/api/devices/{device['id']}")).json()["capabilities"]
                 if "local.mcp.fs.read_file" in capabilities:
                     break
                 await asyncio.sleep(0.01)

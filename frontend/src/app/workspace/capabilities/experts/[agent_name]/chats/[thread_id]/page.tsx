@@ -433,7 +433,13 @@ export default function AgentChatPage() {
                     <div className="mb-4 flex max-w-xl flex-col items-center px-6 text-center">
                       <div className="flex items-center gap-3">
                         <BotIcon className="text-primary size-9" />
-                        <h1 className="type-h2">{agent.name}</h1>
+                        {/* display_name-first precedence ported from the
+                            upstream agent-welcome welcome block (v2.1.0). */}
+                        <h1 className="type-h2">
+                          {agent.display_name?.length
+                            ? agent.display_name
+                            : (agent.name ?? agent_name)}
+                        </h1>
                       </div>
                       <p className="text-muted-foreground mt-2">
                         {agent.summary ?? agent.description}

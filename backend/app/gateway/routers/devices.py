@@ -36,9 +36,7 @@ from app.gateway.authz import get_current_rbac_user
 from deerflow.persistence.engine import get_session_factory
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
-_artifact_store = DeviceArtifactStore(
-    Path(tempfile.gettempdir()) / "ideer-device-artifacts"
-)
+_artifact_store = DeviceArtifactStore(Path(tempfile.gettempdir()) / "ideer-device-artifacts")
 
 
 class PairingCreateResponse(BaseModel):
@@ -227,11 +225,7 @@ async def confirm_pairing(
     payload: PairingConfirmRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> DeviceResponse:
-    device = await _run(
-        lambda service: service.confirm_pairing(
-            pairing_id, owner_id=str(current_user.id), code=payload.code
-        )
-    )
+    device = await _run(lambda service: service.confirm_pairing(pairing_id, owner_id=str(current_user.id), code=payload.code))
     return DeviceResponse.from_model(device)
 
 
@@ -239,9 +233,7 @@ async def confirm_pairing(
 async def complete_registration(
     payload: DeviceRegistrationCompleteRequest,
 ) -> DeviceSessionResponse:
-    registered = await _run(
-        lambda service: service.complete_registration(**payload.model_dump())
-    )
+    registered = await _run(lambda service: service.complete_registration(**payload.model_dump()))
     return DeviceSessionResponse(
         device=DeviceResponse.from_model(registered.device).model_dump(),
         session_id=registered.session_id,
@@ -254,29 +246,18 @@ async def complete_registration(
 async def list_devices(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> list[DeviceResponse]:
-    owner_id = (
-        None
-        if current_user.role
-        in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
-        else str(current_user.id)
-    )
+    owner_id = None if current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value} else str(current_user.id)
     devices = await _run(lambda service: service.list_devices(owner_id=owner_id))
     return [DeviceResponse.from_model(device) for device in devices]
 
 
 @router.get("/{device_id}", response_model=DeviceResponse)
-async def get_device(
-    device_id: str, current_user: UserModel = Depends(get_current_rbac_user)
-) -> DeviceResponse:
+async def get_device(device_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> DeviceResponse:
     is_admin = current_user.role in {
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    device = await _run(
-        lambda service: service.get_device(
-            device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    device = await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     return DeviceResponse.from_model(device)
 
 
@@ -306,9 +287,7 @@ async def heartbeat(
 
 
 @router.post("/{device_id}/disconnect", response_model=DeviceResponse)
-async def disconnect(
-    device_id: str, x_device_session: str | None = Header(default=None)
-) -> DeviceResponse:
+async def disconnect(device_id: str, x_device_session: str | None = Header(default=None)) -> DeviceResponse:
     if not x_device_session:
         raise HTTPException(
             status_code=401,
@@ -318,25 +297,17 @@ async def disconnect(
             },
         )
     device = await _run(lambda service: service.disconnect(device_id, x_device_session))
-    await get_device_broker().invalidate(
-        device_id, reason="device disconnected by owner"
-    )
+    await get_device_broker().invalidate(device_id, reason="device disconnected by owner")
     return DeviceResponse.from_model(device)
 
 
 @router.post("/{device_id}/revoke", response_model=DeviceResponse)
-async def revoke_device(
-    device_id: str, current_user: UserModel = Depends(get_current_rbac_user)
-) -> DeviceResponse:
+async def revoke_device(device_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> DeviceResponse:
     is_admin = current_user.role in {
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    device = await _run(
-        lambda service: service.revoke(
-            device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    device = await _run(lambda service: service.revoke(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     await get_device_broker().invalidate(device_id, reason="device revoked")
     return DeviceResponse.from_model(device)
 
@@ -351,11 +322,7 @@ async def send_echo_task(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     record = await get_device_broker().send_echo_task(
         device_id=device_id,
         run_id=payload.run_id,
@@ -375,11 +342,7 @@ async def send_local_task(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     task_payload = dict(payload.payload)
     task_payload.update(
         {
@@ -410,11 +373,7 @@ async def issue_artifact_grant(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
     connection = get_device_broker().connections.get(device_id)
     if connection is None:
         raise HTTPException(
@@ -450,12 +409,7 @@ async def upload_device_artifact(
     file: UploadFile = File(...),
 ) -> dict:
     grant = _artifact_store._grants.get(token)
-    if (
-        grant is None
-        or grant.device_id != device_id
-        or not x_device_session
-        or grant.session_id != x_device_session
-    ):
+    if grant is None or grant.device_id != device_id or not x_device_session or grant.session_id != x_device_session:
         raise HTTPException(
             status_code=401,
             detail={
@@ -471,18 +425,8 @@ async def upload_device_artifact(
     try:
         handle, size, digest = await _artifact_store.upload(token, chunks())
     except ArtifactStoreError as exc:
-        status = (
-            410
-            if exc.code == "GRANT_EXPIRED"
-            else 409
-            if exc.code in {"GRANT_INVALID", "HASH_MISMATCH", "CONTENT_CONFLICT"}
-            else 413
-            if exc.code == "SIZE_LIMIT"
-            else 400
-        )
-        raise HTTPException(
-            status_code=status, detail={"code": exc.code, "message": str(exc)}
-        ) from exc
+        status = 410 if exc.code == "GRANT_EXPIRED" else 409 if exc.code in {"GRANT_INVALID", "HASH_MISMATCH", "CONTENT_CONFLICT"} else 413 if exc.code == "SIZE_LIMIT" else 400
+        raise HTTPException(status_code=status, detail={"code": exc.code, "message": str(exc)}) from exc
     return {
         "handle": handle,
         "size": size,
@@ -494,9 +438,7 @@ async def upload_device_artifact(
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
-async def get_task(
-    task_id: str, current_user: UserModel = Depends(get_current_rbac_user)
-) -> TaskResponse:
+async def get_task(task_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> TaskResponse:
     broker = get_device_broker()
     try:
         record = broker.get_task(task_id)
@@ -509,18 +451,12 @@ async def get_task(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            record.device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    await _run(lambda service: service.get_device(record.device_id, actor_id=str(current_user.id), is_admin=is_admin))
     return TaskResponse.from_record(record)
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=TaskResponse)
-async def cancel_task(
-    task_id: str, current_user: UserModel = Depends(get_current_rbac_user)
-) -> TaskResponse:
+async def cancel_task(task_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> TaskResponse:
     broker = get_device_broker()
     try:
         record = broker.get_task(task_id)
@@ -533,11 +469,7 @@ async def cancel_task(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            record.device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
+    await _run(lambda service: service.get_device(record.device_id, actor_id=str(current_user.id), is_admin=is_admin))
     return TaskResponse.from_record(await broker.cancel_task(task_id))
 
 
@@ -559,16 +491,8 @@ async def decide_task_consent(
         UserRole.SUPER_ADMIN.value,
         UserRole.DEPARTMENT_ADMIN.value,
     }
-    await _run(
-        lambda service: service.get_device(
-            record.device_id, actor_id=str(current_user.id), is_admin=is_admin
-        )
-    )
-    return TaskResponse.from_record(
-        await broker.send_consent_decision(
-            task_id, approved=payload.approved, actor_id=str(current_user.id)
-        )
-    )
+    await _run(lambda service: service.get_device(record.device_id, actor_id=str(current_user.id), is_admin=is_admin))
+    return TaskResponse.from_record(await broker.send_consent_decision(task_id, approved=payload.approved, actor_id=str(current_user.id)))
 
 
 @router.websocket("/ws")
@@ -588,35 +512,22 @@ async def device_websocket(websocket: WebSocket) -> None:
             expected_device_id=hello.device_id,
             expected_session_id=hello.session_id,
         )
-        compatibility = negotiate_protocol(
-            str(hello.payload.get("protocol_version", ""))
-        )
+        compatibility = negotiate_protocol(str(hello.payload.get("protocol_version", "")))
         session_token = str(hello.payload.get("session_token", ""))
         sf = get_session_factory()
         if sf is None:
-            raise ProtocolError(
-                "PERSISTENCE_UNAVAILABLE", "device persistence is unavailable"
-            )
+            raise ProtocolError("PERSISTENCE_UNAVAILABLE", "device persistence is unavailable")
         async with sf() as session:
             from app.device_control.service import DeviceControlService
 
             service = DeviceControlService(session)
-            device, device_session = await service._authorized_session(
-                hello.device_id, session_token
-            )
-            if (
-                device_session.id != hello.session_id
-                or device.public_key != public_key_text
-            ):
-                raise ProtocolError(
-                    "SESSION_MISMATCH", "device session or public key does not match"
-                )
+            device, device_session = await service._authorized_session(hello.device_id, session_token)
+            if device_session.id != hello.session_id or device.public_key != public_key_text:
+                raise ProtocolError("SESSION_MISMATCH", "device session or public key does not match")
             if compatibility == ProtocolCompatibility.BLOCKED:
                 device.status = "blocked"
                 await session.commit()
-                raise ProtocolError(
-                    "PROTOCOL_BLOCKED", "device protocol is incompatible"
-                )
+                raise ProtocolError("PROTOCOL_BLOCKED", "device protocol is incompatible")
             await service.heartbeat(
                 hello.device_id,
                 session_token,
@@ -628,14 +539,10 @@ async def device_websocket(websocket: WebSocket) -> None:
                 await session.commit()
         capabilities = hello.payload.get("capabilities", ())
         if not isinstance(capabilities, (list, tuple, set)):
-            raise ProtocolError(
-                "CAPABILITIES_INVALID", "device capabilities must be a list"
-            )
+            raise ProtocolError("CAPABILITIES_INVALID", "device capabilities must be a list")
         raw_descriptors = hello.payload.get("tool_descriptors", {})
         if not isinstance(raw_descriptors, dict):
-            raise ProtocolError(
-                "TOOL_DESCRIPTORS_INVALID", "tool descriptors must be an object"
-            )
+            raise ProtocolError("TOOL_DESCRIPTORS_INVALID", "tool descriptors must be an object")
         tool_descriptors: dict[str, dict] = {}
         for name, descriptor in raw_descriptors.items():
             if not isinstance(name, str) or not isinstance(descriptor, dict):
@@ -647,9 +554,7 @@ async def device_websocket(websocket: WebSocket) -> None:
                 continue
             schema = descriptor.get("input_schema", {})
             if schema is not None and not isinstance(schema, dict):
-                raise ProtocolError(
-                    "TOOL_DESCRIPTORS_INVALID", "tool input schema must be an object"
-                )
+                raise ProtocolError("TOOL_DESCRIPTORS_INVALID", "tool input schema must be an object")
             schema = dict(schema or {})
             schema_hash = str(descriptor.get("schema_hash", ""))
             if schema_hash and schema_hash != schema_digest(schema):
@@ -680,9 +585,7 @@ async def device_websocket(websocket: WebSocket) -> None:
             if message.type in {MessageType.HEARTBEAT, MessageType.CAPABILITY_UPDATE}:
                 sf = get_session_factory()
                 if sf is None:
-                    raise ProtocolError(
-                        "PERSISTENCE_UNAVAILABLE", "device persistence is unavailable"
-                    )
+                    raise ProtocolError("PERSISTENCE_UNAVAILABLE", "device persistence is unavailable")
                 async with sf() as session:
                     from app.device_control.service import DeviceControlService
 

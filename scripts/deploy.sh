@@ -317,18 +317,35 @@ fi
 
 # ── IDEER_DOCKER_SOCKET ───────────────────────────────────────────────────
 
+# Resolve the socket the way Compose --env-file would interpolate it (shell
+# environment wins, then .env); the file is never sourced by the shell.
+docker_socket="$IDEER_DOCKER_SOCKET"
+if [ -z "$docker_socket" ] && [ -f "$REPO_ROOT/.env" ]; then
+    docker_socket="$(sed -n 's/^[[:space:]]*IDEER_DOCKER_SOCKET[[:space:]]*=[[:space:]]*//p' "$REPO_ROOT/.env" | head -n 1)"
+    docker_socket="${docker_socket%$'\r'}"
+    docker_socket="${docker_socket%\"}"
+    docker_socket="${docker_socket#\"}"
+    docker_socket="${docker_socket%\'}"
+    docker_socket="${docker_socket#\'}"
+fi
 if [ -z "$IDEER_DOCKER_SOCKET" ]; then
-    export IDEER_DOCKER_SOCKET="/var/run/docker.sock"
+    export IDEER_DOCKER_SOCKET="${docker_socket:-/var/run/docker.sock}"
 fi
 
 if [ "$sandbox_mode" != "local" ]; then
     if [ ! -S "$IDEER_DOCKER_SOCKET" ]; then
-        echo -e "${RED}⚠ Docker socket not found at $IDEER_DOCKER_SOCKET${NC}"
-        echo "  AioSandboxProvider (DooD) will not work."
-        exit 1
-    else
-        echo -e "${GREEN}✓ Docker socket: $IDEER_DOCKER_SOCKET${NC}"
+        # On Windows (Git Bash / MSYS), Docker Desktop mounts the default
+        # /var/run/docker.sock into containers even though no host socket
+        # file exists.
+        if [ "$IDEER_DOCKER_SOCKET" = "/var/run/docker.sock" ] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && docker info >/dev/null 2>&1; then
+            :
+        else
+            echo -e "${RED}⚠ Docker socket not found at $IDEER_DOCKER_SOCKET${NC}"
+            echo "  AioSandboxProvider (DooD) will not work."
+            exit 1
+        fi
     fi
+    echo -e "${GREEN}✓ Docker socket: $IDEER_DOCKER_SOCKET${NC}"
 fi
 
 echo ""

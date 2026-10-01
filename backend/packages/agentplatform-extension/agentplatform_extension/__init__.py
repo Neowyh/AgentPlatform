@@ -56,13 +56,7 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
         return
     registry.runtime_evidence(RuntimeEvidenceHooks())
     effective = frozenset(str(item) for item in authorization.get("allowed_tools", ()))
-    registry.tools(
-        LocalToolContributor(
-            LocalAuthorization.from_capabilities(
-                effective, device_online=bool(authorization.get("device_online", True))
-            )
-        )
-    )
+    registry.tools(LocalToolContributor(LocalAuthorization.from_capabilities(effective, device_online=bool(authorization.get("device_online", True)))))
     registry.task_lifecycle(
         EvidenceLifecycleContributor(
             snapshots=config.get("resource_snapshots", ()),
@@ -70,20 +64,10 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
                 caller_user_id=str(authorization.get("caller_user_id", "")),
                 effective_agent_id=str(authorization.get("effective_agent_id", "")),
                 policy_revision=str(authorization.get("policy_revision", "")),
-                allowed_tools=tuple(
-                    str(item) for item in authorization.get("allowed_tools", ())
-                ),
-                memory_scope=(
-                    str(authorization["memory_scope"])
-                    if "memory_scope" in authorization
-                    else None
-                ),
+                allowed_tools=tuple(str(item) for item in authorization.get("allowed_tools", ())),
+                memory_scope=(str(authorization["memory_scope"]) if "memory_scope" in authorization else None),
             ),
-            runtime_assembly_fingerprint=(
-                str(config["runtime_assembly_fingerprint"])
-                if "runtime_assembly_fingerprint" in config
-                else None
-            ),
+            runtime_assembly_fingerprint=(str(config["runtime_assembly_fingerprint"]) if "runtime_assembly_fingerprint" in config else None),
             trace_id=str(config["trace_id"]) if "trace_id" in config else None,
         )
     )

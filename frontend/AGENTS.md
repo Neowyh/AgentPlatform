@@ -85,6 +85,19 @@ src/
 - `src/core/threads/hooks.ts` owns pre-submit upload state and thread submission.
 - `src/hooks/usePoseStream.ts` is a passive store selector; global WebSocket lifecycle stays in `App.tsx`.
 
+### Environment & Dependency Notes
+
+`pnpm-workspace.yaml` overrides vulnerable `@xmldom/xmldom` 0.9.x releases to
+0.9.12 for GHSA-965w-775f-mr7g. Nextra pulls it in through MathJax and
+`speech-rule-engine@4.1.2`, which pins 0.9.8. Keep the override until the
+upstream dependency chain resolves a patched version without it; regenerate
+`pnpm-lock.yaml` and verify the docs build when changing this constraint.
+
+Backend API URLs are optional; the nginx proxy is used by default. Leave
+`NEXT_PUBLIC_LANGGRAPH_BASE_URL` and `NEXT_PUBLIC_BACKEND_BASE_URL` unset for the
+standard `make dev` / Docker flow, where nginx serves the public `/api/langgraph/*`
+prefix and rewrites it to Gateway's native `/api/*` routes.
+
 ## Resources
 
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)

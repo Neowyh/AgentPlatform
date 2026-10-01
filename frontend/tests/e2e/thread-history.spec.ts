@@ -552,7 +552,10 @@ test.describe("Thread history", () => {
     await inactiveThreadItem.hover();
     await inactiveThreadItem.getByRole("button", { name: /more/i }).click();
     await page.getByRole("menuitem", { name: /delete/i }).click();
-    await page.getByTestId("thread-delete-confirm").click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
 
     await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID));
     await expect(
@@ -705,62 +708,25 @@ test.describe("Thread history", () => {
     await expect(textarea).toBeVisible();
   });
 
-  test("deleting the active newly created chat returns to the new chat screen", async ({
+  // Upstream v2.1.0 retry semantics: the first cleanup attempt fails, the
+  // dialog stays open with the streamed content until the user retries, and
+  // the second attempt finishes the job. The merged dialog surfaces the
+  // failure as the chats.deleteFailed toast (no server-detail text).
+  test("retrying deletion of the active newly created chat returns to the new chat screen", async ({
     page,
   }) => {
     mockLangGraphAPI(page);
-    let deleteAttempted = false;
+    let cleanupAttempts = 0;
     await page.route(/\/api\/threads\/[^/]+$/, (route) => {
-      if (route.request().method() === "DELETE") {
-        deleteAttempted = true;
+      if (route.request().method() === "DELETE" && ++cleanupAttempts === 1) {
         return route.fulfill({
           status: 500,
           contentType: "application/json",
           body: JSON.stringify({ detail: "Local cleanup failed" }),
         });
       }
-      // The mock backend models the thread disappearing after the failed
-      // cleanup attempt, so revisiting the stale URL exercises the same
-      // empty-chat fallback as a real deleted thread.
-      if (deleteAttempted && route.request().method() === "GET") {
-        return route.fulfill({
-          status: 404,
-          contentType: "application/json",
-          body: JSON.stringify({ detail: "Thread not found" }),
-        });
-      }
       return route.fallback();
     });
-    await page.route(
-      /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
-      (route) => {
-        if (deleteAttempted) {
-          return route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: "[]",
-          });
-        }
-        return route.fallback();
-      },
-    );
-    await page.route(
-      /\/api\/threads\/[^/]+\/messages\/page(?:\?.*)?$/,
-      (route) => {
-        if (deleteAttempted) {
-          return route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              data: [],
-              has_more: false,
-              next_before_seq: null,
-            }),
-          });
-        }
-        return route.fallback();
-      },
-    );
 
     await page.goto("/workspace/chats/new");
     const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -784,7 +750,23 @@ test.describe("Thread history", () => {
     await recentThreadItem.hover();
     await recentThreadItem.getByRole("button", { name: /more/i }).click();
     await page.getByRole("menuitem", { name: /delete/i }).click();
-    await page.getByTestId("thread-delete-confirm").click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+
+    // The first attempt failed: keep the dialog and streamed content until
+    // the user retries the remaining cleanup.
+    await expect(
+      page.getByText("Failed to delete conversation", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    expect(cleanupAttempts).toBe(2);
 
     await expect(page).toHaveURL(/\/workspace\/chats\/new$/);
     await expect(page.getByText("Previous question")).toHaveCount(0);

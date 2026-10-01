@@ -6,10 +6,8 @@ import {
   InfoIcon,
   BrainIcon,
   PaletteIcon,
-  PlugZapIcon,
-  SparklesIcon,
+  UsersRoundIcon,
   UserIcon,
-  WrenchIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -25,16 +23,12 @@ import { AboutSettingsPage } from "@/components/workspace/settings/about-setting
 import { AccountSettingsPage } from "@/components/workspace/settings/account-settings-page";
 import { AppearanceSettingsPage } from "@/components/workspace/settings/appearance-settings-page";
 import { ChannelsSettingsPage } from "@/components/workspace/settings/channels-settings-page";
-import { IntegrationsSettingsPage } from "@/components/workspace/settings/integrations-settings-page";
 import { MemorySettingsPage } from "@/components/workspace/settings/memory-settings-page";
 import { NotificationSettingsPage } from "@/components/workspace/settings/notification-settings-page";
+import { SubagentSettingsPage } from "@/components/workspace/settings/subagent-settings-page";
 import { useChannelProviders } from "@/core/channels/hooks";
 import { hasUsableChannelProvider } from "@/core/channels/provider-state";
 import { useI18n } from "@/core/i18n/hooks";
-import {
-  isLarkIntegrationUsable,
-  useLarkIntegrationStatus,
-} from "@/core/integrations/lark";
 import { cn } from "@/lib/utils";
 
 import { legacySettingsDestination } from "./legacy-settings-destination";
@@ -43,12 +37,9 @@ export type SettingsSection =
   | "account"
   | "appearance"
   | "channels"
-  | "integrations"
   | "memory"
   | "notification"
-  | "tools"
   | "subagents"
-  | "skills"
   | "about";
 
 type SettingsDialogProps = Omit<
@@ -66,30 +57,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
 
-  // Channels/Integrations are deployment capabilities, not universal
-  // settings: only surface them when the backend reports something actually
-  // usable — a configured, running channel provider, or a Gateway with
-  // lark-cli available. Failed or still-loading probes hide the entries too,
-  // so an unknown capability never renders as an actionable one; visibility
-  // here stays a UI concern and never replaces server-side permission checks.
+  // Channels is a deployment capability, not a universal setting: only
+  // surface it when the backend reports something actually usable — a
+  // configured, running channel provider. Failed or still-loading probes
+  // hide the entry too, so an unknown capability never renders as an
+  // actionable one; visibility here stays a UI concern and never replaces
+  // server-side permission checks.
   const {
     enabled: channelsEnabled,
     providers,
     isLoading: channelsLoading,
     error: channelsError,
   } = useChannelProviders();
-  const {
-    data: larkStatus,
-    isLoading: larkLoading,
-    error: larkError,
-  } = useLarkIntegrationStatus();
   const channelsAvailable =
     !channelsLoading &&
     !channelsError &&
     channelsEnabled &&
     hasUsableChannelProvider(providers);
-  const integrationsAvailable =
-    !larkLoading && !larkError && isLarkIntegrationUsable(larkStatus);
 
   // One availability map serves both the nav list and the fallback below, so
   // a section can never be listed while its page is unreachable.
@@ -97,9 +81,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     useMemo(
       () => ({
         channels: channelsAvailable,
-        integrations: integrationsAvailable,
       }),
-      [channelsAvailable, integrationsAvailable],
+      [channelsAvailable],
     );
 
   // A deep link (or stale trigger) onto a capability section that the
@@ -123,55 +106,47 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [defaultSection, dialogProps.open, onOpenChange, router]);
 
   const sections = useMemo(
-    () =>
-      [
-        {
-          id: "account",
-          label: t.settings.sections.account,
-          icon: UserIcon,
-        },
-        {
-          id: "appearance",
-          label: t.settings.sections.appearance,
-          icon: PaletteIcon,
-        },
-        {
-          id: "notification",
-          label: t.settings.sections.notification,
-          icon: BellIcon,
-        },
-        {
-          id: "channels",
-          label: t.settings.sections.channels,
-          icon: CableIcon,
-        },
-        {
-          id: "integrations",
-          label: t.settings.sections.integrations,
-          icon: PlugZapIcon,
-        },
-        {
-          id: "memory",
-          label: t.settings.sections.memory,
-          icon: BrainIcon,
-        },
-        { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
-        { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
-        { id: "about", label: t.settings.sections.about, icon: InfoIcon },
-      ].filter(
-        (section) => sectionAvailability[section.id as SettingsSection] ?? true,
-      ),
+    () => [
+      {
+        id: "account",
+        label: t.settings.sections.account,
+        icon: UserIcon,
+      },
+      {
+        id: "appearance",
+        label: t.settings.sections.appearance,
+        icon: PaletteIcon,
+      },
+      {
+        id: "notification",
+        label: t.settings.sections.notification,
+        icon: BellIcon,
+      },
+      {
+        id: "channels",
+        label: t.settings.sections.channels,
+        icon: CableIcon,
+      },
+      {
+        id: "memory",
+        label: t.settings.sections.memory,
+        icon: BrainIcon,
+      },
+      {
+        id: "subagents",
+        label: t.settings.sections.subagents,
+        icon: UsersRoundIcon,
+      },
+      { id: "about", label: t.settings.sections.about, icon: InfoIcon },
+    ],
     [
       t.settings.sections.account,
       t.settings.sections.appearance,
       t.settings.sections.channels,
-      t.settings.sections.integrations,
       t.settings.sections.memory,
+      t.settings.sections.subagents,
       t.settings.sections.notification,
-      t.settings.sections.tools,
-      t.settings.sections.skills,
       t.settings.sections.about,
-      sectionAvailability,
     ],
   );
   return (
@@ -230,13 +205,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {effectiveSection === "account" && <AccountSettingsPage />}
               {effectiveSection === "appearance" && <AppearanceSettingsPage />}
               {effectiveSection === "memory" && <MemorySettingsPage />}
+              {effectiveSection === "subagents" && <SubagentSettingsPage />}
               {effectiveSection === "notification" && (
                 <NotificationSettingsPage />
               )}
               {effectiveSection === "channels" && <ChannelsSettingsPage />}
-              {effectiveSection === "integrations" && (
-                <IntegrationsSettingsPage />
-              )}
               {effectiveSection === "about" && <AboutSettingsPage />}
             </div>
           </ScrollArea>

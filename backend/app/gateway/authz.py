@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 from fastapi import HTTPException, Request, status
 
 from deerflow.authz.principal import build_principal_from_context
-from deerflow.authz.provider import AuthorizationProvider, AuthzDecision, AuthzRequest
+from deerflow.authz.provider import AuthorizationProvider, AuthzDecision, AuthzRequest, Principal
 from deerflow.authz.runtime import resolve_authorization_provider
 from deerflow.config.authorization_config import AuthorizationConfig
 
@@ -77,6 +77,10 @@ class Permissions:
     RUNS_CREATE = "runs:create"
     RUNS_READ = "runs:read"
     RUNS_CANCEL = "runs:cancel"
+    # Projects
+    PROJECTS_READ = "projects:read"
+    PROJECTS_WRITE = "projects:write"
+    PROJECTS_DELETE = "projects:delete"
 
     # Assistants
     ASSISTANTS_READ = "assistants:read"
@@ -153,12 +157,16 @@ _ALL_PERMISSIONS: list[str] = [
     Permissions.RUNS_CANCEL,
     Permissions.ASSISTANTS_READ,
     Permissions.MODELS_READ,
+    Permissions.PROJECTS_READ,
+    Permissions.PROJECTS_WRITE,
+    Permissions.PROJECTS_DELETE,
 ]
 
 # BUG-06: viewers are read-only; every other platform role gets the full set.
 _VIEWER_PERMISSIONS: list[str] = [
     Permissions.THREADS_READ,
     Permissions.RUNS_READ,
+    Permissions.PROJECTS_READ,
 ]
 
 
@@ -253,6 +261,62 @@ async def resolve_route_permissions(user: User, *, is_internal: bool, platform_r
 
     results = await asyncio.gather(*[_evaluate(permission) for permission in _ALL_PERMISSIONS])
     return [permission for permission in results if permission is not None]
+
+
+async def resolve_route_permissions_for_request(request: Request, user: Any) -> list[str]:
+    """Resolve the effective route permissions for a request's authenticated user.
+
+    Public wrapper pairing ``resolve_route_permissions`` with the internal-caller
+    heuristics of ``_is_internal_caller`` (auth source, synthetic internal role,
+    internal auth header), so middleware-less consumers resolve the same
+    provider-driven permission set ``AuthMiddleware`` resolves for session
+    callers (the decorator-path ``_authenticate`` keeps its own static RBAC
+    role mapping for middleware-less apps).
+    """
+    return await resolve_route_permissions(user, is_internal=_is_internal_caller(request, user))
+
+
+class _AuthorizationUnavailable(Exception):
+    """Raised internally when the provider cannot be resolved for a route check.
+
+    Carries the ``fail_closed`` flag so the caller can decide between deny-all
+    and legacy allow-all without re-reading config.
+    """
+
+    def __init__(self, *, fail_closed: bool) -> None:
+        self.fail_closed = fail_closed
+
+
+def resolve_model_authorization(user: User, *, is_internal: bool) -> tuple[AuthorizationProvider | None, Principal | None]:
+    """Return ``(provider, principal)`` for model-route authorization.
+
+    When authorization is disabled, returns ``(None, None)`` so callers can
+    short-circuit to legacy behavior (all models visible). When enabled,
+    resolves the cached provider and builds a Principal identical to
+    ``resolve_route_permissions`` (including the ``INTERNAL_SYSTEM_ROLE``
+    → ``None`` pop so internal callers fall under ``default_role``).
+
+    Raises ``_AuthorizationUnavailable`` (carrying the ``fail_closed`` flag)
+    when the provider cannot be resolved; callers translate that into the
+    appropriate deny response (empty list / 403).
+    """
+    config = _get_route_authorization_config()
+    if config.enabled is not True:
+        return None, None
+
+    try:
+        provider = _get_cached_route_provider(config)
+        if provider is None:
+            raise ValueError("authorization is enabled but provider resolution returned None")
+    except Exception:
+        logger.warning("Failed to resolve authorization provider for model routes", exc_info=True)
+        raise _AuthorizationUnavailable(fail_closed=config.fail_closed)
+
+    principal = build_principal_from_context(
+        _route_authz_context(user, is_internal=is_internal),
+        default_role=config.default_role,
+    )
+    return provider, principal
 
 
 def _route_authz_context(user: User, *, is_internal: bool, platform_role: str | None = None) -> dict:

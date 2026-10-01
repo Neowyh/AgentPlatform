@@ -27,12 +27,13 @@ from deerflow.persistence.mcp_tasks.model import McpTaskRow
 from deerflow.persistence.models.legacy_tables import skill_applications, workflow_runs
 from deerflow.persistence.models.run_event import RunEventRow
 from deerflow.persistence.personal_access_tokens.model import PersonalAccessTokenRow
-from deerflow.persistence.run.model import RunRow
+from deerflow.persistence.projects.model import ProjectDocumentRow, ProjectRow
+from deerflow.persistence.run.model import RunChangeClockRow, RunRow
 from deerflow.persistence.scheduled_task_runs.model import ScheduledTaskRunRow
 from deerflow.persistence.scheduled_tasks.model import ScheduledTaskRow
 from deerflow.persistence.subagent_batches.model import SubagentBatchItemRow, SubagentBatchRow
 from deerflow.persistence.thread_meta.model import ThreadMetaRow
-from deerflow.persistence.user.model import UserRow
+from deerflow.persistence.user.model import UserPreferenceRow, UserRow
 from deerflow.persistence.webhook_delivery.model import WebhookDeliveryRow
 
 __all__ = [
@@ -45,15 +46,19 @@ __all__ = [
     "McpTaskRow",
     "ManagedSubagentRow",
     "PersonalAccessTokenRow",
+    "ProjectDocumentRow",
+    "ProjectRow",
     "RunEventRow",
-    "skill_applications",
-    "workflow_runs",
+    "RunChangeClockRow",
     "RunRow",
     "ScheduledTaskRow",
     "ScheduledTaskRunRow",
     "SubagentBatchRow",
     "SubagentBatchItemRow",
     "ThreadMetaRow",
+    "UserPreferenceRow",
     "UserRow",
     "WebhookDeliveryRow",
+    "skill_applications",
+    "workflow_runs",
 ]

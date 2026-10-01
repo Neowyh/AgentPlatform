@@ -2,6 +2,7 @@ import type { Message } from "@langchain/langgraph-sdk";
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  areStreamMetadataSnapshotsEqual,
   extractContentFromMessage,
   extractPresentFilesFromMessage,
   extractReasoningContentFromMessage,
@@ -10,8 +11,10 @@ import {
   findToolCallResult,
   getAssistantTurnCopyData,
   getAssistantTurnUsageMessages,
+  getMessageCopyData,
   getMessageGroups,
   getStreamingMessageLookup,
+  getStreamMetadataSnapshot,
   groupMessages,
   hasContent,
   hasPresentFiles,
@@ -1775,4 +1778,676 @@ describe("extractURLFromImageURLContent - extra edge cases", () => {
     const dataUrl = "data:image/png;base64,abc123";
     expect(extractURLFromImageURLContent(dataUrl)).toBe(dataUrl);
   });
+});
+
+describe("human message internal context stripping", () => {
+  test("strips legacy uploaded_files context from copy data", () => {
+    // Display-only backward compatibility (#4212): pre-#4174 history still
+    // carries <uploaded_files> blocks, which copy data must strip rather
+    // than leak as raw XML with server-side paths.
+    const message = {
+      id: "human-with-legacy-upload",
+      type: "human",
+      content:
+        "<uploaded_files>\nThe following files were uploaded in this message:\n\n- paper.pdf (1.0 MB)\n  Path: /mnt/user-data/uploads/paper.pdf\n</uploaded_files>\n\nSummarize this paper",
+    } as Message;
+
+    expect(getMessageCopyData(message)).toBe("Summarize this paper");
+  });
+
+  test("strips current_uploads context from copy data", () => {
+    // Mirrors the block UploadsMiddleware emits since #4174, including the
+    // trailing usage-guidance lines.
+    const message = {
+      id: "human-with-current-uploads",
+      type: "human",
+      content:
+        "<current_uploads>\nThe following files were uploaded in this message:\n\n- paper.docx (177.6 KB)\n  Path: /mnt/user-data/uploads/paper.docx\n\nTo work with these files:\n- Use `grep` to search for keywords\n  (e.g. `grep(pattern='revenue', path='/mnt/user-data/uploads/')`).\n</current_uploads>\n\nMake a slide deck from this",
+    } as Message;
+
+    expect(getMessageCopyData(message)).toBe("Make a slide deck from this");
+  });
+
+  test("parses uploaded files from a current_uploads block", () => {
+    const content =
+      "<current_uploads>\nThe following files were uploaded in this message:\n\n- paper.docx (177.6 KB)\n  Path: /mnt/user-data/uploads/paper.docx\n  Document outline (use `read_file` with line ranges to read sections):\n    L1: Introduction\n- data.xlsx (12.0 KB)\n  Path: /mnt/user-data/uploads/data.xlsx\n</current_uploads>\n\nSummarize";
+
+    // size is bytes (FileInMessage contract): the block's "177.6 KB" /
+    // "12.0 KB" are converted back from the human-readable form the backend
+    // emits, so formatBytes re-renders them at the original magnitude.
+    expect(parseUploadedFiles(content)).toEqual([
+      {
+        filename: "paper.docx",
+        size: Math.round(177.6 * 1024), // 181862
+        path: "/mnt/user-data/uploads/paper.docx",
+      },
+      {
+        filename: "data.xlsx",
+        size: 12 * 1024, // 12288
+        path: "/mnt/user-data/uploads/data.xlsx",
+      },
+    ]);
+  });
+
+  test("parses uploaded filenames that contain parentheses", () => {
+    // Browsers name duplicate downloads "photo (1).png"; the backend emits the
+    // filename verbatim, so the parser must not stop the name at the first "(".
+    const content =
+      "<current_uploads>\nThe following files were uploaded in this message:\n\n- photo (1).png (12.3 KB)\n  Path: /mnt/user-data/uploads/photo (1).png\n- report (final) (2).docx (1.5 MB)\n  Path: /mnt/user-data/uploads/report (final) (2).docx\n- normal.pdf (3.0 KB)\n  Path: /mnt/user-data/uploads/normal.pdf\n</current_uploads>\n\nSummarize";
+
+    expect(parseUploadedFiles(content)).toEqual([
+      {
+        filename: "photo (1).png",
+        size: Math.round(12.3 * 1024),
+        path: "/mnt/user-data/uploads/photo (1).png",
+      },
+      {
+        filename: "report (final) (2).docx",
+        size: Math.round(1.5 * 1024 * 1024),
+        path: "/mnt/user-data/uploads/report (final) (2).docx",
+      },
+      {
+        filename: "normal.pdf",
+        size: 3 * 1024,
+        path: "/mnt/user-data/uploads/normal.pdf",
+      },
+    ]);
+  });
+
+  test("stripInternalMarkers removes current_uploads blocks on export", () => {
+    const content =
+      "<current_uploads>\n- paper.docx (177.6 KB)\n  Path: /mnt/user-data/uploads/paper.docx\n</current_uploads>\n\nExport me";
+
+    expect(stripInternalMarkers(content)).toBe("Export me");
+  });
+
+  test("stripInternalMarkers removes attributed project context blocks on export", () => {
+    const content =
+      '<project name="Roadmap">\nsecret instructions\n</project>\n\nExport me';
+
+    expect(stripInternalMarkers(content)).toBe("Export me");
+  });
+
+  test("stripInternalMarkers removes documents blocks on export", () => {
+    const content =
+      '<documents count="2" shown="2">\n- id=abc | q3.pdf (2.1 MB, modified 2026-09-10)\n</documents>\n\nExport me';
+
+    expect(stripInternalMarkers(content)).toBe("Export me");
+  });
+
+  test("stripInternalMarkers preserves fenced code that uses marker tag names", () => {
+    const content = [
+      "Here is my pom:",
+      "```xml",
+      "<project>",
+      "  <artifactId>demo</artifactId>",
+      "</project>",
+      "```",
+      "Export me",
+    ].join("\n");
+
+    expect(stripInternalMarkers(content)).toBe(content);
+  });
+
+  test("stripInternalMarkers preserves tilde-fenced and indented code spans", () => {
+    const tilde = ["~~~", '<documents count="1">', "</documents>", "~~~"].join(
+      "\n",
+    );
+    expect(stripInternalMarkers(tilde)).toBe(tilde);
+
+    // The leading text keeps ``trim()`` from eating the code's indentation.
+    const indented = [
+      "Pasted snippet:",
+      "",
+      "    <project>",
+      "    </project>",
+    ].join("\n");
+    expect(stripInternalMarkers(indented)).toBe(indented);
+  });
+
+  test("stripInternalMarkers still removes an injected block whose content contains a fence", () => {
+    const content = [
+      "<memory>",
+      "```",
+      "not a real fence owner",
+      "```",
+      "</memory>",
+      "Export me",
+    ].join("\n");
+
+    expect(stripInternalMarkers(content)).toBe("Export me");
+  });
+
+  test("strips slash skill activation context from display content", () => {
+    const content =
+      "<slash_skill_activation>\n<skill_content># Secret SKILL.md</skill_content>\n</slash_skill_activation>\nreal user task";
+
+    expect(stripUploadedFilesTag(content)).toBe("real user task");
+  });
+
+  test("hides leaked slash skill activation messages with no user text", () => {
+    const messages = [
+      {
+        id: "slash-activation",
+        type: "human",
+        content:
+          "<slash_skill_activation>\n<skill_content># Secret SKILL.md</skill_content>\n</slash_skill_activation>",
+      },
+      {
+        id: "ai-1",
+        type: "ai",
+        content: "Public answer",
+      },
+    ] as Message[];
+
+    const groups = getMessageGroups(messages);
+
+    expect(groups.map((group) => group.type)).toEqual(["assistant"]);
+    expect(
+      groups.flatMap((group) => group.messages).map((message) => message.id),
+    ).toEqual(["ai-1"]);
+  });
+});
+
+test("hides internal todo reminder messages from message groups", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Audit the middleware",
+    },
+    {
+      id: "todo-reminder-1",
+      type: "human",
+      name: "todo_completion_reminder",
+      content: "<system_reminder>finish todos</system_reminder>",
+    },
+    {
+      id: "todo-reminder-2",
+      type: "human",
+      name: "todo_reminder",
+      content: "<system_reminder>remember todos</system_reminder>",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Done",
+    },
+  ] as Message[];
+
+  const groups = getMessageGroups(messages);
+
+  expect(groups.map((group) => group.type)).toEqual(["human", "assistant"]);
+  expect(
+    groups.flatMap((group) => group.messages).map((message) => message.id),
+  ).toEqual(["human-1", "ai-1"]);
+});
+
+test("hides assistant copy data while that turn is streaming", () => {
+  const messages = [
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Partial answer",
+    },
+  ] as Message[];
+
+  expect(getAssistantTurnCopyData(messages)).toBe("Partial answer");
+  expect(getAssistantTurnCopyData(messages, { isStreaming: true })).toBeNull();
+});
+
+test("falls back to reasoning for a reasoning-only assistant turn's copy data", () => {
+  // A turn can end with reasoning but no answer text (e.g. stopped during
+  // thinking). getMessageCopyData already copies the reasoning in that case;
+  // the turn-level copy button must not disappear instead.
+  const messages = [
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "",
+      additional_kwargs: { reasoning_content: "the actual reasoning" },
+    },
+  ] as Message[];
+
+  expect(getAssistantTurnCopyData(messages)).toBe("the actual reasoning");
+});
+
+test("settled copy data is derived once per messages array reference (#5094)", () => {
+  // Settled group arrays keep their identity across streaming chunks, and the
+  // copy button re-renders per chunk. Reading `content` through a getter
+  // proves the second settled call is served from the array-reference cache
+  // instead of re-running the O(turn bytes) extraction.
+  let contentReads = 0;
+  const message = {
+    id: "ai-1",
+    type: "ai",
+    get content() {
+      contentReads += 1;
+      return "Final answer";
+    },
+  } as unknown as Message;
+  const messages = [message];
+
+  expect(getAssistantTurnCopyData(messages)).toBe("Final answer");
+  const readsAfterFirstCall = contentReads;
+  expect(readsAfterFirstCall).toBeGreaterThan(0);
+
+  expect(getAssistantTurnCopyData(messages)).toBe("Final answer");
+  expect(contentReads).toBe(readsAfterFirstCall);
+});
+
+test("copy-data cache does not leak across array references", () => {
+  const first = [
+    { id: "ai-1", type: "ai", content: "first answer" },
+  ] as Message[];
+  const second = [
+    { id: "ai-2", type: "ai", content: "second answer" },
+  ] as Message[];
+
+  expect(getAssistantTurnCopyData(first)).toBe("first answer");
+  expect(getAssistantTurnCopyData(second)).toBe("second answer");
+  // The streaming short-circuit stays ahead of the cache.
+  expect(getAssistantTurnCopyData(second, { isStreaming: true })).toBeNull();
+  expect(getAssistantTurnCopyData(second)).toBe("second answer");
+});
+
+test("null copy data is not cached for a reference", () => {
+  // A turn with no copyable AI text must keep recomputing (and stay null)
+  // rather than a cached null hiding a later value — the same array can be
+  // re-used once messages are appended to a rebuilt group.
+  const messages = [
+    { id: "human-1", type: "human", content: "hi" },
+  ] as Message[];
+
+  expect(getAssistantTurnCopyData(messages)).toBeNull();
+  expect(getAssistantTurnCopyData(messages)).toBeNull();
+});
+
+test("marks the latest assistant message as streaming", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Still generating",
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true, () => ({
+        streamMetadata: { langgraph_node: "agent" },
+      })),
+    ),
+  ).toBe(true);
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, false, () => ({
+        streamMetadata: { langgraph_node: "agent" },
+      })),
+    ),
+  ).toBe(false);
+});
+
+test("compares stream metadata snapshots by keys and metadata identity", () => {
+  const identifiedMessage = {
+    id: "ai-1",
+    type: "ai",
+    content: "Completed answer",
+  } as Message;
+  const anonymousMessage = {
+    type: "ai",
+    content: "Anonymous answer",
+  } as Message;
+  const identifiedMetadata = { langgraph_node: "agent" };
+  const anonymousMetadata = { langgraph_node: "agent" };
+  const messages = [identifiedMessage, anonymousMessage];
+  const snapshot = getStreamMetadataSnapshot(messages, (message) => ({
+    streamMetadata:
+      message === identifiedMessage ? identifiedMetadata : anonymousMetadata,
+  }));
+  const equivalentSnapshot = getStreamMetadataSnapshot(messages, (message) => ({
+    streamMetadata:
+      message === identifiedMessage ? identifiedMetadata : anonymousMetadata,
+  }));
+  const changedSnapshot = getStreamMetadataSnapshot(messages, (message) => ({
+    streamMetadata:
+      message === identifiedMessage
+        ? { ...identifiedMetadata }
+        : anonymousMetadata,
+  }));
+  const missingSnapshot = getStreamMetadataSnapshot(
+    [identifiedMessage],
+    () => ({ streamMetadata: identifiedMetadata }),
+  );
+
+  expect(areStreamMetadataSnapshotsEqual(snapshot, equivalentSnapshot)).toBe(
+    true,
+  );
+  expect(areStreamMetadataSnapshotsEqual(snapshot, changedSnapshot)).toBe(
+    false,
+  );
+  expect(areStreamMetadataSnapshotsEqual(snapshot, missingSnapshot)).toBe(
+    false,
+  );
+});
+
+test("ignores stream metadata retained from a completed turn", () => {
+  const completedMetadata = { langgraph_node: "agent", langgraph_step: 1 };
+  const activeMetadata = { langgraph_node: "agent", langgraph_step: 2 };
+  const completedMessages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Completed answer",
+    },
+  ] as Message[];
+  const settledMetadata = getStreamMetadataSnapshot(
+    completedMessages,
+    (message) =>
+      message.id === "ai-1" ? { streamMetadata: completedMetadata } : undefined,
+  );
+  const messages = [
+    ...completedMessages,
+    {
+      id: "human-2",
+      type: "human",
+      content: "Continue",
+    },
+    {
+      id: "ai-2",
+      type: "ai",
+      content: "Still generating",
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages).filter(
+    (group) => group.type === "assistant",
+  );
+  const streamingMessages = getStreamingMessageLookup(
+    messages,
+    true,
+    (message) => {
+      if (message.id === "ai-1") {
+        return { streamMetadata: completedMetadata };
+      }
+      if (message.id === "ai-2") {
+        return { streamMetadata: activeMetadata };
+      }
+      return undefined;
+    },
+    settledMetadata,
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[0]?.messages ?? [],
+      streamingMessages,
+    ),
+  ).toBe(false);
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[1]?.messages ?? [],
+      streamingMessages,
+    ),
+  ).toBe(true);
+});
+
+test("treats updated metadata for the same message id as active", () => {
+  const message = {
+    id: "ai-1",
+    type: "ai",
+    content: "Partial answer",
+  } as Message;
+  const completedMetadata = { langgraph_node: "agent", langgraph_step: 1 };
+  const activeMetadata = { langgraph_node: "agent", langgraph_step: 2 };
+  const settledMetadata = getStreamMetadataSnapshot([message], () => ({
+    streamMetadata: completedMetadata,
+  }));
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      [message],
+      getStreamingMessageLookup(
+        [message],
+        true,
+        () => ({ streamMetadata: activeMetadata }),
+        settledMetadata,
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("keeps previous assistant copyable while waiting for a new visible answer", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Completed answer",
+    },
+    {
+      id: "opt-human-1",
+      type: "human",
+      content: "Continue",
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true),
+    ),
+  ).toBe(false);
+});
+
+test("keeps previous assistant copyable while a hidden send is starting", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Completed answer",
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true),
+    ),
+  ).toBe(false);
+});
+
+test("keeps previous assistant copyable after a hidden send is appended", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Completed answer",
+    },
+    {
+      id: "human-hidden",
+      type: "human",
+      content: "Save this agent",
+      additional_kwargs: { hide_from_ui: true },
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true),
+    ),
+  ).toBe(false);
+});
+
+test("uses stream metadata to identify an assistant before optimistic input", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Completed answer",
+    },
+    {
+      id: "ai-2",
+      type: "ai",
+      content: "Still generating",
+    },
+    {
+      id: "opt-human-1",
+      type: "human",
+      content: "Continue",
+    },
+  ] as Message[];
+  const assistantGroups = getMessageGroups(messages).filter(
+    (group) => group.type === "assistant",
+  );
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndexes = groups
+    .map((group, index) => (group.type === "assistant" ? index : -1))
+    .filter((index) => index >= 0);
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndexes[0] ?? -1]?.messages ?? [],
+      getStreamingMessageLookup(messages, true, (message) =>
+        message.id === "ai-2"
+          ? { streamMetadata: { langgraph_node: "agent" } }
+          : undefined,
+      ),
+    ),
+  ).toBe(false);
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndexes[1] ?? -1]?.messages ?? [],
+      getStreamingMessageLookup(messages, true, (message) =>
+        message.id === "ai-2"
+          ? { streamMetadata: { langgraph_node: "agent" } }
+          : undefined,
+      ),
+    ),
+  ).toBe(true);
+  expect(assistantGroups.map((group) => group.id)).toEqual(["ai-1", "ai-2"]);
+});
+
+test("does not mark a completed assistant group streaming from a later processing group", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Visible answer",
+    },
+    {
+      id: "ai-2",
+      type: "ai",
+      content: "",
+      tool_calls: [{ id: "tool-1", name: "web_search", args: {} }],
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(groups.map((group) => group.type)).toEqual([
+    "human",
+    "assistant",
+    "assistant:processing",
+  ]);
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true, (message) =>
+        message.id === "ai-2"
+          ? { streamMetadata: { langgraph_node: "agent" } }
+          : undefined,
+      ),
+    ),
+  ).toBe(false);
+});
+
+test("keeps streaming assistant hidden when a hidden control message follows it", () => {
+  const messages = [
+    {
+      id: "human-1",
+      type: "human",
+      content: "Hello",
+    },
+    {
+      id: "ai-1",
+      type: "ai",
+      content: "Still generating",
+    },
+    {
+      id: "human-hidden",
+      type: "human",
+      content: "Save this agent",
+      additional_kwargs: { hide_from_ui: true },
+    },
+  ] as Message[];
+  const groups = getMessageGroups(messages);
+  const assistantGroupIndex = groups.findIndex(
+    (group) => group.type === "assistant",
+  );
+
+  expect(
+    isAssistantMessageGroupStreaming(
+      groups[assistantGroupIndex]?.messages ?? [],
+      getStreamingMessageLookup(messages, true, (message) =>
+        message.id === "ai-1"
+          ? { streamMetadata: { langgraph_node: "agent" } }
+          : undefined,
+      ),
+    ),
+  ).toBe(true);
 });

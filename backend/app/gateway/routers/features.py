@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.browser_capability import browser_capability
+from app.gateway.conversation_access import conversation_references_enabled
 from app.gateway.deps import get_config
+from app.gateway.run_models import MAX_CONVERSATION_REFERENCES
 from deerflow.config.app_config import AppConfig
 from deerflow.subagents.capacity import configured_subagent_max_running
 
@@ -53,6 +55,13 @@ class KnowledgeFeature(BaseModel):
     supported_extensions: list[str]
 
 
+class ConversationReferencesFeature(BaseModel):
+    """Availability of explicit conversation references on run requests."""
+
+    enabled: bool = Field(..., description="Whether the opt-in read_conversation tool is configured, so run requests may carry conversation_references")
+    max_references: int = Field(..., description="Maximum conversation references accepted on one run request")
+
+
 class FeaturesResponse(BaseModel):
     """Frontend-facing feature availability flags."""
 
@@ -61,6 +70,7 @@ class FeaturesResponse(BaseModel):
     mcp_tasks: McpTasksFeature
     subagent_batches: SubagentBatchesFeature
     knowledge: KnowledgeFeature | None = None
+    conversation_references: ConversationReferencesFeature
 
 
 @router.get(
@@ -107,5 +117,12 @@ async def list_features(request: Request, config: AppConfig = Depends(get_config
             )
             if hasattr(request.app.state, "knowledge_worker_available")
             else None
+        ),
+        # Same predicate as run admission (``prepare_conversation_reader``), read
+        # through ``get_config`` so enabling the tool in config.yaml shows up
+        # without a restart. A UI with no entry point still needs no change here.
+        conversation_references=ConversationReferencesFeature(
+            enabled=conversation_references_enabled(config),
+            max_references=MAX_CONVERSATION_REFERENCES,
         ),
     )

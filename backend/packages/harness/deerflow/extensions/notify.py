@@ -69,9 +69,7 @@ def _host_is_cancelling() -> bool:
     return task is not None and task.cancelling() > 0
 
 
-def notify_agent_assembled(
-    descriptor: object, extensions: object | None = None
-) -> None:
+def notify_agent_assembled(descriptor: object, extensions: object | None = None) -> None:
     """Fan a completed assembly out to observers, in registration order.
 
     Synchronous: agent construction is synchronous and there is no loop to
@@ -393,11 +391,7 @@ async def observe_system_model_call(
     if not extensions.has_system_model_observers:
         return await invoke()
 
-    store = (
-        task_store
-        if task_store is not None
-        else task_store_for_system_call(invoke_config)
-    )
+    store = task_store if task_store is not None else task_store_for_system_call(invoke_config)
     request = SystemModelRequest(
         messages=messages,
         model_name=model_name,
@@ -495,9 +489,7 @@ def dispatch_system_model_observation(
             coro.close()
 
 
-def notify_context_compacted(
-    event: CompactionEvent, extensions: LoadedExtensions | None = None
-) -> None:
+def notify_context_compacted(event: CompactionEvent, extensions: LoadedExtensions | None = None) -> None:
     """Fan a completed compaction out to observers, fire-and-forget.
 
     The compaction seam sits in the summarization middleware's ``before_model`` /
@@ -527,9 +519,7 @@ def notify_context_compacted(
         _notify_each(
             observers,
             "on_context_compacted",
-            lambda observer: observer.on_context_compacted(
-                app_store, task_store, event
-            ),
+            lambda observer: observer.on_context_compacted(app_store, task_store, event),
             what,
             None,
         ),

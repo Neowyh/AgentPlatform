@@ -23,6 +23,10 @@ export interface FeaturesResponse {
     max_file_size: number;
     supported_extensions: string[];
   };
+  conversation_references?: {
+    enabled?: boolean;
+    max_references?: number;
+  };
 }
 
 export interface KnowledgeCapability {
@@ -31,6 +35,11 @@ export interface KnowledgeCapability {
   workerRunning: boolean;
   maxFileSize: number;
   supportedExtensions: string[];
+}
+
+export interface ConversationReferencesCapability {
+  enabled: boolean;
+  maxReferences: number;
 }
 
 export interface SubagentBatchesCapability {
@@ -73,5 +82,20 @@ export async function fetchSubagentBatchesCapability(): Promise<SubagentBatchesC
     repositoryAvailable: feature?.repository_available ?? legacyEnabled,
     workerRunning: feature?.worker_running ?? legacyEnabled,
     maxRunning: feature?.max_running ?? 0,
+  };
+}
+
+export async function fetchConversationReferencesCapability(): Promise<ConversationReferencesCapability> {
+  const features = await fetchFeatures();
+  const capability = features.conversation_references;
+  const maxReferences = capability?.max_references;
+  return {
+    enabled: capability?.enabled === true,
+    maxReferences:
+      typeof maxReferences === "number" &&
+      Number.isInteger(maxReferences) &&
+      maxReferences > 0
+        ? maxReferences
+        : 0,
   };
 }

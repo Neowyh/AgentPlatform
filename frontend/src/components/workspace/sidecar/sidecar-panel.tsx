@@ -48,6 +48,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/core/auth/AuthProvider";
+import { hasPermission, PERMISSIONS } from "@/core/auth/permissions";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   buildHumanInputResponseText,
@@ -78,18 +80,14 @@ import {
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorName,
-  ModelSelectorTrigger,
-} from "../../ai-elements/model-selector";
 import { MessageList, MESSAGE_LIST_DEFAULT_PADDING_BOTTOM } from "../messages";
 import { useThread as useParentThread } from "../messages/context";
 import { ModeHoverGuide } from "../mode-hover-guide";
+import {
+  ModelPicker,
+  ModelPickerContent,
+  ModelPickerTrigger,
+} from "../model-picker-content";
 import { Tooltip } from "../tooltip";
 
 import { type SidecarReference, useSidecar } from "./context";
@@ -146,6 +144,8 @@ function promptMessageFiles(message: PromptInputMessage) {
 
 export function SidecarPanel({ className }: { className?: string }) {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const canDeleteThreads = hasPermission(user, PERMISSIONS.THREADS_DELETE);
   const sidecar = useSidecar();
   const { thread: parentThread } = useParentThread();
   const [localSettings] = useLocalSettings();
@@ -530,8 +530,10 @@ export function SidecarPanel({ className }: { className?: string }) {
       <header className="border-border/70 flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <MessageSquareTextIcon className="text-muted-foreground size-4" />
         <div className="min-w-0 flex-1">
-          <div className="truncate type-supporting font-medium">{t.sidecar.title}</div>
-          <div className="text-muted-foreground truncate type-compact">
+          <div className="type-supporting truncate font-medium">
+            {t.sidecar.title}
+          </div>
+          <div className="text-muted-foreground type-compact truncate">
             {sidecar.activeReferences.length > 0
               ? referenceCountLabel
               : sidecar.sidecarThreadId
@@ -539,7 +541,7 @@ export function SidecarPanel({ className }: { className?: string }) {
                 : t.sidecar.noContext}
           </div>
         </div>
-        {hasSidecarThread && (
+        {hasSidecarThread && canDeleteThreads && (
           <Tooltip content={t.sidecar.delete}>
             <Button
               aria-label={t.sidecar.delete}
@@ -625,7 +627,7 @@ export function SidecarPanel({ className }: { className?: string }) {
             </PromptInputHeader>
             <PromptInputBody>
               <PromptInputTextarea
-                className="max-h-36 min-h-16 type-supporting"
+                className="type-supporting max-h-36 min-h-16"
                 disabled={disabled}
                 placeholder={t.sidecar.placeholder}
               />
@@ -642,7 +644,6 @@ export function SidecarPanel({ className }: { className?: string }) {
               <PromptInputTools className="min-w-0 justify-end">
                 <SidecarModelSelector
                   className="max-w-40 min-w-0 sm:max-w-56 @max-[240px]:hidden"
-                  context={sidecar.context}
                   models={models}
                   open={modelDialogOpen}
                   selectedModel={selectedModel}
@@ -774,7 +775,7 @@ function SidecarModeMenu({
           </div>
           <div
             className={cn(
-              "truncate type-compact font-normal",
+              "type-compact truncate font-normal",
               mode === "ultra" && "golden-text",
             )}
           >
@@ -808,7 +809,7 @@ function SidecarModeMenu({
                 />
                 {t.inputBox.flashMode}
               </div>
-              <div className="pl-7 type-compact">
+              <div className="type-compact pl-7">
                 {t.inputBox.flashModeDescription}
               </div>
             </div>
@@ -837,7 +838,7 @@ function SidecarModeMenu({
                   />
                   {t.inputBox.reasoningMode}
                 </div>
-                <div className="pl-7 type-compact">
+                <div className="type-compact pl-7">
                   {t.inputBox.reasoningModeDescription}
                 </div>
               </div>
@@ -866,7 +867,7 @@ function SidecarModeMenu({
                 />
                 {t.inputBox.proMode}
               </div>
-              <div className="pl-7 type-compact">
+              <div className="type-compact pl-7">
                 {t.inputBox.proModeDescription}
               </div>
             </div>
@@ -896,7 +897,7 @@ function SidecarModeMenu({
                   {t.inputBox.ultraMode}
                 </div>
               </div>
-              <div className="pl-7 type-compact">
+              <div className="type-compact pl-7">
                 {t.inputBox.ultraModeDescription}
               </div>
             </div>
@@ -914,7 +915,6 @@ function SidecarModeMenu({
 
 function SidecarModelSelector({
   className,
-  context,
   models,
   open,
   selectedModel,
@@ -922,54 +922,33 @@ function SidecarModelSelector({
   onOpenChange,
 }: {
   className?: string;
-  context: ThreadStreamOptions["context"];
   models: Model[];
   open: boolean;
   selectedModel?: Model;
   onModelSelect: (modelName: string) => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useI18n();
-
   if (!selectedModel) {
     return null;
   }
 
   return (
-    <ModelSelector open={open} onOpenChange={onOpenChange}>
-      <ModelSelectorTrigger asChild>
+    <ModelPicker open={open} onOpenChange={onOpenChange}>
+      <ModelPickerTrigger asChild>
         <PromptInputButton className={cn("min-w-0 px-2!", className)}>
           <div className="flex min-w-0 flex-col text-left">
-            <ModelSelectorName className="truncate type-compact font-normal">
+            <span className="type-compact flex-1 truncate text-left font-normal">
               {selectedModel.display_name}
-            </ModelSelectorName>
+            </span>
           </div>
         </PromptInputButton>
-      </ModelSelectorTrigger>
-      <ModelSelectorContent>
-        <ModelSelectorInput placeholder={t.inputBox.searchModels} />
-        <ModelSelectorList>
-          {models.map((model) => (
-            <ModelSelectorItem
-              key={model.name}
-              value={model.name}
-              onSelect={() => onModelSelect(model.name)}
-            >
-              <div className="flex min-w-0 flex-1 flex-col">
-                <ModelSelectorName>{model.display_name}</ModelSelectorName>
-                <span className="text-muted-foreground truncate type-compact">
-                  {model.model}
-                </span>
-              </div>
-              {model.name === context.model_name ? (
-                <CheckIcon className="ml-auto size-4" />
-              ) : (
-                <div className="ml-auto size-4" />
-              )}
-            </ModelSelectorItem>
-          ))}
-        </ModelSelectorList>
-      </ModelSelectorContent>
-    </ModelSelector>
+      </ModelPickerTrigger>
+      <ModelPickerContent
+        open={open}
+        models={models}
+        selectedModelName={selectedModel.name}
+        onModelSelect={onModelSelect}
+      />
+    </ModelPicker>
   );
 }
