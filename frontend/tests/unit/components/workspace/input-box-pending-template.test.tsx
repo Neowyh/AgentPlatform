@@ -75,6 +75,16 @@ vi.mock("@/core/i18n/hooks", () => ({
         followupConfirmAppend: "Append & send",
         followupConfirmReplace: "Replace & send",
       },
+      // 合并后模型选择收敛进 ModelPickerContent（上游组件），需要 modelPicker 键。
+      modelPicker: {
+        title: "Choose a model",
+        favorites: "Favorites",
+        otherModels: "Other models",
+        noModels: "No models available",
+        favoriteModel: (displayName: string, name: string) =>
+          `Favorite ${displayName} (${name})`,
+        sessionOnly: "Favorites are stored for this session only.",
+      },
     },
   }),
 }));

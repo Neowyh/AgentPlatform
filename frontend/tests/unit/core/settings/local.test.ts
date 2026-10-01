@@ -45,6 +45,8 @@ describe("exported constants", () => {
         mode: undefined,
         reasoning_effort: undefined,
       },
+      // 合并新增：最近会话列表 flat/grouped 偏好，默认 flat。
+      projectsDisplayMode: "flat",
     });
   });
 

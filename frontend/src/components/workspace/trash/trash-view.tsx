@@ -72,7 +72,7 @@ export function TrashView() {
   return (
     <div className="mx-auto flex w-full max-w-(--container-width-md) flex-col gap-6 p-6 pt-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">{t.trash.title}</h1>
+        <h1 className="type-section-title font-semibold">{t.trash.title}</h1>
         {documents.length > 0 && (
           <Button
             variant="destructive"
@@ -87,7 +87,7 @@ export function TrashView() {
       </div>
 
       {trashQuery.isError ? (
-        <div role="alert" className="p-4 text-center text-sm">
+        <div role="alert" className="type-supporting p-4 text-center">
           <p>{t.trash.loadFailed}</p>
           <Button
             variant="outline"
@@ -98,7 +98,7 @@ export function TrashView() {
           </Button>
         </div>
       ) : trashQuery.isLoading ? (
-        <div className="text-muted-foreground flex items-center justify-center gap-2 py-16 text-sm">
+        <div className="text-muted-foreground type-supporting flex items-center justify-center gap-2 py-16">
           <LoaderIcon className="size-4 animate-spin" />
           {t.common.loading}
         </div>
@@ -125,14 +125,14 @@ export function TrashView() {
             ))}
           </ul>
           <div className="flex flex-col items-center gap-1">
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground type-compact">
               {t.common.showingOf(documents.length, documentsTotal)}
             </p>
             {trashQuery.hasNextPage && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs"
+                className="type-compact"
                 disabled={trashQuery.isFetchingNextPage}
                 onClick={() => void trashQuery.fetchNextPage()}
                 data-testid="trash-load-more"
@@ -285,8 +285,10 @@ function TrashDocumentRow({
     <li className="flex items-center gap-3 rounded-md border p-3">
       {getFileIcon(document.name, "size-5 shrink-0")}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm font-medium">{document.name}</span>
-        <span className="text-muted-foreground text-xs">
+        <span className="type-supporting truncate font-medium">
+          {document.name}
+        </span>
+        <span className="text-muted-foreground type-compact">
           {t.trash.originProject(
             document.trash_origin?.project_name ?? t.trash.unknownProject,
           )}
@@ -349,7 +351,7 @@ function RestoreProjectPicker({
   const projects = projectsQuery.data ?? [];
   if (projectsQuery.isLoading) {
     return (
-      <div className="text-muted-foreground flex items-center gap-2 p-2 text-sm">
+      <div className="text-muted-foreground type-supporting flex items-center gap-2 p-2">
         <LoaderIcon className="size-4 animate-spin" />
         {t.common.loading}
       </div>
@@ -357,7 +359,9 @@ function RestoreProjectPicker({
   }
   if (projects.length === 0) {
     return (
-      <p className="text-muted-foreground p-2 text-sm">{t.projects.empty}</p>
+      <p className="text-muted-foreground type-supporting p-2">
+        {t.projects.empty}
+      </p>
     );
   }
   return (

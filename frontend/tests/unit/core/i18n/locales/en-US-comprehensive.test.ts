@@ -128,7 +128,8 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(enUS.common)).toHaveLength(46);
+      // 键级并集后随合并形态更新（新增 2 键）。
+      expect(Object.keys(enUS.common)).toHaveLength(48);
     });
   });
 
@@ -369,7 +370,7 @@ describe("enUS locale comprehensive", () => {
       // 3 keys orphaned when the /workspace/agents surface was merged into
       // the capability center (featureDisabledTitle/Description,
       // nameStepApiDisabledError) = 90
-      expect(Object.keys(enUS.agents)).toHaveLength(90);
+      expect(Object.keys(enUS.agents)).toHaveLength(93);
     });
 
     it("nameStepBootstrapMessage contains {name} placeholder", () => {
@@ -558,8 +559,9 @@ describe("enUS locale comprehensive", () => {
       expect(enUS.chats.searchChats).toBe("Search chats");
     });
 
-    it("has 8 keys", () => {
-      expect(Object.keys(enUS.chats)).toHaveLength(8);
+    it("has the merged key count", () => {
+      // 合并后 chats 承接归档/项目/分支等新键（键级并集）。
+      expect(Object.keys(enUS.chats)).toHaveLength(25);
     });
   });
 
@@ -1091,8 +1093,9 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 61 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(68);
+      it("has the merged key count", () => {
+        // 合并后 skills 设置页承接上游能力中心键（键级并集）。
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(99);
       });
     });
 

@@ -9,9 +9,16 @@ import {
 } from "@/components/workspace/capabilities/skill-presentation";
 import type { Skill } from "@/core/skills/type";
 
-const publicSkillsRoot = join(process.cwd(), "../skills/public");
-const publicSkillNames = readdirSync(publicSkillsRoot).filter((name) =>
-  existsSync(join(publicSkillsRoot, name, "SKILL.md")),
+// The merged tree ships skills from two roots: the upstream public set
+// (skills/public) and the local bundled catalog (resources/skills). Curated
+// presentation metadata may cover either, so staleness is judged against the
+// union.
+const skillRoots = [
+  join(process.cwd(), "../skills/public"),
+  join(process.cwd(), "../resources/skills"),
+];
+const publicSkillNames = skillRoots.flatMap((root) =>
+  readdirSync(root).filter((name) => existsSync(join(root, name, "SKILL.md"))),
 );
 
 function skill(name: string, category = "public"): Skill {

@@ -92,7 +92,7 @@ describe("static website API requests", () => {
 
   it("uses the existing same-origin settings fixtures even with a configured Gateway", async () => {
     env.NEXT_PUBLIC_BACKEND_BASE_URL = "https://gateway.example/prefix";
-    network.mockResolvedValueOnce(Response.json({ skills: [] }));
+    // Canonical catalogs resolve locally from the resources fixture.
     await expect(loadSkills()).resolves.toEqual([]);
     network.mockResolvedValueOnce(Response.json({ mcp_servers: {} }));
     await expect(loadMCPConfig()).resolves.toEqual({ mcp_servers: {} });
@@ -101,14 +101,13 @@ describe("static website API requests", () => {
       installed: false,
     });
     expect(network.mock.calls.map(([url]) => url)).toEqual([
-      "http://127.0.0.1:3000/mock/api/skills",
       "http://127.0.0.1:3000/mock/api/mcp/config",
       "http://127.0.0.1:3000/mock/api/integrations/lark/status",
     ]);
     await expect(fetchFeatures()).resolves.toMatchObject({
       agents_api: { enabled: false },
     });
-    expect(network).toHaveBeenCalledTimes(3);
+    expect(network).toHaveBeenCalledTimes(2);
   });
 
   it("rejects writes and unsupported endpoints locally instead of reporting fake success", async () => {

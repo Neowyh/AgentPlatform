@@ -41,13 +41,16 @@ export function WorkspaceSettingsDeepLink() {
   const openedFromDeepLinkRef = useRef(false);
 
   useEffect(() => {
-    const nextSection = asSettingsSection(searchParams.get("settings"));
+    const rawSection = searchParams.get("settings");
+    // 合并形态：skills/tools 已移出设置对话框（入口改跳能力中心），
+    // 但旧深链 ?settings=skills|tools 仍须按 legacySettingsDestination 重定向。
+    const legacyDestination = legacySettingsDestination(rawSection);
+    if (rawSection && legacyDestination) {
+      router.replace(legacyDestination);
+      return;
+    }
+    const nextSection = asSettingsSection(rawSection);
     if (nextSection) {
-      const destination = legacySettingsDestination(nextSection);
-      if (destination) {
-        router.replace(destination);
-        return;
-      }
       openedFromDeepLinkRef.current = true;
       openSettingsDialog(nextSection);
     }

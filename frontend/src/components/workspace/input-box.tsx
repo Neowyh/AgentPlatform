@@ -2783,7 +2783,7 @@ export function InputBox({
           {projectAttachments.map((attachment) => (
             <div
               key={attachment.virtual_path}
-              className="bg-muted text-muted-foreground flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 text-xs font-medium"
+              className="bg-muted text-muted-foreground type-compact flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 font-medium"
               data-testid="project-attachment-chip"
             >
               <PaperclipIcon className="size-3" />

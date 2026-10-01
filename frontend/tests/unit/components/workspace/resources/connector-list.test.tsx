@@ -1,16 +1,19 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { auth } = vi.hoisted(() => ({ auth: { role: "user" } }));
+const { auth, mockConfig } = vi.hoisted(() => ({
+  auth: { role: "user" },
+  mockConfig: {
+    mcp_servers: {
+      "server-1": { description: "Server 1 description", enabled: true },
+      "server-2": { description: "Server 2 description", enabled: false },
+    },
+  } as {
+    mcp_servers: Record<string, { description: string; enabled: boolean }>;
+  },
+}));
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
-
-const mockConfig = {
-  mcp_servers: {
-    "server-1": { description: "Server 1 description", enabled: true },
-    "server-2": { description: "Server 2 description", enabled: false },
-  },
-};
 
 vi.mock("@/core/mcp/hooks", () => ({
   useMCPConfig: () => ({
@@ -23,10 +26,6 @@ vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { system_role: auth.role } }),
 }));
 
-vi.mock("@/components/workspace/settings/tool-settings-page", () => ({
-  ToolSettingsPage: () => <div data-testid="tool-settings-page" />,
-}));
-
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let ConnectorList: typeof import("@/components/workspace/resources/connector-list").ConnectorList;
@@ -34,6 +33,10 @@ let ConnectorList: typeof import("@/components/workspace/resources/connector-lis
 beforeEach(async () => {
   vi.clearAllMocks();
   auth.role = "user";
+  mockConfig.mcp_servers = {
+    "server-1": { description: "Server 1 description", enabled: true },
+    "server-2": { description: "Server 2 description", enabled: false },
+  };
   const mod = await import("@/components/workspace/resources/connector-list");
   ConnectorList = mod.ConnectorList;
 });
@@ -69,13 +72,17 @@ describe("ConnectorList", () => {
     );
   });
 
-  test("only super administrators see MCP configuration controls", () => {
+  test("hides the empty-state hint from super administrators", () => {
+    // 合并形态：MCP 配置控件收敛进连接器 tab 的 MCPPluginManager
+    //（有独立 rstest 覆盖），ConnectorList 自身保留的角色门控是
+    // 空态提示只面向普通用户——管理员空态交给上方管理面板。
+    mockConfig.mcp_servers = {};
     auth.role = "department_admin";
     const { rerender } = render(<ConnectorList />);
-    expect(screen.queryByTestId("tool-settings-page")).not.toBeInTheDocument();
+    expect(screen.getByText("No connectors found")).toBeInTheDocument();
 
     auth.role = "super_admin";
     rerender(<ConnectorList />);
-    expect(screen.getByTestId("tool-settings-page")).toBeInTheDocument();
+    expect(screen.queryByText("No connectors found")).not.toBeInTheDocument();
   });
 });

@@ -24,6 +24,15 @@ rs.mock("next/navigation", () => ({
 
 // The panel's model list is irrelevant to the delete-button gating; keep the
 // react-query machinery out of the way entirely.
+// The rendered panel opens a real thread stream for the sidecar thread; in a
+// unit environment there is no Gateway, so stub network at the boundary and
+// let the stream machinery settle on an empty response instead of leaking
+// unhandled ECONNREFUSED rejections that fail the file despite green tests.
+rs.stubGlobal(
+  "fetch",
+  rs.fn(async () => new Response("", { status: 204 })),
+);
+
 rs.mock("@/core/models/hooks", () => ({
   useModels: () => ({
     models: [],

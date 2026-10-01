@@ -61,6 +61,19 @@ vi.mock("@/components/workspace/channels/workspace-channels-list", () => ({
   ),
 }));
 
+// 合并后侧栏在 ThreadDeleteDialogProvider 宿主内挂载（删除确认对话框收敛于此）；
+// 本测试只关注侧栏结构，透传 provider。
+vi.mock("@/components/workspace/thread-delete-dialog", () => ({
+  ThreadDeleteDialogProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="thread-delete-dialog-provider">{children}</div>
+  ),
+}));
+
+// 合并后内容区新增上游 Projects 分组区块；本测试不覆盖其内部行为。
+vi.mock("@/components/workspace/projects-section", () => ({
+  ProjectsSection: () => <div data-testid="projects-section">Projects</div>,
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let WorkspaceSidebar: typeof import("@/components/workspace/workspace-sidebar").WorkspaceSidebar;

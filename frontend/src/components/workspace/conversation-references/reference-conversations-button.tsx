@@ -67,7 +67,7 @@ export function ReferenceConversationsButton({
         >
           <MessagesSquareIcon className="size-3" />
           {references.length > 0 && (
-            <span className="text-xs">{references.length}</span>
+            <span className="type-compact">{references.length}</span>
           )}
         </PromptInputButton>
       </Tooltip>

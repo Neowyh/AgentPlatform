@@ -32,6 +32,10 @@ rs.mock("@/components/workspace/chats/use-thread-chat", () => ({
 }));
 rs.mock("@/core/threads/hooks", () => ({
   useDeleteThread: () => useMutation({ mutationFn: deleteThread }),
+  // The merged dialog provider reads the shared cached thread list to compute
+  // the neighbour-fallback landing path; the empty list degrades to the
+  // fresh-chat fallback the assertions below expect.
+  useInfiniteThreads: () => ({ data: undefined }),
 }));
 
 function Trigger() {

@@ -30,7 +30,7 @@ export function CapabilityCenter() {
   }
   return (
     <div className="bg-background flex h-full min-h-0 flex-col">
-      <div className="text-muted-foreground flex h-14 shrink-0 items-center gap-3 border-b px-4 text-xs md:px-8">
+      <div className="text-muted-foreground type-compact flex h-14 shrink-0 items-center gap-3 border-b px-4 md:px-8">
         <SidebarTrigger className="md:hidden" />
         <span>{t.breadcrumb.workspace}</span>
         <span className="opacity-40">/</span>
@@ -43,7 +43,7 @@ export function CapabilityCenter() {
               <h1 className="text-[28px] font-semibold tracking-tight">
                 {t.capabilities.title}
               </h1>
-              <p className="text-muted-foreground mt-2 text-sm leading-6">
+              <p className="text-muted-foreground type-supporting mt-2 leading-6">
                 {t.capabilities.description}
               </p>
             </div>
@@ -68,11 +68,17 @@ export function CapabilityCenter() {
           </header>
           <Tabs value={tab} onValueChange={changeTab} className="mb-7 border-b">
             <TabsList variant="line" className="h-12 gap-7">
-              <TabsTrigger value="plugins" className="gap-2 px-1 pb-4 text-sm">
+              <TabsTrigger
+                value="plugins"
+                className="type-supporting gap-2 px-1 pb-4"
+              >
                 <BlocksIcon className="size-4" />
                 {t.capabilities.plugins}
               </TabsTrigger>
-              <TabsTrigger value="skills" className="gap-2 px-1 pb-4 text-sm">
+              <TabsTrigger
+                value="skills"
+                className="type-supporting gap-2 px-1 pb-4"
+              >
                 <SparklesIcon className="size-4" />
                 {t.capabilities.skills}
               </TabsTrigger>

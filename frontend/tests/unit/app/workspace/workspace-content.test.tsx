@@ -90,6 +90,14 @@ vi.mock("@/components/workspace/workspace-settings-deep-link", () => ({
   ),
 }));
 
+// 合并后 WorkspaceContent 增加 UserPreferencesBoundary 边界（内部依赖 AuthProvider），
+// 此处仅隔离其对组件结构的影响，透传 children。
+vi.mock("@/core/settings/user-preferences-boundary", () => ({
+  UserPreferencesBoundary: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="user-preferences-boundary">{children}</div>
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Import component after mocks
 // ---------------------------------------------------------------------------

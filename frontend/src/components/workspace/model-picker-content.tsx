@@ -43,8 +43,10 @@ function orderedModels(projection: ModelChoiceProjection): readonly Model[] {
 function ModelDetails({ model }: { model: Model }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col text-left">
-      <span className="type-body truncate text-xs">{model.display_name}</span>
-      <span className="text-muted-foreground truncate text-[10px] leading-4">
+      <span className="type-body type-compact truncate">
+        {model.display_name}
+      </span>
+      <span className="text-muted-foreground type-compact truncate leading-4">
         {model.model}
       </span>
     </span>
@@ -166,7 +168,7 @@ export function ModelPickerContent({
     }
     return (
       <section role="group" aria-label={heading}>
-        <h3 className="text-muted-foreground px-2 py-1.5 text-xs font-medium">
+        <h3 className="text-muted-foreground type-compact px-2 py-1.5 font-medium">
           {heading}
         </h3>
         <ul className="px-1 pb-0.5">
@@ -268,7 +270,7 @@ export function ModelPickerContent({
       >
         <div className="min-h-0 overflow-x-hidden overflow-y-auto py-0.5">
           {visibleModels.length === 0 ? (
-            <div className="text-muted-foreground py-6 text-center text-sm">
+            <div className="text-muted-foreground type-supporting py-6 text-center">
               {t.modelPicker.noModels}
             </div>
           ) : (
@@ -281,7 +283,7 @@ export function ModelPickerContent({
         {favorites.persistence === "memory" && user !== null ? (
           <p
             role="status"
-            className="text-muted-foreground shrink-0 border-t px-3 py-2 text-xs"
+            className="text-muted-foreground type-compact shrink-0 border-t px-3 py-2"
           >
             {t.modelPicker.sessionOnly}
           </p>

@@ -1193,6 +1193,9 @@ describe("INTERNAL_MARKER_TAGS", () => {
       "system-reminder",
       "memory",
       "current_date",
+      // 合并新增：projects/documents 内部标记标签。
+      "project",
+      "documents",
     ]);
   });
 });

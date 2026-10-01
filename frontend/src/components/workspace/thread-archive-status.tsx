@@ -18,7 +18,7 @@ export function ThreadArchiveStatus({
   if (!isThreadArchived({ metadata: metadata ?? {} })) return null;
   return (
     <div
-      className="flex shrink-0 items-center gap-1 text-xs"
+      className="type-compact flex shrink-0 items-center gap-1"
       title={t.chats.archiveDescription}
     >
       <span className="text-muted-foreground hidden sm:inline">

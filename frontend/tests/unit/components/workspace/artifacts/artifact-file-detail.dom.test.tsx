@@ -114,15 +114,26 @@ describe("ArtifactFileDetail browser-preview iframe", () => {
     expect(frame.getAttribute("title")).toBe("report.pdf");
   });
 
-  it("keeps the empty sandbox for images and other passive binaries", () => {
+  it("renders images with the native img element and other passive binaries in the empty-sandbox iframe", () => {
+    // The merged tree keeps the local image UX (native <img> with
+    // object-contain); only non-image passive binaries take the sandboxed
+    // iframe, so the chart.png case asserts the img contract instead.
     const { container } = renderDetail("/mnt/user-data/outputs/chart.png");
-    const frame = container.querySelector("iframe");
-    if (!(frame instanceof HTMLIFrameElement)) {
-      throw new Error("preview iframe not rendered");
+    const image = container.querySelector("img");
+    if (!(image instanceof HTMLImageElement)) {
+      throw new Error("image preview not rendered");
     }
-    expect(frame.getAttribute("sandbox")).toBe("");
-    expect(frame.getAttribute("src")).toBe(
+    expect(image.getAttribute("src")).toBe(
       `/backend/api/threads/${THREAD_ID}/artifacts/mnt/user-data/outputs/chart.png`,
     );
+    expect(image.getAttribute("alt")).toBe("chart.png");
+    // A passive non-image binary still goes through the sandboxed iframe.
+    const audio = renderDetail(
+      "/mnt/user-data/outputs/voice.wav",
+    ).container.querySelector("iframe");
+    if (!(audio instanceof HTMLIFrameElement)) {
+      throw new Error("passive binary iframe not rendered");
+    }
+    expect(audio.getAttribute("sandbox")).toBe("");
   });
 });

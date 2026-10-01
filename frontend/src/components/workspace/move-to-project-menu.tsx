@@ -99,7 +99,7 @@ export function MoveToProjectMenu({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
-          <span className="text-xs">{t.projects.moveToProjectHint}</span>
+          <span className="type-compact">{t.projects.moveToProjectHint}</span>
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>

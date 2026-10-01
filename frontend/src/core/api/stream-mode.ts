@@ -86,6 +86,18 @@ export function sanitizeRunStreamOptions<T>(options: T): T {
 
 /** Keep chat streams incremental and avoid retransmitting full thread state. */
 export function forceChatRunStreamOptions<T>(options: T): T {
+  if (typeof AbortSignal !== "undefined" && options instanceof AbortSignal) {
+    // The SDK accepts a bare AbortSignal as the join-stream options. Wrap it
+    // before the object sanitization below, whose spread would otherwise drop
+    // the signal (AbortSignal exposes no enumerable own properties).
+    const modes = new Set<string>(CHAT_RUN_STREAM_MODES);
+    modes.delete("values");
+    return {
+      signal: options,
+      streamMode: [...modes],
+      streamResumable: false,
+    } as T;
+  }
   const requested =
     typeof options === "object" && options !== null
       ? Reflect.get(options, "streamMode")

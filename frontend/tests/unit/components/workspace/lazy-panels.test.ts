@@ -42,9 +42,11 @@ describe("interaction-only bundle boundaries", () => {
       expect(dialog).toContain(page);
     }
     // The heavy MCP/skill management pages moved to their own workbench
-    // surfaces; they must not rejoin the dialog bundle.
+    // surfaces; they must not rejoin the dialog bundle. Upstream's subagents
+    // page stays a dialog section (asserted above), so only Tool/Skill count
+    // as retired here.
     expect(dialog).not.toMatch(
-      /import \{ (?:Tool|Skill|Subagent)SettingsPage \} from "@\/components\/workspace\/settings\//,
+      /import \{ (?:Tool|Skill)SettingsPage \} from "@\/components\/workspace\/settings\//,
     );
   });
 

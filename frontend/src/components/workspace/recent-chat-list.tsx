@@ -239,7 +239,7 @@ export function ThreadSidebarItem({
           {branchEntry && branchEntry.depth > 0 && (
             <span
               aria-hidden="true"
-              className="text-muted-foreground/70 shrink-0 font-mono text-[10px] leading-none"
+              className="text-muted-foreground/70 type-compact shrink-0 font-mono leading-none"
               data-testid="thread-branch-stem"
               style={{
                 marginLeft: `${Math.min(branchEntry.depth - 1, 1) * 8}px`,
@@ -258,7 +258,7 @@ export function ThreadSidebarItem({
           <span className="min-w-0 truncate">{title}</span>
           {channelSource && (
             <span
-              className="bg-muted text-muted-foreground ml-auto inline-flex h-5 max-w-14 shrink-0 items-center rounded-md px-1.5 text-[10px] font-medium"
+              className="bg-muted text-muted-foreground type-compact ml-auto inline-flex h-5 max-w-14 shrink-0 items-center rounded-md px-1.5 font-medium"
               title={`${channelSource.label} channel`}
             >
               <span className="truncate">{channelSource.label}</span>
@@ -553,7 +553,7 @@ export function RecentChatList() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mx-2 my-1 w-[calc(100%-1rem)] justify-center text-xs"
+                  className="type-compact mx-2 my-1 w-[calc(100%-1rem)] justify-center"
                   onClick={() => void fetchNextPage()}
                   disabled={isFetchingNextPage}
                   data-testid="recent-chat-list-load-more"

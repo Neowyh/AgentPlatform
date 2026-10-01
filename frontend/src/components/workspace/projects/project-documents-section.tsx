@@ -97,7 +97,7 @@ export function ProjectDocumentsSection({
       {isArchived && (
         <div
           role="status"
-          className="text-muted-foreground flex items-center gap-2 rounded-md border border-dashed p-3 text-sm"
+          className="text-muted-foreground type-supporting flex items-center gap-2 rounded-md border border-dashed p-3"
           data-testid="project-documents-archived-banner"
         >
           <Archive className="size-4 shrink-0" />
@@ -208,11 +208,11 @@ function ProjectDocumentShelf({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col">
-          <h2 className="text-muted-foreground text-sm font-medium">
+          <h2 className="text-muted-foreground type-supporting font-medium">
             {t.projects.documentsShelf}
           </h2>
           {!isArchived && (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground type-compact">
               {t.projects.documentsShelfHint}
             </p>
           )}
@@ -259,7 +259,7 @@ function ProjectDocumentShelf({
       </div>
 
       {documentsQuery.isError ? (
-        <div role="alert" className="p-4 text-center text-sm">
+        <div role="alert" className="type-supporting p-4 text-center">
           <p>{t.projects.documentsLoadFailed}</p>
           <Button
             variant="outline"
@@ -311,14 +311,14 @@ function ProjectDocumentShelf({
 
       {!documentsQuery.isError && documents.length > 0 && (
         <div className="flex flex-col items-center gap-1">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground type-compact">
             {t.common.showingOf(documents.length, documentsTotal)}
           </p>
           {documentsQuery.hasNextPage && (
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs"
+              className="type-compact"
               disabled={documentsQuery.isFetchingNextPage}
               onClick={() => void documentsQuery.fetchNextPage()}
               data-testid="project-documents-load-more"
@@ -420,7 +420,7 @@ function ProjectDocumentRow({
       <li className="flex items-center gap-3 rounded-md border p-3">
         {getFileIcon(document.name, "size-5 shrink-0")}
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm">{document.name}</span>
+          <span className="type-supporting truncate">{document.name}</span>
           <Badge variant="destructive" data-testid="content-missing-badge">
             {t.projects.contentMissing}
           </Badge>
@@ -439,14 +439,16 @@ function ProjectDocumentRow({
       {getFileIcon(document.name, "size-5 shrink-0")}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium">{document.name}</span>
+          <span className="type-supporting truncate font-medium">
+            {document.name}
+          </span>
           {provenance && (
             <Badge variant="secondary" className="shrink-0">
               {provenance}
             </Badge>
           )}
         </div>
-        <div className="text-muted-foreground text-xs">
+        <div className="text-muted-foreground type-compact">
           {formatArtifactBytes(document.size_bytes)}
           {" · "}
           {formatTimeAgo(document.updated_at)}
@@ -547,7 +549,7 @@ function DocumentPreviewDialog({
         </DialogHeader>
         {preview?.kind === "text" && preview.truncated && (
           <div
-            className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 rounded-md border px-4 py-2 text-sm"
+            className="border-border bg-muted/40 type-supporting flex shrink-0 items-center justify-between gap-3 rounded-md border px-4 py-2"
             data-testid="project-document-preview-truncated"
           >
             <span className="text-muted-foreground">
@@ -565,11 +567,11 @@ function DocumentPreviewDialog({
         )}
         <div className="min-h-0 flex-1 overflow-auto rounded-md border">
           {failed ? (
-            <div className="text-muted-foreground p-4 text-sm">
+            <div className="text-muted-foreground type-supporting p-4">
               {t.projects.documentsLoadFailed}
             </div>
           ) : preview === null ? (
-            <div className="text-muted-foreground flex items-center gap-2 p-4 text-sm">
+            <div className="text-muted-foreground type-supporting flex items-center gap-2 p-4">
               <LoaderIcon className="size-4 animate-spin" />
               {t.common.loading}
             </div>
@@ -627,7 +629,7 @@ function DocumentPreviewDialog({
                 <div className="text-muted-foreground">
                   {document && getFileIcon(document.name, "size-12")}
                 </div>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground type-supporting">
                   {t.projects.previewUnsupported}
                 </p>
                 <Button asChild>
@@ -649,7 +651,7 @@ function DocumentPreviewDialog({
               truncated={preview.truncated}
             />
           ) : (
-            <pre className="p-4 text-xs whitespace-pre-wrap">
+            <pre className="type-compact p-4 whitespace-pre-wrap">
               {preview.content}
             </pre>
           )}
@@ -694,12 +696,12 @@ function AttachToThreadDialog({
         </DialogHeader>
         <div className="flex max-h-80 flex-col gap-1 overflow-auto">
           {threadsQuery.isLoading ? (
-            <div className="text-muted-foreground flex items-center gap-2 p-2 text-sm">
+            <div className="text-muted-foreground type-supporting flex items-center gap-2 p-2">
               <LoaderIcon className="size-4 animate-spin" />
               {t.common.loading}
             </div>
           ) : writableThreads.length === 0 ? (
-            <p className="text-muted-foreground p-2 text-sm">
+            <p className="text-muted-foreground type-supporting p-2">
               {t.projects.attachNoThreads}
             </p>
           ) : (
@@ -719,7 +721,7 @@ function AttachToThreadDialog({
             <Button
               variant="ghost"
               size="sm"
-              className="self-center text-xs"
+              className="type-compact self-center"
               disabled={threadsQuery.isFetchingNextPage}
               onClick={() => void threadsQuery.fetchNextPage()}
               data-testid="attach-thread-load-more"
@@ -759,11 +761,11 @@ function ProjectConversationFiles({ project }: { project: Project }) {
 
   return (
     <div className="flex flex-col gap-3" data-testid="project-thread-files">
-      <h2 className="text-muted-foreground text-sm font-medium">
+      <h2 className="text-muted-foreground type-supporting font-medium">
         {t.projects.conversationFiles}
       </h2>
       {threadFilesQuery.isError ? (
-        <div role="alert" className="p-4 text-center text-sm">
+        <div role="alert" className="type-supporting p-4 text-center">
           <p>{t.projects.threadFilesLoadFailed}</p>
           <Button
             variant="outline"
@@ -774,7 +776,7 @@ function ProjectConversationFiles({ project }: { project: Project }) {
           </Button>
         </div>
       ) : !threadFilesQuery.isLoading && groups.length === 0 ? (
-        <p className="text-muted-foreground p-4 text-sm">
+        <p className="text-muted-foreground type-supporting p-4">
           {t.projects.conversationFilesEmpty}
         </p>
       ) : (
@@ -793,7 +795,7 @@ function ProjectConversationFiles({ project }: { project: Project }) {
         <Button
           variant="ghost"
           size="sm"
-          className="self-center text-xs"
+          className="type-compact self-center"
           disabled={threadFilesQuery.isFetchingNextPage}
           onClick={() => void threadFilesQuery.fetchNextPage()}
           data-testid="project-thread-files-load-more"
@@ -854,7 +856,7 @@ function ConversationFileGroup({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-sm font-medium">{group.display_name}</div>
+      <div className="type-supporting font-medium">{group.display_name}</div>
       <ul className="flex w-full flex-col gap-1">
         {group.files.map((file) => {
           const previewUrl = resolveArtifactOpenURL({
@@ -868,8 +870,8 @@ function ConversationFileGroup({
             >
               {getFileIcon(file.name, "size-5 shrink-0")}
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm">{file.name}</span>
-                <span className="text-muted-foreground text-xs">
+                <span className="type-supporting truncate">{file.name}</span>
+                <span className="text-muted-foreground type-compact">
                   {formatArtifactBytes(file.size_bytes)}
                   {" · "}
                   {formatTimeAgo(file.modified_at)}
@@ -904,7 +906,7 @@ function ConversationFileGroup({
         // outputs) and there is no per-thread file paging — the omitted files
         // stay reachable through the thread's own chat/artifacts views.
         <p
-          className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs"
+          className="text-muted-foreground type-compact flex flex-wrap items-center gap-1.5"
           data-testid="thread-files-truncated"
         >
           {t.projects.threadFilesTruncated(group.files.length)}
@@ -928,7 +930,7 @@ function ConversationFileGroup({
           <div className="flex flex-col gap-2 py-2">
             <label
               htmlFor={`shelf-name-${group.thread_id}`}
-              className="text-muted-foreground text-xs"
+              className="text-muted-foreground type-compact"
             >
               {t.projects.shelfNameLabel}
             </label>

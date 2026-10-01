@@ -19,26 +19,12 @@ const channelProvidersState = vi.hoisted(() => ({
   isLoading: false,
   error: null as unknown,
 }));
-const larkStatusState = vi.hoisted(() => ({
-  data: null as { cli: { available: boolean } } | null,
-  isLoading: false,
-  error: null as unknown,
-}));
-
 vi.mock("@/core/channels/hooks", () => ({
   useChannelProviders: () => ({
     enabled: channelProvidersState.enabled,
     providers: channelProvidersState.providers,
     isLoading: channelProvidersState.isLoading,
     error: channelProvidersState.error,
-  }),
-}));
-vi.mock("@/core/integrations/lark", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useLarkIntegrationStatus: () => ({
-    data: larkStatusState.data,
-    isLoading: larkStatusState.isLoading,
-    error: larkStatusState.error,
   }),
 }));
 
@@ -49,10 +35,6 @@ function usableChannelProvider() {
     configured: true,
     unavailable_reason: null,
   };
-}
-
-function capableLarkStatus() {
-  return { cli: { available: true } };
 }
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -134,26 +116,9 @@ vi.mock("@/components/workspace/settings/channels-settings-page", () => ({
     <div data-testid="channels-page">Channels Page</div>
   ),
 }));
-vi.mock("@/components/workspace/settings/integrations-settings-page", () => ({
-  IntegrationsSettingsPage: () => (
-    <div data-testid="integrations-page">Integrations Page</div>
-  ),
-}));
-vi.mock("@/components/workspace/settings/skill-settings-page", () => ({
-  SkillSettingsPage: ({ onClose }: { onClose?: () => void }) => (
-    <div data-testid="skills-page">
-      Skills Page
-      {onClose && (
-        <button data-testid="skills-close" onClick={onClose}>
-          Close
-        </button>
-      )}
-    </div>
-  ),
-}));
-vi.mock("@/components/workspace/settings/tool-settings-page", () => ({
-  ToolSettingsPage: () => <div data-testid="tools-page">Tools Page</div>,
-}));
+// 合并形态七分区（account/appearance/channels/memory/notification/subagents/about）；
+// integrations/tools/skills 分区已删，对应入口改跳能力中心（legacy 深链由
+// workspace-settings-deep-link 的测试覆盖）。
 
 // i18n
 const mockT = {
@@ -165,10 +130,8 @@ const mockT = {
       appearance: "Appearance",
       notification: "Notifications",
       channels: "Channels",
-      integrations: "Integrations",
       memory: "Memory",
-      tools: "Tools",
-      skills: "Skills",
+      subagents: "Subagents",
       about: "About",
     },
   },
@@ -193,9 +156,6 @@ beforeEach(async () => {
   channelProvidersState.providers = [usableChannelProvider()];
   channelProvidersState.isLoading = false;
   channelProvidersState.error = null;
-  larkStatusState.data = capableLarkStatus();
-  larkStatusState.isLoading = false;
-  larkStatusState.error = null;
   const mod = await import("@/components/workspace/settings/settings-dialog");
   SettingsDialog = mod.SettingsDialog;
 });
@@ -231,29 +191,32 @@ describe("SettingsDialog", () => {
 
   // ── Navigation tabs ──────────────────────────────────────────────────────
 
-  test("renders settings sections including the restored skills tab", () => {
+  test("renders the merged seven settings sections", () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
+    // 合并形态为七分区；上游新增 subagents，已删的
+    // integrations/tools/skills 分区不再作为对话框 tab 渲染。
     expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-notification")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-memory")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-channels")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-tools")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-skills")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-subagents")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("settings-tab-integrations"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("settings-tab-tools")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("settings-tab-skills")).not.toBeInTheDocument();
   });
 
-  test("renders tab labels", () => {
+  test("renders merged tab labels", () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByText("Account")).toBeInTheDocument();
     expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.getByText("Channels")).toBeInTheDocument();
-    expect(screen.getByText("Integrations")).toBeInTheDocument();
-    expect(screen.getByText("Tools")).toBeInTheDocument();
-    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Subagents")).toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
   });
 
@@ -324,20 +287,8 @@ describe("SettingsDialog", () => {
   // The merged settings dialog no longer has a standalone "integrations"
   // section; its deep-link test was covered by the channels variants below.
 
-  test("settings skill and tool entries open capability pages", async () => {
-    const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-    render(<SettingsDialog open={true} onOpenChange={onOpenChange} />);
-
-    await user.click(screen.getByTestId("settings-tab-skills"));
-    expect(push).toHaveBeenCalledWith("/workspace/capabilities/skills");
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
-
-    await user.click(screen.getByTestId("settings-tab-tools"));
-    expect(push).toHaveBeenCalledWith("/workspace/capabilities/connectors");
-    expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
-  });
+  // 合并后对话框不再渲染 skills/tools tab；"skills/tools 入口跳能力中心"
+  // 的断言意图由 workspace-settings-deep-link.test.tsx 覆盖。
 
   // The merged settings dialog narrowed defaultSection to real sections, so
   // the legacy "tools" deep link is no longer representable; the redirect it
@@ -467,16 +418,12 @@ describe("SettingsDialog", () => {
 
   // ── Capability-gated entries ─────────────────────────────────────────────
 
-  test("hides channels and integrations entries when the deployment lacks both capabilities", () => {
+  test("hides the channels entry when the deployment lacks the capability", () => {
     channelProvidersState.providers = [];
-    larkStatusState.data = { cli: { available: false } };
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
 
     expect(
       screen.queryByTestId("settings-tab-channels"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("settings-tab-integrations"),
     ).not.toBeInTheDocument();
     // The familiar sections stay put.
     expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
@@ -501,7 +448,6 @@ describe("SettingsDialog", () => {
     expect(
       screen.queryByTestId("settings-tab-channels"),
     ).not.toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
   });
 
   test("hides the channels entry when channel connections are disabled for the deployment", () => {
@@ -511,32 +457,23 @@ describe("SettingsDialog", () => {
     expect(
       screen.queryByTestId("settings-tab-channels"),
     ).not.toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
   });
 
-  test("keeps capability entries hidden while their availability probes resolve", () => {
+  test("keeps the channels entry hidden while its availability probe resolves", () => {
     channelProvidersState.isLoading = true;
-    larkStatusState.isLoading = true;
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
 
     expect(
       screen.queryByTestId("settings-tab-channels"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("settings-tab-integrations"),
     ).not.toBeInTheDocument();
   });
 
-  test("hides capability entries when their probe fails", () => {
+  test("hides the channels entry when its probe fails", () => {
     channelProvidersState.error = new Error("providers unavailable");
-    larkStatusState.error = new Error("status unavailable");
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
 
     expect(
       screen.queryByTestId("settings-tab-channels"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("settings-tab-integrations"),
     ).not.toBeInTheDocument();
   });
 

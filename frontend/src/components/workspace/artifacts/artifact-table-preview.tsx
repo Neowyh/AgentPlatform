@@ -83,7 +83,7 @@ function TablePreview({
       {status === "error" ? (
         <div
           role="status"
-          className="text-muted-foreground flex flex-col items-center gap-3 p-8 text-center text-sm"
+          className="text-muted-foreground type-supporting flex flex-col items-center gap-3 p-8 text-center"
         >
           <p>{labels.failed}</p>
           <Button variant="outline" onClick={retry}>
@@ -93,18 +93,18 @@ function TablePreview({
       ) : status === "loading" || !result ? (
         <div
           role="status"
-          className="text-muted-foreground flex items-center gap-2 p-6 text-sm"
+          className="text-muted-foreground type-supporting flex items-center gap-2 p-6"
         >
           <LoaderIcon className="size-4 animate-spin" />
           {t.common.loading}
         </div>
       ) : result.rows.length === 0 ? (
-        <p role="status" className="text-muted-foreground p-6 text-sm">
+        <p role="status" className="text-muted-foreground type-supporting p-6">
           {limited ? labels.incomplete : labels.empty}
         </p>
       ) : (
         <>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3 text-xs">
+          <div className="type-compact flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
             <span className="flex items-center gap-2 font-medium">
               <Table2Icon className="text-muted-foreground size-4" />
               {limited ? labels.sample(rows.length) : labels.total(rows.length)}
@@ -125,7 +125,7 @@ function TablePreview({
           {(result.columnCount > 50 || result.unevenRows) && (
             <p
               role="status"
-              className="bg-muted/30 text-muted-foreground border-b px-4 py-2 text-xs"
+              className="bg-muted/30 text-muted-foreground type-compact border-b px-4 py-2"
             >
               {result.columnCount > 50 && labels.columnsLimited}{" "}
               {result.unevenRows && labels.uneven}
@@ -139,7 +139,7 @@ function TablePreview({
           >
             <table
               aria-label={labels.title}
-              className="w-full table-fixed border-separate border-spacing-0 text-sm"
+              className="type-supporting w-full table-fixed border-separate border-spacing-0"
               style={{ minWidth: Math.max(320, columnCount * 180 + 48) }}
             >
               <colgroup>
@@ -152,7 +152,7 @@ function TablePreview({
                 <tr>
                   <th
                     scope="col"
-                    className="text-muted-foreground border-b px-3 py-3 text-xs font-normal"
+                    className="text-muted-foreground type-compact border-b px-3 py-3 font-normal"
                   >
                     #
                   </th>
@@ -160,7 +160,7 @@ function TablePreview({
                     <th
                       key={index}
                       scope="col"
-                      className="truncate border-b border-l px-3 py-3 text-left text-xs font-medium"
+                      className="type-compact truncate border-b border-l px-3 py-3 text-left font-medium"
                       title={hasHeader ? result.rows[0]?.[index] : undefined}
                     >
                       {hasHeader
@@ -178,7 +178,7 @@ function TablePreview({
                   >
                     <th
                       scope="row"
-                      className="text-muted-foreground border-b px-3 py-2.5 text-right text-xs font-normal tabular-nums"
+                      className="text-muted-foreground type-compact border-b px-3 py-2.5 text-right font-normal tabular-nums"
                     >
                       {start + rowIndex + 1}
                     </th>
@@ -194,7 +194,7 @@ function TablePreview({
                         >
                           <div className="truncate">
                             {value === undefined ? (
-                              <span className="text-muted-foreground text-xs italic">
+                              <span className="text-muted-foreground type-compact italic">
                                 {labels.missing}
                               </span>
                             ) : expandable ? (
@@ -233,7 +233,7 @@ function TablePreview({
               </tbody>
             </table>
           </div>
-          <div className="text-muted-foreground flex shrink-0 items-center justify-between border-t px-4 py-2 text-xs">
+          <div className="text-muted-foreground type-compact flex shrink-0 items-center justify-between border-t px-4 py-2">
             <span aria-live="polite">
               {labels.range(rows.length ? start + 1 : 0, end, limited)}
             </span>
@@ -275,10 +275,10 @@ function TablePreview({
             aria-label={labels.cellValue}
             readOnly
             value={cell?.value ?? ""}
-            className="h-64 w-full resize-none rounded-md border p-3 font-mono text-sm"
+            className="type-supporting h-64 w-full resize-none rounded-md border p-3 font-mono"
           />
           <div className="flex items-center justify-end gap-3">
-            <span role="status" className="text-muted-foreground text-xs">
+            <span role="status" className="text-muted-foreground type-compact">
               {copyStatus}
             </span>
             <Button

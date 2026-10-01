@@ -96,7 +96,7 @@ export default function ProjectPage() {
             {projectQuery.isError ? (
               <ProjectNotFoundState />
             ) : project == null ? (
-              <div className="text-muted-foreground py-16 text-center text-sm">
+              <div className="text-muted-foreground type-supporting py-16 text-center">
                 {t.common.loading}
               </div>
             ) : (
@@ -180,7 +180,7 @@ function ProjectHeader({ project }: { project: Project }) {
   const { t } = useI18n();
   return (
     <header className="flex flex-wrap items-center gap-3">
-      <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold">
+      <h1 className="type-page-title min-w-0 flex-1 truncate font-semibold">
         {project.name}
       </h1>
       {project.status === "archived" && (
@@ -277,13 +277,13 @@ function ProjectSettingsSection({ project }: { project: Project }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className="text-muted-foreground text-sm font-medium">
+      <h2 className="text-muted-foreground type-supporting font-medium">
         {t.projects.settings}
       </h2>
       <div className="flex flex-col gap-2">
         <label
           htmlFor="project-name-input"
-          className="text-muted-foreground text-xs"
+          className="text-muted-foreground type-compact"
         >
           {t.projects.namePlaceholder}
         </label>
@@ -405,7 +405,7 @@ function ProjectInstructionsSection({ project }: { project: Project }) {
     <section className="flex flex-col gap-2">
       <label
         htmlFor="project-instructions-input"
-        className="text-muted-foreground text-xs"
+        className="text-muted-foreground type-compact"
       >
         {t.projects.instructions}
       </label>
@@ -420,7 +420,7 @@ function ProjectInstructionsSection({ project }: { project: Project }) {
       <div className="flex items-center justify-between gap-2">
         <p
           className={cn(
-            "text-xs",
+            "type-compact",
             overCap ? "text-destructive" : "text-muted-foreground",
           )}
         >
@@ -428,7 +428,7 @@ function ProjectInstructionsSection({ project }: { project: Project }) {
         </p>
         <div className="flex items-center gap-2">
           {showSaved && (
-            <span role="status" className="text-muted-foreground text-xs">
+            <span role="status" className="text-muted-foreground type-compact">
               {t.projects.instructionsSaved}
             </span>
           )}
@@ -438,7 +438,7 @@ function ProjectInstructionsSection({ project }: { project: Project }) {
         </div>
       </div>
       {overCap && (
-        <p role="alert" className="text-destructive text-xs">
+        <p role="alert" className="text-destructive type-compact">
           {t.projects.instructionsTooLong(maxBytes)}
         </p>
       )}

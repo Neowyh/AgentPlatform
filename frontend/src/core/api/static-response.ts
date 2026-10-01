@@ -68,6 +68,11 @@ export async function staticApiResponse(
     case "agents":
       data = { agents: [] };
       break;
+    case "resources":
+      // Enterprise canonical catalog (type=agent|skill|...); an empty page
+      // ends the callers' pagination loops immediately.
+      data = { items: [], total: 0 };
+      break;
     case "subagents":
       data = { subagents: [] };
       break;

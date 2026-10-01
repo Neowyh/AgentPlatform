@@ -65,7 +65,7 @@ export function CapabilityCard({
     <article className="bg-background group hover:border-foreground/20 flex min-w-0 flex-col rounded-2xl border p-5 transition-[border-color,box-shadow] hover:shadow-sm">
       <div className="mb-5 flex items-start justify-between gap-3">
         {icon}
-        <span className="text-muted-foreground bg-muted/60 rounded-md px-2 py-1 text-[11px] font-medium">
+        <span className="text-muted-foreground bg-muted/60 type-compact rounded-md px-2 py-1 font-medium">
           {label}
         </span>
       </div>
@@ -87,7 +87,7 @@ export function CapabilityCard({
         {description}
       </p>
       <div className="mt-6 flex min-h-8 items-center justify-between gap-2 border-t pt-4">
-        <div className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
+        <div className="text-muted-foreground type-compact flex min-w-0 items-center gap-1.5">
           {status}
         </div>
         <div className="flex shrink-0 items-center gap-1">{children}</div>

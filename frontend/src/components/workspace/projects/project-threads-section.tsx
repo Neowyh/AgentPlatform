@@ -19,18 +19,18 @@ export function ProjectThreadsSection({
   const threads = query.data?.pages.flatMap((page) => page) ?? [];
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-muted-foreground text-sm font-medium">
+      <h2 className="text-muted-foreground type-supporting font-medium">
         {t.projects.threads}
       </h2>
       <div className="rounded-lg border">
         {query.isError ? (
-          <div className="text-muted-foreground p-4 text-sm">
+          <div className="text-muted-foreground type-supporting p-4">
             {t.projects.threadsLoadFailed}
           </div>
         ) : threads.length === 0 && !query.isLoading ? (
-          <div className="text-muted-foreground flex flex-col gap-1 p-4 text-sm">
+          <div className="text-muted-foreground type-supporting flex flex-col gap-1 p-4">
             <p>{t.projects.empty}</p>
-            <p className="text-xs">{t.projects.interimMemoryNotice}</p>
+            <p className="type-compact">{t.projects.interimMemoryNotice}</p>
           </div>
         ) : (
           // The page scrolls inside its own ScrollArea; the list windows rows
@@ -61,7 +61,7 @@ export function ProjectThreadsSection({
                       : t.projects.untitled}
                   </div>
                   {thread.updated_at && (
-                    <div className="text-muted-foreground shrink-0 text-sm">
+                    <div className="text-muted-foreground type-supporting shrink-0">
                       {formatTimeAgo(thread.updated_at)}
                     </div>
                   )}
@@ -75,7 +75,7 @@ export function ProjectThreadsSection({
         <Button
           variant="ghost"
           size="sm"
-          className="justify-center text-xs"
+          className="type-compact justify-center"
           onClick={() => void query.fetchNextPage()}
           disabled={query.isFetchingNextPage}
           data-testid="project-threads-load-more"

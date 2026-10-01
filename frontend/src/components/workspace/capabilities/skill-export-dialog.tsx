@@ -138,7 +138,7 @@ export default function SkillExportDialog({
           {phase === "loading" && (
             <p
               role="status"
-              className="text-muted-foreground flex items-center gap-2 text-sm"
+              className="text-muted-foreground type-supporting flex items-center gap-2"
             >
               <LoaderIcon className="size-4 animate-spin" />
               {text.exportLoading}
@@ -146,24 +146,26 @@ export default function SkillExportDialog({
           )}
           {manifest && (
             <>
-              <dl className="bg-muted/50 grid grid-cols-3 gap-3 rounded-lg p-3 text-sm">
+              <dl className="bg-muted/50 type-supporting grid grid-cols-3 gap-3 rounded-lg p-3">
                 {[
                   [text.exportFiles, manifest.file_count],
                   [text.exportDirectories, manifest.directory_count],
                   [text.exportSize, bytes(manifest.total_bytes)],
                 ].map(([label, value]) => (
                   <div key={label}>
-                    <dt className="text-muted-foreground text-xs">{label}</dt>
+                    <dt className="text-muted-foreground type-compact">
+                      {label}
+                    </dt>
                     <dd className="mt-1 font-medium tabular-nums">{value}</dd>
                   </div>
                 ))}
               </dl>
               <details className="rounded-lg border p-3">
-                <summary className="cursor-pointer text-sm font-medium">
+                <summary className="type-supporting cursor-pointer font-medium">
                   {text.exportContents}
                 </summary>
                 <ul
-                  className="mt-3 max-h-48 space-y-2 overflow-y-auto text-xs"
+                  className="type-compact mt-3 max-h-48 space-y-2 overflow-y-auto"
                   aria-label={text.exportContents}
                 >
                   {manifest.files.slice(visible, visible + 50).map((file) => (
@@ -200,11 +202,11 @@ export default function SkillExportDialog({
                   </Button>
                 )}
               </details>
-              <section className="space-y-2 text-sm">
+              <section className="type-supporting space-y-2">
                 <h3 className="font-medium">{text.exportRequirements}</h3>
                 <dl className="space-y-2">
                   <div>
-                    <dt className="text-muted-foreground text-xs">
+                    <dt className="text-muted-foreground type-compact">
                       {text.exportCompatibility}
                     </dt>
                     <dd className="break-words whitespace-pre-wrap">
@@ -213,7 +215,7 @@ export default function SkillExportDialog({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground text-xs">
+                    <dt className="text-muted-foreground type-compact">
                       {text.exportTools}
                     </dt>
                     <dd className="break-words">
@@ -222,7 +224,7 @@ export default function SkillExportDialog({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground text-xs">
+                    <dt className="text-muted-foreground type-compact">
                       {text.exportSecrets}
                     </dt>
                     <dd className="break-words">
@@ -237,12 +239,12 @@ export default function SkillExportDialog({
                 </dl>
               </section>
               {manifest.warnings.length > 0 && (
-                <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+                <section className="type-supporting rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
                   <h3 className="font-medium">{text.exportWarnings}</h3>
-                  <p className="text-muted-foreground mt-1 text-xs">
+                  <p className="text-muted-foreground type-compact mt-1">
                     {text.exportWarningDescription}
                   </p>
-                  <ul className="mt-2 max-h-28 overflow-y-auto text-xs">
+                  <ul className="type-compact mt-2 max-h-28 overflow-y-auto">
                     {manifest.warnings.map((warning, i) => (
                       <li key={i} className="break-all">
                         {warning.path ? `${warning.path}: ` : ""}
@@ -253,7 +255,10 @@ export default function SkillExportDialog({
                 </section>
               )}
               {!manifest.can_export && (
-                <section role="alert" className="text-destructive text-sm">
+                <section
+                  role="alert"
+                  className="text-destructive type-supporting"
+                >
                   <p className="font-medium">{text.exportBlocked}</p>
                   <ul className="mt-1 max-h-28 overflow-y-auto">
                     {manifest.blockers.map((blocker, i) => (
@@ -265,18 +270,18 @@ export default function SkillExportDialog({
                   </ul>
                 </section>
               )}
-              <p className="text-muted-foreground text-xs leading-relaxed">
+              <p className="text-muted-foreground type-compact leading-relaxed">
                 {text.exportScope}
               </p>
             </>
           )}
           {error !== null && (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive type-supporting">
               {errorMessage}
             </p>
           )}
           {phase === "done" && (
-            <p role="status" className="text-sm">
+            <p role="status" className="type-supporting">
               {text.exportHandedOff}
             </p>
           )}

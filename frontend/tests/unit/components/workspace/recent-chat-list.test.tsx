@@ -23,12 +23,13 @@ vi.mock("next/link", () => ({
 
 // next/navigation
 const mockPush = vi.fn();
+const mockReplace = vi.fn();
 let mockPathname = "/workspace/chats/thread-1";
 let mockParams: Record<string, string> = {
   thread_id: "thread-1",
 };
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
   usePathname: () => mockPathname,
   useParams: () => mockParams,
 }));
@@ -208,9 +209,24 @@ const mockT = {
     pinChat: "Pin chat",
     pinChatFailed: "Failed to update pinned chat",
     unpinChat: "Unpin chat",
+    // 合并后删除确认收敛进 ThreadDeleteDialogProvider 宿主对话框。
+    deleteChat: "Delete conversation",
+    deleteConfirm: (title: string) => `Delete ${title}?`,
+    deleteFailed: "Failed to delete chat",
   },
   threads: {
     getState: (state: string) => state,
+  },
+  // 合并后行内菜单带上游"移入项目"子菜单，需要 projects 键。
+  projects: {
+    moveToProject: "Move to project",
+    moveToProjectHint: "Pick a project",
+    removeFromProject: "Remove from project",
+    newProject: "New project",
+    namePlaceholder: "Project name",
+    create: "Create",
+    moveFailed: "Failed to move chat",
+    createFailed: "Failed to create project",
   },
   clipboard: {
     linkCopied: "Link copied",
@@ -225,6 +241,28 @@ vi.mock("@/core/i18n/hooks", () => ({
   }),
 }));
 
+// 合并后组件接入 AuthProvider 权限判定（THREADS_DELETE 门控删除入口），
+// 本测试不渲染真实 Provider，mock 为无权限列表用户（hasPermission 对 null 放行）。
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: null }),
+}));
+
+// 合并后列表接入上游 Projects 功能（分组模式查询 + 移入项目菜单），
+// 这些 hook 走 react-query；本测试固定 flat 模式，mock 最小查询形状。
+vi.mock("@/core/projects", () => ({
+  useProjects: () => ({ data: undefined, isLoading: false, isError: false }),
+  useCreateProject: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+// 合并后列表读取本地 projectsDisplayMode 偏好（默认 flat）。
+vi.mock("@/core/settings", () => ({
+  useLocalSettings: () => [{ projectsDisplayMode: "flat" }, vi.fn()],
+}));
+
 // Thread hooks
 const mockDeleteMutate = vi.fn();
 const mockRenameMutate = vi.fn();
@@ -236,15 +274,37 @@ let mockThreads: Array<{
 
 vi.mock("@/core/threads/hooks", () => ({
   useThreads: () => ({ data: mockThreads }),
-  useDeleteThread: () => ({ mutate: mockDeleteMutate }),
+  // 删除确认对话框宿主（ThreadDeleteDialogProvider）通过 mutateAsync 发起删除，
+  // 成功后回调 onDeleted（与真实 useDeleteThread 的 onSuccess 语义一致）。
+  useDeleteThread: () => ({
+    mutateAsync: mockDeleteMutate,
+    mutate: mockDeleteMutate,
+    isPending: false,
+    isError: false,
+  }),
   useRenameThread: () => ({ mutate: mockRenameMutate }),
   usePinThread: () => ({ mutate: vi.fn() }),
+  // 合并后接入"移入项目"操作（上游 ThreadSidebarItem 基底）。
+  useMoveThreadToProject: () => ({ mutate: vi.fn(), isPending: false }),
   // The list reads from the paginated feed; expose the same fixture threads.
   useInfiniteThreads: () => ({
     data: { pages: [mockThreads], pageParams: [0] },
     fetchNextPage: vi.fn(),
     hasNextPage: false,
     isFetchingNextPage: false,
+  }),
+}));
+
+// 删除宿主在落位邻居后重置会话视图；本测试只断言路由跳转。
+vi.mock("@/components/workspace/chats/use-thread-chat", () => ({
+  resetThreadChatAfterDelete: vi.fn(),
+}));
+
+// 合并后行内菜单接入上游归档操作（走 react-query mutation）；本测试不触发归档。
+vi.mock("@/components/workspace/use-thread-archive-action", () => ({
+  useThreadArchiveAction: () => ({
+    setArchived: vi.fn(),
+    isPending: false,
   }),
 }));
 
@@ -268,6 +328,8 @@ vi.mock("@/core/threads/utils", () => ({
   isThreadPinned: () => false,
   sortPinnedThreads: <T,>(threads: T[]): T[] => threads,
   channelSourceOfThread: () => undefined,
+  // 合并后列表在分组模式下用 projectIdOfThread 过滤；本测试固定 flat，返回 null 即"未分组"。
+  projectIdOfThread: () => null,
   titleOfThread: (thread: { values?: { title?: string }; thread_id: string }) =>
     thread.values?.title ?? "Untitled",
 }));
@@ -317,6 +379,9 @@ vi.mock("@/lib/ime", () => ({
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let RecentChatList: typeof import("@/components/workspace/recent-chat-list").RecentChatList;
+// 合并后删除确认收敛进 ThreadDeleteDialogProvider 宿主（workspace-sidebar 挂载），
+// 列表行只负责发起请求；本测试用真实宿主包一层以保留"删除→落位邻居"端到端断言。
+let ThreadDeleteDialogProvider: typeof import("@/components/workspace/thread-delete-dialog").ThreadDeleteDialogProvider;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -332,13 +397,29 @@ beforeEach(async () => {
       ],
     },
   });
+  // 与真实 useDeleteThread 的 onSuccess 一致：删除成功后触发 onDeleted（落位导航）。
+  mockDeleteMutate.mockImplementation(
+    async (vars: { onDeleted?: () => void }) => {
+      vars.onDeleted?.();
+    },
+  );
   const mod = await import("@/components/workspace/recent-chat-list");
   RecentChatList = mod.RecentChatList;
+  const deleteMod = await import("@/components/workspace/thread-delete-dialog");
+  ThreadDeleteDialogProvider = deleteMod.ThreadDeleteDialogProvider;
 });
 
 afterEach(() => {
   cleanup();
 });
+
+function renderList() {
+  return render(
+    <ThreadDeleteDialogProvider>
+      <RecentChatList />
+    </ThreadDeleteDialogProvider>,
+  );
+}
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -347,7 +428,7 @@ describe("RecentChatList", () => {
 
   test("returns null when there are no threads", () => {
     mockThreads = [];
-    const { container } = render(<RecentChatList />);
+    const { container } = renderList();
     expect(container.firstChild).toBeNull();
   });
 
@@ -358,21 +439,21 @@ describe("RecentChatList", () => {
       { thread_id: "t1", values: { title: "Chat One" } },
       { thread_id: "t2", values: { title: "Chat Two" } },
     ];
-    render(<RecentChatList />);
-    expect(screen.getByTestId("thread-list")).toBeInTheDocument();
+    renderList();
+    // 合并后列表不再输出 thread-list testid；以行标题断言列表渲染。
     expect(screen.getByText("Chat One")).toBeInTheDocument();
     expect(screen.getByText("Chat Two")).toBeInTheDocument();
   });
 
   test("renders 'Untitled' for threads without a title", () => {
     mockThreads = [{ thread_id: "t1" }];
-    render(<RecentChatList />);
+    renderList();
     expect(screen.getByText("Untitled")).toBeInTheDocument();
   });
 
   test("shows 'Recent Chats' label", () => {
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
     expect(screen.getByText("Recent Chats")).toBeInTheDocument();
   });
 
@@ -381,7 +462,7 @@ describe("RecentChatList", () => {
       { thread_id: "t1", values: { title: "Chat One" } },
       { thread_id: "t2", values: { title: "Chat Two" } },
     ];
-    render(<RecentChatList />);
+    renderList();
     const links = screen.getAllByText(/Chat (One|Two)/);
     // The merged list wraps the title in a truncating span inside the link.
     expect(links[0]!.closest("a")).toHaveAttribute(
@@ -400,10 +481,17 @@ describe("RecentChatList", () => {
       { thread_id: "t1", values: { title: "Chat One" } },
       { thread_id: "t2", values: { title: "Chat Two" } },
     ];
-    render(<RecentChatList />);
-    const threadItems = screen.getAllByTestId("thread-item");
-    // The second item should have an active child
-    expect(threadItems).toHaveLength(2);
+    renderList();
+    // 合并后行组件不再输出 thread-item testid；以 SidebarMenuButton 的
+    // data-active 标记断言当前路径对应的行处于激活态。
+    const items = screen.getAllByText(/Chat (One|Two)/);
+    expect(items).toHaveLength(2);
+    expect(
+      screen.getByText("Chat Two").closest("div[data-active='true']"),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Chat One").closest("div[data-active='true']"),
+    ).toBeNull();
   });
 
   test("renders the correct number of thread items", () => {
@@ -412,8 +500,9 @@ describe("RecentChatList", () => {
       { thread_id: "t2", values: { title: "B" } },
       { thread_id: "t3", values: { title: "C" } },
     ];
-    render(<RecentChatList />);
-    expect(screen.getAllByTestId("thread-item")).toHaveLength(3);
+    renderList();
+    // 合并后每行渲染一个行内操作菜单；以菜单数量代表行数。
+    expect(screen.getAllByTestId("dropdown-menu")).toHaveLength(3);
   });
 
   // ── Delete ───────────────────────────────────────────────────────────────
@@ -426,14 +515,16 @@ describe("RecentChatList", () => {
     ];
     mockPathname = "/workspace/chats/t1";
     mockParams = { thread_id: "t1" };
-    render(<RecentChatList />);
+    renderList();
 
     // Click the delete action on the first thread
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[0]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[0]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockDeleteMutate).toHaveBeenCalledWith({ threadId: "t1" });
+    expect(mockDeleteMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "t1" }),
+    );
   });
 
   test("navigates to next thread after deleting the active thread", async () => {
@@ -444,13 +535,13 @@ describe("RecentChatList", () => {
     ];
     mockPathname = "/workspace/chats/t1";
     mockParams = { thread_id: "t1" };
-    render(<RecentChatList />);
+    renderList();
 
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[0]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[0]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace/chats/t2");
+    expect(mockReplace).toHaveBeenCalledWith("/workspace/chats/t2");
   });
 
   test("navigates to previous thread when deleting the last thread", async () => {
@@ -461,13 +552,13 @@ describe("RecentChatList", () => {
     ];
     mockPathname = "/workspace/chats/t2";
     mockParams = { thread_id: "t2" };
-    render(<RecentChatList />);
+    renderList();
 
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[1]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[1]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace/chats/t1");
+    expect(mockReplace).toHaveBeenCalledWith("/workspace/chats/t1");
   });
 
   test("navigates to 'new' when deleting the only thread", async () => {
@@ -475,13 +566,13 @@ describe("RecentChatList", () => {
     mockThreads = [{ thread_id: "t1", values: { title: "Only" } }];
     mockPathname = "/workspace/chats/t1";
     mockParams = { thread_id: "t1" };
-    render(<RecentChatList />);
+    renderList();
 
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[0]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[0]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace/chats/new");
+    expect(mockReplace).toHaveBeenCalledWith("/workspace/chats/new");
   });
 
   test("does not navigate when deleting a non-active thread", async () => {
@@ -492,14 +583,16 @@ describe("RecentChatList", () => {
     ];
     mockPathname = "/workspace/chats/t1";
     mockParams = { thread_id: "t1" };
-    render(<RecentChatList />);
+    renderList();
 
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[1]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[1]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockDeleteMutate).toHaveBeenCalledWith({ threadId: "t2" });
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockDeleteMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "t2" }),
+    );
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   // ── Rename ───────────────────────────────────────────────────────────────
@@ -507,10 +600,10 @@ describe("RecentChatList", () => {
   test("opens rename dialog when rename action is clicked", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "My Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
-    const renameButtons = screen.getAllByTestId("thread-rename-action");
-    await user.click(renameButtons[0]!);
+    // 合并后重命名入口是行内菜单的 Rename 项。
+    await user.click(screen.getAllByText("Rename")[0]!);
 
     await waitFor(() => {
       expect(screen.getByTestId("dialog")).toBeInTheDocument();
@@ -521,11 +614,11 @@ describe("RecentChatList", () => {
   test("submits rename with trimmed value", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Old" } }];
-    render(<RecentChatList />);
+    renderList();
 
     // Open rename dialog
-    const renameButtons = screen.getAllByTestId("thread-rename-action");
-    await user.click(renameButtons[0]!);
+    // 合并后重命名入口是行内菜单的 Rename 项。
+    await user.click(screen.getAllByText("Rename")[0]!);
 
     await waitFor(() => {
       expect(screen.getByTestId("rename-input")).toBeInTheDocument();
@@ -549,10 +642,10 @@ describe("RecentChatList", () => {
   test("does not submit rename when value is empty", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Old" } }];
-    render(<RecentChatList />);
+    renderList();
 
-    const renameButtons = screen.getAllByTestId("thread-rename-action");
-    await user.click(renameButtons[0]!);
+    // 合并后重命名入口是行内菜单的 Rename 项。
+    await user.click(screen.getAllByText("Rename")[0]!);
 
     await waitFor(() => {
       expect(screen.getByTestId("rename-input")).toBeInTheDocument();
@@ -570,10 +663,10 @@ describe("RecentChatList", () => {
   test("closes rename dialog when cancel is clicked", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
-    const renameButtons = screen.getAllByTestId("thread-rename-action");
-    await user.click(renameButtons[0]!);
+    // 合并后重命名入口是行内菜单的 Rename 项。
+    await user.click(screen.getAllByText("Rename")[0]!);
 
     await waitFor(() => {
       expect(screen.getByTestId("dialog")).toBeInTheDocument();
@@ -590,10 +683,10 @@ describe("RecentChatList", () => {
   test("submits rename on Enter key press", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Old" } }];
-    render(<RecentChatList />);
+    renderList();
 
-    const renameButtons = screen.getAllByTestId("thread-rename-action");
-    await user.click(renameButtons[0]!);
+    // 合并后重命名入口是行内菜单的 Rename 项。
+    await user.click(screen.getAllByText("Rename")[0]!);
 
     await waitFor(() => {
       expect(screen.getByTestId("rename-input")).toBeInTheDocument();
@@ -615,7 +708,7 @@ describe("RecentChatList", () => {
   test("copies share URL to clipboard", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     // Find and click the share menu item
     const shareItem = screen.getByText("Share");
@@ -631,7 +724,7 @@ describe("RecentChatList", () => {
     const user = userEvent.setup();
     mockWriteTextToClipboard.mockResolvedValue(false);
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const shareItem = screen.getByText("Share");
     await user.click(shareItem);
@@ -645,7 +738,7 @@ describe("RecentChatList", () => {
     const user = userEvent.setup();
     mockWriteTextToClipboard.mockRejectedValue(new Error("fail"));
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const shareItem = screen.getByText("Share");
     await user.click(shareItem);
@@ -660,7 +753,7 @@ describe("RecentChatList", () => {
   test("exports thread as markdown", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const mdItem = screen.getByText("Export as Markdown");
     await user.click(mdItem);
@@ -677,7 +770,7 @@ describe("RecentChatList", () => {
   test("exports thread as JSON", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const jsonItem = screen.getByText("Export as JSON");
     await user.click(jsonItem);
@@ -692,7 +785,7 @@ describe("RecentChatList", () => {
     const user = userEvent.setup();
     mockGetState.mockResolvedValue({ values: { messages: [] } });
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const mdItem = screen.getByText("Export as Markdown");
     await user.click(mdItem);
@@ -706,7 +799,7 @@ describe("RecentChatList", () => {
     const user = userEvent.setup();
     mockGetState.mockRejectedValue(new Error("network error"));
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
 
     const mdItem = screen.getByText("Export as Markdown");
     await user.click(mdItem);
@@ -725,13 +818,13 @@ describe("RecentChatList", () => {
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
     mockPathname = "/workspace/capabilities/experts/my-agent/chats/t1";
     mockParams = { thread_id: "t1", agent_name: "my-agent" };
-    render(<RecentChatList />);
+    renderList();
 
-    const deleteButtons = screen.getAllByTestId("thread-delete-action");
-    await user.click(deleteButtons[0]!);
-    await user.click(screen.getByTestId("thread-delete-confirm"));
+    // 合并后删除入口是行内菜单的 Delete 项，确认按钮在宿主对话框里。
+    await user.click(screen.getAllByText("Delete")[0]!);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(mockPush).toHaveBeenCalledWith(
+    expect(mockReplace).toHaveBeenCalledWith(
       "/workspace/capabilities/experts/my-agent/chats/new",
     );
   });
@@ -740,7 +833,7 @@ describe("RecentChatList", () => {
 
   test("renders dropdown menu with all actions for each thread", () => {
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    render(<RecentChatList />);
+    renderList();
     expect(screen.getByText("Rename")).toBeInTheDocument();
     expect(screen.getByText("Share")).toBeInTheDocument();
     expect(screen.getByText("Export")).toBeInTheDocument();
@@ -752,7 +845,7 @@ describe("RecentChatList", () => {
       { thread_id: "t1", values: { title: "A" } },
       { thread_id: "t2", values: { title: "B" } },
     ];
-    render(<RecentChatList />);
+    renderList();
     const dropdowns = screen.getAllByTestId("dropdown-menu");
     expect(dropdowns).toHaveLength(2);
   });

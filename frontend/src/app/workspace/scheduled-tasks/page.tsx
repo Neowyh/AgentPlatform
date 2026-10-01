@@ -725,7 +725,7 @@ export default function ScheduledTasksPage() {
                     >
                       {st.history.newer}
                     </Button>
-                    <span className="text-muted-foreground text-sm">
+                    <span className="text-muted-foreground type-supporting">
                       {st.history.page.replace(
                         "{page}",
                         String(taskRunsQuery.page + 1),
@@ -752,7 +752,7 @@ export default function ScheduledTasksPage() {
                     )}
                   </nav>
                   {taskRunsQuery.page > 0 && (
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground type-compact">
                       {st.history.paused}
                     </p>
                   )}

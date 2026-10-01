@@ -169,35 +169,40 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <div className="workbench-settings-layout grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
             <ul className="space-y-1 pr-1">
-              {sections.map(({ id, label, icon: Icon }) => {
-                const active = effectiveSection === id;
-                return (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const destination = legacySettingsDestination(id);
-                        if (destination) {
-                          onOpenChange?.(false);
-                          router.push(destination);
-                        } else {
-                          setActiveSection(id as SettingsSection);
-                        }
-                      }}
-                      data-testid={`settings-tab-${id}`}
-                      className={cn(
-                        "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span>{label}</span>
-                    </button>
-                  </li>
-                );
-              })}
+              {/* 合并回归修复：恢复本地"不可用能力入口不渲染"的门控——
+                  sectionAvailability 同时服务导航列表与深链回退，缺了 filter
+                  会让不可用渠道以可点击入口的形式暴露。 */}
+              {sections
+                .filter(({ id }) => sectionAvailability[id] ?? true)
+                .map(({ id, label, icon: Icon }) => {
+                  const active = effectiveSection === id;
+                  return (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const destination = legacySettingsDestination(id);
+                          if (destination) {
+                            onOpenChange?.(false);
+                            router.push(destination);
+                          } else {
+                            setActiveSection(id as SettingsSection);
+                          }
+                        }}
+                        data-testid={`settings-tab-${id}`}
+                        className={cn(
+                          "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
+                          active
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="size-4" />
+                        <span>{label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
             </ul>
           </nav>
           <ScrollArea className="h-full min-h-0 rounded-lg border">

@@ -89,7 +89,8 @@ describe("zhCN locale", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(zhCN.common)).toHaveLength(46);
+      // 键级并集后随合并形态更新（新增 2 键）。
+      expect(Object.keys(zhCN.common)).toHaveLength(48);
     });
   });
 
@@ -454,8 +455,9 @@ describe("zhCN locale", () => {
       expect(zhCN.chats.searchChats).toBe("搜索对话");
     });
 
-    it("has 8 keys", () => {
-      expect(Object.keys(zhCN.chats)).toHaveLength(8);
+    it("has the merged key count", () => {
+      // 合并后 chats 承接归档/项目/分支等新键（键级并集）。
+      expect(Object.keys(zhCN.chats)).toHaveLength(25);
     });
   });
 

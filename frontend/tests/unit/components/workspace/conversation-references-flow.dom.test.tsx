@@ -107,7 +107,9 @@ describe("conversation reference picker-to-transcript flow", () => {
     );
     const chip = screen.getByTestId("conversation-reference-chip");
     expect(chip.getAttribute("href")).toBe(
-      "/workspace/agents/writer/chats/source-1",
+      // Local path scheme: agent threads route through the capabilities
+      // experts tab (upstream "/workspace/agents/..." redirects there).
+      "/workspace/capabilities/experts/writer/chats/source-1",
     );
   });
 

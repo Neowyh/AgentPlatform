@@ -73,7 +73,7 @@ export function PluginGallery({ query }: { query: string }) {
       <Button
         size="sm"
         variant="outline"
-        className="h-8 rounded-lg text-xs shadow-none"
+        className="type-compact h-8 rounded-lg shadow-none"
         onClick={() => setOpen(true)}
       >
         {connected
@@ -87,10 +87,10 @@ export function PluginGallery({ query }: { query: string }) {
   const toolbar = (
     <Tabs value={filter} onValueChange={setFilter}>
       <TabsList className="bg-muted/50 h-9 rounded-lg">
-        <TabsTrigger className="rounded-md px-4 text-xs" value="all">
+        <TabsTrigger className="type-compact rounded-md px-4" value="all">
           {t.capabilities.allPlugins}
         </TabsTrigger>
-        <TabsTrigger className="rounded-md px-4 text-xs" value="installed">
+        <TabsTrigger className="type-compact rounded-md px-4" value="installed">
           {t.capabilities.installed}
         </TabsTrigger>
       </TabsList>
@@ -102,7 +102,7 @@ export function PluginGallery({ query }: { query: string }) {
         <h2 className="text-base font-semibold">
           {t.capabilities.availablePlugins}
         </h2>
-        <p className="text-muted-foreground mt-1.5 text-sm">
+        <p className="text-muted-foreground type-supporting mt-1.5">
           {t.capabilities.pluginHint}
         </p>
       </div>

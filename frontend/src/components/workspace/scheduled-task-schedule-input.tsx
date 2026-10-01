@@ -457,7 +457,7 @@ export function ScheduledTaskScheduleInput({
       </div>
       {scheduleType === "interval" && intervalUnit === "seconds" && (
         <div
-          className="text-muted-foreground text-xs"
+          className="text-muted-foreground type-compact"
           data-testid="schedule-interval-min-hint"
         >
           {labels.fields.intervalMinHint}

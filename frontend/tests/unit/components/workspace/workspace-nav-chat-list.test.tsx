@@ -37,6 +37,9 @@ vi.mock("@/core/i18n/hooks", () => ({
         scheduledTasks: "Scheduled tasks",
         workflows: "Workflows",
       },
+      capabilities: {
+        title: "Capability Center",
+      },
     },
   }),
 }));
@@ -115,14 +118,17 @@ const buttonActiveStates = () =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("keeps the pre-merge order and appends Scheduled tasks last", () => {
+  test("renders the merged six-entry nav in local order", () => {
     render(<WorkspaceNavChatList />);
+    // 合并形态为本地六项导航；上游独立的 Agents 入口有意移除（D4），
+    // 末尾追加能力中心（Resource Center）入口。
     expect(renderedLabels()).toEqual([
       "Chats",
       "Experts · Skills · Connectors",
       "Workflows",
       "Library",
       "Scheduled tasks",
+      "Capability Center",
     ]);
   });
 
@@ -142,6 +148,7 @@ describe("WorkspaceNavChatList", () => {
       "/workspace/workflows",
       "/workspace/library",
       "/workspace/scheduled-tasks",
+      "/workspace/capabilities",
     ]);
   });
 
@@ -189,6 +196,7 @@ describe("WorkspaceNavChatList", () => {
       "false",
       "false",
       "true",
+      "false",
     ]);
   });
 });

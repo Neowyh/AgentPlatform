@@ -52,9 +52,11 @@ export function SkillGallery({ query = "" }: { query?: string } = {}) {
   return (
     <div>
       {isLoading ? (
-        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
+        <div className="text-muted-foreground type-supporting">
+          {t.common.loading}
+        </div>
       ) : adminRequired ? (
-        <div className="text-muted-foreground text-sm">
+        <div className="text-muted-foreground type-supporting">
           {t.settings.skills.adminRequired}
         </div>
       ) : error ? (
@@ -160,23 +162,32 @@ function SkillList({ skills, query }: { skills: Skill[]; query: string }) {
         <h2 className="text-base font-semibold">
           {t.capabilities.availableSkills}
         </h2>
-        <p className="text-muted-foreground mt-1.5 text-sm">
+        <p className="text-muted-foreground type-supporting mt-1.5">
           {t.capabilities.skillHint}
         </p>
       </div>
       <header className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <Tabs value={filter} onValueChange={setFilter}>
           <TabsList className="bg-muted/50 h-9 rounded-lg">
-            <TabsTrigger value="public" className="rounded-md px-3 text-xs">
+            <TabsTrigger
+              value="public"
+              className="type-compact rounded-md px-3"
+            >
               {t.capabilities.builtin}
             </TabsTrigger>
-            <TabsTrigger value="community" className="rounded-md px-3 text-xs">
+            <TabsTrigger
+              value="community"
+              className="type-compact rounded-md px-3"
+            >
               {t.capabilities.community}
             </TabsTrigger>
-            <TabsTrigger value="custom" className="rounded-md px-3 text-xs">
+            <TabsTrigger
+              value="custom"
+              className="type-compact rounded-md px-3"
+            >
               {t.capabilities.custom}
             </TabsTrigger>
-            <TabsTrigger value="all" className="rounded-md px-3 text-xs">
+            <TabsTrigger value="all" className="type-compact rounded-md px-3">
               {t.capabilities.allSkills}
             </TabsTrigger>
           </TabsList>
@@ -215,7 +226,7 @@ function SkillList({ skills, query }: { skills: Skill[]; query: string }) {
       </header>
       {query.trim() &&
       (filter === "community" || filteredSkills.length === 0) ? (
-        <div className="text-muted-foreground py-20 text-center text-sm">
+        <div className="text-muted-foreground type-supporting py-20 text-center">
           {t.capabilities.noResults}
         </div>
       ) : filter === "community" ? (
@@ -281,7 +292,7 @@ function SkillList({ skills, query }: { skills: Skill[]; query: string }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 text-xs"
+                  className="type-compact h-8"
                   onClick={() => setSelectedSkill(skill)}
                 >
                   {t.capabilities.details}
@@ -322,15 +333,15 @@ function SkillList({ skills, query }: { skills: Skill[]; query: string }) {
                 <DialogTitle className="mt-3">
                   {presentSkill(selectedSkill, locale).title}
                 </DialogTitle>
-                <DialogDescription className="font-mono text-xs">
+                <DialogDescription className="type-compact font-mono">
                   {selectedSkill.name}
                 </DialogDescription>
               </DialogHeader>
-              <div className="text-muted-foreground text-sm leading-7 whitespace-pre-wrap">
+              <div className="text-muted-foreground type-supporting leading-7 whitespace-pre-wrap">
                 {selectedSkill.description}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-                <span className="text-muted-foreground text-xs">
+                <span className="text-muted-foreground type-compact">
                   {selectedSkill.license || sourceLabel(selectedSkill)}
                 </span>
                 <div className="flex gap-2">

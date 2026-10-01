@@ -56,7 +56,7 @@ export function ConversationReferenceList({
         {isPending ? (
           // Never claim there are no conversations before the list has loaded.
           <div
-            className="text-muted-foreground py-6 text-center text-sm"
+            className="text-muted-foreground type-supporting py-6 text-center"
             data-testid="conversation-reference-loading"
           >
             {t.common.loading}
@@ -96,7 +96,7 @@ export function ConversationReferenceList({
           })}
         </CommandGroup>
       </CommandList>
-      <p className="text-muted-foreground border-t px-3 py-2 text-xs">
+      <p className="text-muted-foreground type-compact border-t px-3 py-2">
         {t.inputBox.referenceConversationsLimit(maxReferences)}
       </p>
     </Command>

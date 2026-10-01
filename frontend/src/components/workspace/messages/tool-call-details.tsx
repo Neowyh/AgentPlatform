@@ -101,14 +101,16 @@ function Payload({ label, value }: { label: string; value: unknown }) {
           {t.clipboard.copyToClipboard}
         </Button>
       </div>
-      <pre className="bg-muted max-h-64 overflow-auto rounded p-2 text-xs break-all whitespace-pre-wrap">
+      <pre className="bg-muted type-compact max-h-64 overflow-auto rounded p-2 break-all whitespace-pre-wrap">
         {visibleText}
       </pre>
       {preview.text === "" && (
-        <p className="text-xs">{t.toolCalls.emptyResult}</p>
+        <p className="type-compact">{t.toolCalls.emptyResult}</p>
       )}
-      {preview.truncated && <p className="text-xs">{t.toolCalls.truncated}</p>}
-      <span role="status" className="text-xs">
+      {preview.truncated && (
+        <p className="type-compact">{t.toolCalls.truncated}</p>
+      )}
+      <span role="status" className="type-compact">
         {copyStatus?.text === visibleText ? copyStatus.message : ""}
       </span>
     </section>
