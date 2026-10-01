@@ -16,6 +16,7 @@
 - [0004 Fault-zeroing hybrid intake and shared execution](../adr/0004-fault-zeroing-hybrid-intake-and-shared-execution.md)
 - [0005 Preserve workbench experience when adopting DeerFlow features](../adr/0005-preserve-workbench-experience-when-adopting-deerflow-features.md)
 - [0006 SRS validation defers result contract](../adr/0006-srs-validation-defers-result-contract.md)
+- [0007 Agent terminology unification](../adr/0007-agent-terminology-unification.md)
 
 ## 当前决策
 
