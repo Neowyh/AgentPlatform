@@ -30,6 +30,10 @@ _ALL_PERMISSIONS = [
     Permissions.RUNS_CREATE,
     Permissions.RUNS_READ,
     Permissions.RUNS_CANCEL,
+    # Local enterprise scopes unioned into the merged authz set (see
+    # app.gateway.authz._ALL_PERMISSIONS); this fixture must mirror it.
+    Permissions.ASSISTANTS_READ,
+    Permissions.MODELS_READ,
     Permissions.PROJECTS_READ,
     Permissions.PROJECTS_WRITE,
     Permissions.PROJECTS_DELETE,
@@ -203,10 +207,18 @@ def _stub_user() -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_me_falls_back_to_fresh_resolution_without_middleware_context():
+async def test_me_falls_back_to_fresh_resolution_without_middleware_context(monkeypatch):
     """Direct handler invocation (no AuthMiddleware) resolves permissions the
     same way ``_authenticate`` would instead of reporting an empty grant."""
     from app.gateway.routers.auth import get_me
+
+    async def _stub_platform_identity(user_id: str):
+        return "user", None
+
+    monkeypatch.setattr(
+        "app.gateway.routers.auth._platform_identity_for_user",
+        _stub_platform_identity,
+    )
 
     response = await get_me(_fallback_request(_stub_user(), "session"))
 
@@ -225,6 +237,17 @@ async def test_me_fallback_mirrors_authenticate_internal_caller_semantics(monkey
         return ["threads:read"]
 
     monkeypatch.setattr("app.gateway.authz.resolve_route_permissions", fake_resolve)
+
+    async def _stub_platform_identity(user_id: str):
+        return "user", None
+
+    # The local enterprise get_me resolves the platform identity (RBAC
+    # profile) before computing effective permissions; the stub mirrors an
+    # authenticated internal caller without touching the database.
+    monkeypatch.setattr(
+        "app.gateway.routers.auth._platform_identity_for_user",
+        _stub_platform_identity,
+    )
 
     response = await get_me(_fallback_request(_stub_user(), AUTH_SOURCE_INTERNAL))
 
