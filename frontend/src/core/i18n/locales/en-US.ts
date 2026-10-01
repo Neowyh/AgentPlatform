@@ -1529,7 +1529,7 @@ export const enUS: Translations = {
     integrationSkills: "From plugins",
     sharedSkills: "Shared skills",
     title: "Capability Center",
-    description: "Add tools and skills that help DeerFlow work your way.",
+    description: "Add tools and skills that work your way.",
     plugins: "Plugins",
     skills: "Skills",
     searchPlugins: "Search plugins by name or purpose",

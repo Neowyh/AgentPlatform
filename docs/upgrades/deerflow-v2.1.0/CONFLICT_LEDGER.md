@@ -104,6 +104,7 @@ Makefile 目标并集；AGENTS.md 家族保本地重写+回填上游事实句（
 - **D2（迁移链双 head）**：上游在 0018 后线性延伸至 0025_repair_run_change_seq，与本地 20260908_unify_migration_chains 形成 0018 双子节点/双 head。**修复：新增前向合并修订 20261001_rejoin（down_revision=(20260908_unify, 0025_repair_run_change_seq)）恢复单 head**；不改写已部署的 20260908 修订（forward-only 纪律）；台账 PATCH-015 族补记；前后 alembic heads 断言钉住。
 - **D3（staged 孤儿）**：github-stars route + star-counter 组件 drop（外呼上游仓库，与离线/品牌冲突）。
 - **D4（有意排除登记）**：/workspace/agents 管理入口移除、settings 技能/工具三分区改跳能力中心——收尾登入 BASELINE_NAV_REMOVALS/采用矩阵。
+- **D5（2026-10-01 补充，用户裁决）**：侧边栏能力中心入口去重——合并时上游 capability 入口与本地"专家 · 技能 · 连接器"入口并存且落点相同，保留单一"能力中心"项（href 直达 /workspace/capabilities/experts，active 覆盖 capabilities+resources），移除重复项；上游 locale 描述中的 DeerFlow 品牌残留一并中和（P5）。术语方向见 ADR-0007。
 
 ## §6 状态
 

@@ -118,17 +118,16 @@ const buttonActiveStates = () =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders the merged six-entry nav in local order", () => {
+  test("renders the merged five-entry nav with a single capability-center entry", () => {
     render(<WorkspaceNavChatList />);
-    // 合并形态为本地六项导航；上游独立的 Agents 入口有意移除（D4），
-    // 末尾追加能力中心（Resource Center）入口。
+    // 能力中心唯一入口（含 experts tab）；上游重复的 capability 入口与本地
+    // "专家 · 技能 · 连接器" 入口按 ADR-0007 方向去重，仅保留能力中心一项。
     expect(renderedLabels()).toEqual([
       "Chats",
-      "Experts · Skills · Connectors",
+      "Capability Center",
       "Workflows",
       "Library",
       "Scheduled tasks",
-      "Capability Center",
     ]);
   });
 
@@ -138,6 +137,9 @@ describe("WorkspaceNavChatList", () => {
     // sidebar entry alongside the original Experts·Skills·Connectors page.
     expect(screen.queryByText("Agents")).not.toBeInTheDocument();
     expect(screen.queryByText("Experts")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Experts · Skills · Connectors"),
+    ).not.toBeInTheDocument();
   });
 
   test("links each entry to its pre-merge destination and Scheduled tasks to its own page", () => {
@@ -148,7 +150,6 @@ describe("WorkspaceNavChatList", () => {
       "/workspace/workflows",
       "/workspace/library",
       "/workspace/scheduled-tasks",
-      "/workspace/capabilities",
     ]);
   });
 
@@ -196,7 +197,6 @@ describe("WorkspaceNavChatList", () => {
       "false",
       "false",
       "true",
-      "false",
     ]);
   });
 });

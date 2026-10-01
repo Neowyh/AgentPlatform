@@ -1443,7 +1443,7 @@ export const zhCN: Translations = {
     integrationSkills: "来自插件",
     sharedSkills: "共享技能",
     title: "能力中心",
-    description: "为你的工作添加工具与技能，让 DeerFlow 更懂你的工作方式。",
+    description: "为你的工作添加工具与技能。",
     plugins: "插件",
     skills: "技能",
     searchPlugins: "搜索插件名称或用途",

@@ -5,7 +5,6 @@ import {
   BookOpenIcon,
   CalendarClock,
   MessagesSquare,
-  NetworkIcon,
   WorkflowIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -42,8 +41,8 @@ export function WorkspaceNavChatList() {
             asChild
           >
             <Link href="/workspace/capabilities/experts">
-              <NetworkIcon />
-              <span>{t.sidebar.capabilities}</span>
+              <BlocksIcon />
+              <span>{t.capabilities.title}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -80,20 +79,6 @@ export function WorkspaceNavChatList() {
             <Link href="/workspace/scheduled-tasks">
               <CalendarClock />
               <span>{t.sidebar.scheduledTasks}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/capabilities")}
-            asChild
-          >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/capabilities"
-            >
-              <BlocksIcon />
-              <span>{t.capabilities.title}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
