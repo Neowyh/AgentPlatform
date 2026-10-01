@@ -9,7 +9,7 @@ PNPM_CMD=("$PYTHON_BIN" "$ROOT_DIR/scripts/pnpm_command.py")
 
 # Resolve the lane before doing any environment work.  This keeps --help and
 # malformed invocations useful on machines without the test dependencies.
-VALID_LANES=(local-runtime backend-standard backend-serial backend-full backend-llm backend-external backend-blocking-io frontend-standard frontend-core frontend-smoke frontend-mock-e2e frontend-auth frontend-real frontend-stagehand frontend-visual frontend-a11y pr-standard core-full test-inventory test-contracts)
+VALID_LANES=(local-runtime backend-standard backend-serial backend-full backend-llm backend-live backend-external backend-blocking-io frontend-standard frontend-core frontend-smoke frontend-mock-e2e frontend-auth frontend-real frontend-stagehand frontend-visual frontend-a11y pr-standard core-full test-inventory test-contracts)
 is_valid_lane() {
   local candidate=$1 lane
   for lane in "${VALID_LANES[@]}"; do [[ $lane == "$candidate" ]] && return 0; done
@@ -26,6 +26,7 @@ Lanes:
   backend-serial      Backend tests marked serial, excluding real LLM tests.
   backend-full        backend-standard followed by backend-serial.
   backend-llm         Backend tests marked requires_llm.
+  backend-live        Opt-in backend tests that call external APIs (unexecuted in CI).
   backend-external    Backend tests requiring network or external build tools.
   frontend-standard   Frontend Vitest tests without coverage.
   frontend-core       Frontend Vitest coverage and pnpm check.
@@ -54,6 +55,26 @@ finish() {
   echo "TEST_LANE_DURATION lane=${LANE:-unknown} seconds=${elapsed} status=${status}"
   if [[ -n ${ARTIFACT_DIR:-} ]]; then
     printf 'finished=%s\nstatus=%s\nseconds=%s\n' "$(date -u +%FT%TZ)" "$status" "$elapsed" >>"$ARTIFACT_DIR/run.meta" || true
+    if [[ -f "$ARTIFACT_DIR/lane-evidence.json" ]]; then
+      local outcome=passed
+      if [[ ${LANE_OUTCOME:-} == "unexecuted" ]]; then
+        outcome=unexecuted
+      elif [[ $status -eq 130 || $status -eq 143 ]]; then
+        outcome=cancelled
+      elif [[ $status -ne 0 ]]; then
+        outcome=failed
+      fi
+      set +e
+      "$PYTHON_BIN" "$ROOT_DIR/scripts/test_lane_evidence.py" \
+        --root "$ROOT_DIR" --output "$ARTIFACT_DIR/lane-evidence.json" \
+        --lane "$LANE" --complete --status "$status" --seconds "$elapsed" --outcome "$outcome"
+      local evidence_status=$?
+      set -e
+      if [[ $evidence_status -ne 0 && $status -eq 0 ]]; then
+        status=1
+        echo "TEST_LANE_EVIDENCE_ERROR lane=$LANE status=$evidence_status"
+      fi
+    fi
   fi
   if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
     {
@@ -70,7 +91,7 @@ run_composite() {
   local overall=0 child rc
   for child in "$@"; do
     set +e
-    "$ROOT_DIR/scripts/run-test-lane.sh" "$child"
+    bash "$ROOT_DIR/scripts/run-test-lane.sh" "$child"
     rc=$?
     set -e
     if [[ $rc -ne 0 && $overall -eq 0 ]]; then
@@ -101,6 +122,9 @@ if ! mkdir -p "$ARTIFACT_DIR"; then
   exit 1
 fi
 printf 'lane=%s\ncommand=%q\nstarted=%s\n' "$LANE" "$0 $*" "$(date -u +%FT%TZ)" >"$ARTIFACT_DIR/run.meta"
+"$PYTHON_BIN" "$ROOT_DIR/scripts/test_lane_evidence.py" \
+  --root "$ROOT_DIR" --output "$ARTIFACT_DIR/lane-evidence.json" \
+  --lane "$LANE" --command "$0 $*"
 
 if [[ ${TEST_LANE_SKIP_PREFLIGHT:-0} != 1 && "$LANE" != "test-inventory" && "$LANE" != "test-contracts" ]]; then
   "$PYTHON_BIN" "$ROOT_DIR/scripts/test_preflight.py" "$LANE"
@@ -122,9 +146,10 @@ backend_pytest() {
       --splits "$TEST_LANE_SHARDS"
       --group "${TEST_LANE_SHARD_INDEX:?TEST_LANE_SHARD_INDEX is required when sharding}"
       --splitting-algorithm least_duration
-      -n auto
-      --dist loadfile
     )
+    if [[ $markers != serial* ]]; then
+      args+=(-n auto --dist loadfile)
+    fi
   elif [[ $markers == not\ serial* ]]; then
     args+=(-n auto --dist loadfile)
   fi
@@ -139,7 +164,7 @@ backend_pytest() {
     # top-level modules (for example ``_router_auth_helpers``).  Keep the
     # lane's collection roots on PYTHONPATH so those modules resolve exactly
     # as they do under the backend Make targets.
-    PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest "${args[@]}"
+    PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run --no-sync pytest "${args[@]}"
   )
 }
 
@@ -151,14 +176,31 @@ case "$LANE" in
     backend_pytest "not serial and not requires_llm and not live and not external"
     ;;
   backend-serial)
-    backend_pytest "serial and not requires_llm and not live"
+    backend_pytest "serial and not requires_llm and not live and not external"
     ;;
   backend-full)
     backend_pytest "not serial and not requires_llm and not live and not external"
-    backend_pytest "serial and not requires_llm and not live"
+    backend_pytest "serial and not requires_llm and not live and not external"
     ;;
   backend-llm)
-    backend_pytest "requires_llm"
+    backend_pytest "requires_llm and not live and not external"
+    ;;
+  backend-live)
+    if [[ -n ${CI:-} ]]; then
+      LANE_OUTCOME=unexecuted
+      echo "TEST_LANE_STATUS lane=backend-live status=unexecuted reason=live_tests_disabled_in_ci"
+      exit 0
+    fi
+    if [[ ! -f "$ROOT_DIR/config.yaml" ]]; then
+      LANE_OUTCOME=unexecuted
+      echo "TEST_LANE_STATUS lane=backend-live status=unexecuted reason=missing_config_yaml"
+      exit 0
+    fi
+    (
+      cd "$ROOT_DIR/backend"
+      DEER_FLOW_RUN_LIVE_TESTS=1 PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 \
+        uv run --no-sync pytest -m "live and not external" tests/ -v -s
+    )
     ;;
   backend-external)
     backend_pytest "external"

@@ -2,7 +2,7 @@ name: Real E2E Tests
 
 on:
   push:
-    branches: ["main"]
+    branches: [develop, "product/offline-*"]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -31,12 +31,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Select real E2E lane
         id: select
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           if [[ "$EVENT_NAME" != "pull_request" ]]; then
             echo "run_real=true" >> "$GITHUB_OUTPUT"
@@ -44,7 +48,10 @@ jobs:
           fi
 
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/changed-files.txt
-          RUN_REAL=$(bash .github/scripts/should-run-real-e2e.sh < /tmp/changed-files.txt)
+          python3 scripts/select_test_lanes.py --base "$BASE_SHA" --head "$HEAD_SHA" > /tmp/lane-plan.json
+          RUN_REAL=$(python3 -c 'import json; print(str("real-e2e" in json.load(open("/tmp/lane-plan.json"))["channels"]).lower())')
+          # Preserve the explicit protected paths while sharing the main selector.
+          if [[ $(bash .github/scripts/should-run-real-e2e.sh < /tmp/changed-files.txt) == "true" ]]; then RUN_REAL=true; fi
           echo "run_real=$RUN_REAL" >> "$GITHUB_OUTPUT"
 
   real_e2e_tests:

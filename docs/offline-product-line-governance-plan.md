@@ -152,9 +152,24 @@ v2.1.0 升级继续由 `docs/upgrades/deerflow-v2.1.0/` 的独立任务处理。
 4. 日常功能从 develop 创建；产品修复从对应 product 分支创建。产品发布核实 `ideer-*` 标签来源。
 5. 上游同步记录 SHA；产品合入记录目标维护线；兼容验收记录当前候选及测试结果。
 
-本轮通过 GitHub 连接器在线核实，默认分支已为 develop，develop 指向 `9916c5f8`，
-当前账号有 admin 权限。分页查询只返回 develop，main 及 product 分支尚未建立。
+本轮首次通过 GitHub 连接器在线核实，默认分支已为 develop，develop 指向 `9916c5f8`，
+当前账号有 admin 权限。首次分页查询只返回 develop，main 及 product 分支尚未建立。
 develop 的 branch 元数据为 `protected: false`，rulesets 列表为空。
 完整保护接口返回 `Resource not accessible by integration`，连接器不能修改管理设置。
 最新 release 接口返回 404。现有发布工作流已改为 `ideer-*` 来源与版本记录检查。
 镜像首次建立、分支保护设置及产品维护线建立分别记录执行状态，不代表产品完成升级。
+
+本轮镜像执行状态：指定脚本已通过 GitHub SSH 443 通道完成首次创建，
+远端 main 指向上游同一提交 `67db3d883c38264e2a188d9aaad44f7a7b55015d`。
+首次 SSH 22、HTTPS 和连接器尝试未完成写入；SSH 443 复用已有 github.com
+主机身份验证及认证成功，未修改 remote 或 SSH 配置。
+后续更新运行 `UPSTREAM_MIRROR_APPLY=1 bash scripts/sync_upstream_mirror.sh`；
+缺失镜像时另需 `UPSTREAM_MIRROR_BOOTSTRAP=1`。该流程不强推、不同步标签。
+默认分支仍为 develop；分支保护设置仍待具有管理 API 权限的环境完成。
+产品维护线按选定产品版本和发布记录独立建立，镜像创建不代表产品升级。
+
+可配置的合并必需检查为 `PR Standard Gate`、`Real E2E Gate` 和 `Migration Gate`。
+后两者在未要求专项验证时明确报告未要求，在要求时拒绝失败、取消或缺失结果。
+迁移工作流的 PR 入口不按路径过滤，避免无关 PR 因必需检查没有生成而一直等待。
+main 的保护应只允许指定镜像维护流程快进更新，并禁止团队规则合入、强推及删除；
+产品发布仍由对应 `product/offline-*` 维护线和 `ideer-*` 版本记录约束。

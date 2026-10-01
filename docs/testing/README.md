@@ -3,10 +3,10 @@
 > audience: testers, developers, release maintainers<br>
 > status: current<br>
 > owner: test maintainers<br>
-> last-verified: 2026-07-15<br>
+> last-verified: 2026-10-01<br>
 > canonical-path: `docs/testing/README.md`
 
-测试治理的两个权威文件是：
+测试治理按职责分开维护；同一规则只在其权威文档中定义：
 
 - [覆盖矩阵](coverage-matrix.md)：能力与测试层级的责任映射。
 - [测试迁移账本](test-migration-ledger.md)：测试移动、删除和等价覆盖的验收依据。
@@ -21,3 +21,5 @@
 - [后端测试](../../backend/tests/)
 
 历史测试计划、差距分析和验证记录只作为[归档证据](../archive/README.md)，不能单独授权删除测试或放宽断言。
+
+文档状态使用 `current`、`draft`、`superseded` 和 `archived`。当前候选的验证记录必须写明提交或 diff 指纹、命令、环境、依赖与配置、结果和耗时。历史样例只说明历史运行，不能替代当前候选的验收。测试责任以覆盖矩阵为准，发现和执行归属以测试清单为准，删除或迁移依据以迁移账本为准。

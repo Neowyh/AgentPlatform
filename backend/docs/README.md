@@ -27,6 +27,7 @@ This directory contains detailed documentation for the iDeer backend.
 
 | Document | Description |
 |----------|-------------|
+| [development-reference.md](development-reference.md) | Current development and runtime contracts |
 | [engineering-backlog.md](engineering-backlog.md) | Current backend backlog |
 
 ## Getting Started

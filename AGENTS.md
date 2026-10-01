@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## Guidance maintenance
+
+Edit `AGENTS.md` as the sole source in each rule directory. Run `python3 scripts/sync_agent_guidance.py --write` to produce its regular UTF-8 `CLAUDE.md` copy, then run `--check`. Both files have identical content, including this convention. Merge valid copy-only rules before writing. Handle both files when moving or deleting a directory; inspect orphan copies before deleting them. CI checks the candidate revision and never repairs or commits copies. Team guidance belongs on `develop` and product branches; pure upstream `main` receives only fast-forward mirror updates. After an upstream merge, check for divergent pairs and use GitNexus `--index-only` for daily indexing.
+
+## Implementation discipline
+
+Keep each change limited to the requested behavior and follow nearby conventions. Before editing, state assumptions and identify any choice that changes the result; ask only when the available evidence cannot resolve it. Prefer the smallest implementation that meets the acceptance criteria. Define completion in observable checks, then run those checks and report their actual status.
+
 ## Project Structure & Module Organization
 
 iDeer is a full-stack agent application. `backend/` contains the Python FastAPI/LangGraph gateway, channel integrations, and tests in `backend/tests/`. `frontend/` contains the Next.js app: routes in `frontend/src/app/`, UI in `frontend/src/components/`, domain logic in `frontend/src/core/`, and tests in `frontend/tests/`. Shared scripts live in `scripts/`, deployment assets in `docker/`, public skills in `resources/skills/`, and planning material in `docs/`. Respect narrower guidance in `backend/AGENTS.md` and `frontend/AGENTS.md`.
@@ -25,41 +33,48 @@ Backend code targets Python 3.12 and is formatted with ruff. Use snake_case for 
 
 Place backend tests in the relevant `backend/tests/unit/`, `backend/tests/integration/`, or `backend/tests/contracts/` package, using `test_*.py` filenames. Place frontend unit tests in `frontend/tests/unit/`, mirroring the relevant `src/` area, and E2E tests in `frontend/tests/e2e/`. Add focused tests for changed behavior and run the smallest relevant suite before broader checks.
 
-### Test Lane Selection
+### Test selection by risk and stage
 
-After changing code, select the smallest Test Lane that covers the changed behavior. `scripts/run-test-lane.sh` is the canonical command definition.
+Choose checks for the changed behavior and the stage of the work. For an ordinary local change, completion requires the focused regression test and the narrowest relevant type or lint check. Changes to public contracts, authorization, persistence, migrations, or core runtime behavior also need the matching contract and integration checks. Run one focused check per TDD slice. Run the applicable standard lane once when preparing the PR; retain `pr-standard` as the cross-stack PR gate. Use `core-full` only for an explicit release, delivery, or full-acceptance request.
 
-| Change or acceptance need | Run |
-| --- | --- |
-| Ordinary backend change | `cd backend && make test` |
-| Backend shared state, database, or deterministic serial coverage | `cd backend && make test-full` |
-| Ordinary frontend change | `cd frontend && pnpm test` |
-| Frontend routing, auth, build, or type-sensitive change | `cd frontend && pnpm test:full` |
-| Cross-stack pull-request validation | `bash scripts/run-test-lane.sh pr-standard` |
-| Release validation | `bash scripts/run-test-lane.sh core-full` |
-| Async backend I/O, visual UI, or accessibility acceptance | Run `backend-blocking-io`, `frontend-visual`, or `frontend-a11y` through `scripts/run-test-lane.sh` |
-| Real-model acceptance with configured credentials | `cd backend && make test-llm` |
+A combined lane replaces its included base lanes for the same candidate. Reuse a successful result only when the candidate, dependencies, test configuration, and environment are unchanged. Rerun affected checks after relevant changes, failures, or incomplete evidence. Keep assertions and coverage intact; do not speed up a lane by weakening assertions, adding skips, or reducing its scope.
 
-For auth, RBAC, persistence, memory, admin, Agent, Skill, or Workflow changes, run the matching standard lane and `pr-standard`. GitHub Actions selects Real E2E for the protected high-risk paths; report that selection when handing off a pull request.
+The lane contract and handoff rules live in [docs/testing/test-lane-runbook.md](docs/testing/test-lane-runbook.md). The [coverage matrix](docs/testing/coverage-matrix.md) maps behavior to test layers; the [test inventory](scripts/test_inventory.py) records discovered files, collected nodes, execution ownership, and status; the [migration ledger](docs/testing/test-migration-ledger.md) records test moves and deletions. After adding or moving tests, run `python3 scripts/test_inventory.py`; before a lane, run `python3 scripts/test_preflight.py <lane>` (the lane runner does this automatically). Smoke is an aggregate subset of mock E2E, not a second execution owner. Missing optional credentials are reported as unexecuted.
 
-### Agent Implementation Test Protocol
+### Enterprise changes and upstream compatibility
 
-The canonical lane contract and handoff definitions live in
-[docs/testing/test-lane-runbook.md](docs/testing/test-lane-runbook.md). After
-adding or moving tests, run `python3 scripts/test_inventory.py`; before a lane,
-run `python3 scripts/test_preflight.py <lane>` (the lane runner does this
-automatically). Inventory ownership is exclusive; smoke is an aggregate subset
-of mock E2E. Missing optional credentials are reported as unexecuted.
+Keep enterprise behavior at the extension boundary. Prefer, in order, Extension, Adapter, then a registered minimal runtime patch. Preserve Run and Thread lifecycles, streaming events, tool execution, state restoration, and persistence contracts. Offline capability switches and enterprise permission limits must be explicit in configuration and report their effective state. Verify compatibility behavior with customization disabled and enterprise constraints with it enabled.
 
-When an Agent implements or fixes code, use this sequence:
+For each harness patch, record its reason, alternatives, impact, validation, owner, and removal condition in the applicable patch ledger. Resolve upstream conflicts by behavior and contract; review each conflicted change instead of accepting one side globally. Track upstream synchronization, product integration, and compatibility validation as separate states. Contract and patch registration checks prove that changes are recorded, not that behavior is compatible; compatibility evidence comes from the relevant tests and review.
 
-1. **TDD slice**: identify the public seam, write one focused regression test, verify RED, implement the smallest change, then verify GREEN. Repeat one vertical slice at a time.
-2. **Local feedback**: after each slice, run the focused test file or test case and the narrowest applicable typecheck/lint. Do not run a repository-wide lane for every slice.
-3. **Implementation completion**: after all slices pass, run the applicable standard lane once. Use `UV_CACHE_DIR=/tmp/deer-flow-uv-cache` for backend commands in restricted environments. If a socket test is denied by the sandbox, record that environment result and rerun the same lane where local sockets are permitted; do not change production code or tests to bypass the restriction.
-4. **PR completion**: run `pr-standard` when preparing a pull request or when the change crosses backend/frontend boundaries. Persistence, RBAC, memory, Agent, Skill, and Workflow changes require this lane in addition to their standard lane.
-5. **Delivery completion**: run `core-full` only for explicit release, delivery, or full-acceptance requests. It is not the default final step of an ordinary implementation task.
+### Task documentation map
 
-For a focused test or lane that hangs or times out, report it as **incomplete**, including the exact command, elapsed time, and last observed test. Do not report it as passed and do not change production code solely to work around a restricted test environment. Distinguish focused results, standard-lane results, PR-lane results, and delivery-lane results in the handoff. For `pr-standard` and `core-full`, report every sub-lane's final summary and the parent lane's `TEST_LANE_DURATION` status; a historical `core-full` result never substitutes for a run on the current candidate.
+Use the document for the task at hand:
+
+| Task | Read first | Validation or record |
+| --- | --- | --- |
+| Architecture or boundaries | [architecture index](docs/architecture/README.md), [architecture overview](docs/architecture/overview.md) | Relevant contract or integration checks |
+| Domain terms or design decisions | [domain guide](docs/agents/domain.md), [glossary](docs/plans/2026-08-26-term-glossary.md), [ADR index](docs/decisions/README.md) | Add or update a decision only when behavior or an interface changes |
+| Tests or coverage | [testing index](docs/testing/README.md), [coverage matrix](docs/testing/coverage-matrix.md), [lane runbook](docs/testing/test-lane-runbook.md) | [test inventory](scripts/test_inventory.py), [migration ledger](docs/testing/test-migration-ledger.md) |
+| Upstream harness work | [upstream lock](docs/upgrades/deerflow-main-0f7d8709/UPSTREAM_LOCK.md), [patch ledger](UPSTREAM_PATCH_LEDGER.md) | Relevant compatibility checks |
+| Local runtime patches | [runtime patch ledger](docs/local-runtime/PATCH_LEDGER.md) | Listed patch-specific validation |
+| Issue triage | [issue tracker](docs/agents/issue-tracker.md), [triage labels](docs/agents/triage-labels.md) | Keep the issue state and labels current |
+
+`docs/README.md` is the engineering documentation index. `docs/adr/` holds ADR records; `docs/decisions/` holds dated decisions, and both are indexed from the decisions README. Current documents govern active work. Drafts are proposals, superseded documents point to their replacement, and archived records provide history only. A historical test result never satisfies validation for the current candidate. Update documentation when behavior, interfaces, configuration, architecture, or workflow changes.
+
+### Agent implementation checks
+
+For each implementation slice, identify the public seam, add one focused regression test, verify it fails, implement the smallest change, and verify it passes. After each slice, run only that test and the narrowest relevant static check. At implementation completion, run the applicable standard lane once. Use `UV_CACHE_DIR=/tmp/deer-flow-uv-cache` for backend commands in restricted environments. If a socket test is denied by the sandbox, record the environment result and rerun the same lane where local sockets are permitted; do not alter product code or tests to bypass the restriction.
+
+For auth, RBAC, persistence, memory, admin, Agent, Skill, or Workflow changes, run the matching standard lane and `pr-standard`. GitHub Actions selects Real E2E for protected high-risk paths; report that selection when handing off a pull request. Do not run a repository-wide lane for each TDD slice.
+
+For a focused test or lane that hangs or times out, report it as incomplete with the exact command, elapsed time, and last observed test. Distinguish focused, standard-lane, PR-lane, and delivery-lane results. For `pr-standard` and `core-full`, report each sub-lane's final summary and the parent lane's `TEST_LANE_DURATION` status. A historical result does not replace a run on the current candidate.
+
+## Enterprise interfaces and validation assets
+
+KnowledgeBase list and create operations use `/api/resources` with Resource Governance visibility filtering. Responses expose canonical identity and visibility; provider infrastructure bindings stay server-side. Preserve these boundaries when editing Knowledge Center behavior.
+
+Qodo Cover configurations are local validation assets. Stagehand tests live in `frontend/tests/e2e/stagehand/` and require their explicit specialty lane. The archived `frontend-validator`, `backend-validator`, `qa-tester`, and `validation-orchestrator` designs are historical proposals, not callable skills in this worktree. Read the nearest guidance and the current architecture index for active module paths.
 
 ## Commit & Pull Request Guidelines
 
@@ -67,7 +82,7 @@ Git history primarily uses Conventional Commit prefixes such as `fix(runs): ...`
 
 ## Security & Configuration Tips
 
-Do not commit local secrets. Start from `config.example.yaml`, `.env.example`, or `extensions_config.example.json`, then keep local values in untracked config files. Use `make doctor` to validate configuration and system requirements before reporting environment issues.
+Do not commit local secrets. Start from `config.example.yaml`, `.env.example`, or `extensions_config.example.json`, then keep local values in untracked config files. Use `make doctor` to validate configuration and system requirements before reporting environment issues. For production-mode local startup, `scripts/start-local.sh` validates required commands, `config.yaml`, and configured model-key environment variable names before invoking `make start`; `START_TARGET` and `REQUIRED_ENV_VARS` accept only simple targets and identifiers.
 
 ## Session / Working Files (dev-log)
 
@@ -132,68 +147,3 @@ This project is indexed by GitNexus as **AgentPlatform** (47479 symbols, 96181 r
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
-# CLAUDE.md
-
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

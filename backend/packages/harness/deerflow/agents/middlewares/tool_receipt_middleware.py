@@ -93,9 +93,7 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             # be visible, or the ledger silently goes incomplete and citations lie.
             logger.warning("Failed to stamp tool receipt", exc_info=True)
 
-    def _stamp(
-        self, result: ToolMessage | Command, request: ToolCallRequest
-    ) -> ToolMessage | Command:
+    def _stamp(self, result: ToolMessage | Command, request: ToolCallRequest) -> ToolMessage | Command:
         if isinstance(result, ToolMessage):
             self._stamp_message(result, request)
             return result
@@ -111,10 +109,7 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
 
         tool_call_id = str(request.tool_call.get("id") or "")
         for message in messages:
-            if (
-                isinstance(message, ToolMessage)
-                and str(message.tool_call_id) == tool_call_id
-            ):
+            if isinstance(message, ToolMessage) and str(message.tool_call_id) == tool_call_id:
                 self._stamp_message(message, request)
         return result
 
@@ -160,13 +155,9 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
         for index, message in enumerate(messages):
             if is_genuine_user_message(message):
                 latest_user_index = index
-        turn_messages = (
-            messages[latest_user_index + 1 :] if latest_user_index >= 0 else messages
-        )
+        turn_messages = messages[latest_user_index + 1 :] if latest_user_index >= 0 else messages
         for message in turn_messages:
-            if isinstance(message, ToolMessage) and (
-                message.additional_kwargs or {}
-            ).get("subagent_status"):
+            if isinstance(message, ToolMessage) and (message.additional_kwargs or {}).get("subagent_status"):
                 return True
         return False
 
@@ -177,14 +168,10 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             content=ledger,
             additional_kwargs={"hide_from_ui": True, _RECEIPT_CONTEXT_KEY: True},
         )
-        messages = insert_after_leading_system_messages(
-            list(request.messages), [ledger_message]
-        )
+        messages = insert_after_leading_system_messages(list(request.messages), [ledger_message])
         return request.override(messages=messages)
 
-    def _prepare_model_call(
-        self, request: ModelRequest
-    ) -> tuple[ModelRequest, list[ToolReceipt] | None]:
+    def _prepare_model_call(self, request: ModelRequest) -> tuple[ModelRequest, list[ToolReceipt] | None]:
         if not self._should_render(request):
             return request, None
         receipts = extract_tool_receipts(list(request.messages))
@@ -212,9 +199,7 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
                 hooks.record_retrieval_citations(content)
 
     @staticmethod
-    def _stamp_citing_ledger(
-        result: ModelCallResult, receipts: list[ToolReceipt] | None
-    ) -> ModelCallResult:
+    def _stamp_citing_ledger(result: ModelCallResult, receipts: list[ToolReceipt] | None) -> ModelCallResult:
         ToolReceiptMiddleware._record_citations(result)
         if receipts is None:
             return result

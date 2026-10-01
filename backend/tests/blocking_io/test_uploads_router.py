@@ -53,14 +53,10 @@ class _ConcurrentSandboxRecorder(_SandboxRecorder):
 class _MountedProvider:
     uses_thread_data_mounts = True
 
-    def acquire(
-        self, thread_id: str | None = None, *, user_id: str | None = None
-    ) -> str:
+    def acquire(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         raise AssertionError("mounted upload path must not acquire a sandbox")
 
-    async def acquire_async(
-        self, thread_id: str | None = None, *, user_id: str | None = None
-    ) -> str:
+    async def acquire_async(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         raise AssertionError("mounted upload path must not acquire a sandbox")
 
     def get(self, sandbox_id: str):
@@ -74,14 +70,10 @@ class _RemoteProvider:
         self.sandbox = _SandboxRecorder()
         self.acquire_async_calls: list[tuple[str | None, str | None]] = []
 
-    def acquire(
-        self, thread_id: str | None = None, *, user_id: str | None = None
-    ) -> str:
+    def acquire(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         raise AssertionError("upload route should use acquire_async")
 
-    async def acquire_async(
-        self, thread_id: str | None = None, *, user_id: str | None = None
-    ) -> str:
+    async def acquire_async(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         self.acquire_async_calls.append((thread_id, user_id))
         return "remote-sandbox"
 
@@ -104,9 +96,7 @@ async def _thread_uploads_dir(thread_id: str, *, user_id: str | None = None) -> 
     return await asyncio.to_thread(ensure_uploads_dir, thread_id, user_id=user_id)
 
 
-async def test_upload_endpoint_mounted_provider_does_not_block_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_upload_endpoint_mounted_provider_does_not_block_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_paths(tmp_path, monkeypatch)
     provider = _MountedProvider()
     monkeypatch.setattr(uploads, "get_sandbox_provider", lambda: provider)
@@ -120,17 +110,13 @@ async def test_upload_endpoint_mounted_provider_does_not_block_event_loop(
     )
 
     user_id = get_effective_user_id()
-    target = await asyncio.to_thread(
-        lambda: get_uploads_dir("t-mounted", user_id=user_id) / "notes.txt"
-    )
+    target = await asyncio.to_thread(lambda: get_uploads_dir("t-mounted", user_id=user_id) / "notes.txt")
     assert result.success is True
     assert result.files[0].filename == "notes.txt"
     assert await asyncio.to_thread(target.read_bytes) == b"hello uploads"
 
 
-async def test_upload_endpoint_remote_provider_syncs_without_blocking_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_upload_endpoint_remote_provider_syncs_without_blocking_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_paths(tmp_path, monkeypatch)
     provider = _RemoteProvider()
     monkeypatch.setattr(uploads, "get_sandbox_provider", lambda: provider)
@@ -146,14 +132,10 @@ async def test_upload_endpoint_remote_provider_syncs_without_blocking_event_loop
 
     assert result.success is True
     assert provider.acquire_async_calls == [("t-remote", "owner-upload")]
-    assert provider.sandbox.updates == [
-        ("/mnt/user-data/uploads/report.txt", b"remote bytes")
-    ]
+    assert provider.sandbox.updates == [("/mnt/user-data/uploads/report.txt", b"remote bytes")]
 
 
-async def test_upload_endpoint_syncs_multiple_files_with_bounded_concurrency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_upload_endpoint_syncs_multiple_files_with_bounded_concurrency(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_paths(tmp_path, monkeypatch)
     provider = _RemoteProvider()
     provider.sandbox = _ConcurrentSandboxRecorder()
@@ -164,10 +146,7 @@ async def test_upload_endpoint_syncs_multiple_files_with_bounded_concurrency(
         uploads.upload_files,
         "t-remote-many",
         request=None,
-        files=[
-            UploadFile(filename=f"file-{index}.txt", file=BytesIO(str(index).encode()))
-            for index in range(5)
-        ],
+        files=[UploadFile(filename=f"file-{index}.txt", file=BytesIO(str(index).encode())) for index in range(5)],
         config=SimpleNamespace(),
     )
 
@@ -177,9 +156,7 @@ async def test_upload_endpoint_syncs_multiple_files_with_bounded_concurrency(
     assert provider.sandbox.max_active_updates <= uploads.SANDBOX_SYNC_CONCURRENCY
 
 
-async def test_list_uploaded_files_does_not_block_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_list_uploaded_files_does_not_block_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_paths(tmp_path, monkeypatch)
     uploads_dir = await _thread_uploads_dir("t-list")
     await asyncio.to_thread((uploads_dir / "notes.txt").write_bytes, b"hello")
@@ -191,17 +168,13 @@ async def test_list_uploaded_files_does_not_block_event_loop(
     assert result.files[0].size == len(b"hello")
 
 
-async def test_delete_uploaded_file_does_not_block_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_delete_uploaded_file_does_not_block_event_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_paths(tmp_path, monkeypatch)
     uploads_dir = await _thread_uploads_dir("t-delete")
     target = uploads_dir / "notes.txt"
     await asyncio.to_thread(target.write_bytes, b"delete me")
 
-    result = await call_unwrapped(
-        uploads.delete_uploaded_file, "t-delete", "notes.txt", request=None
-    )
+    result = await call_unwrapped(uploads.delete_uploaded_file, "t-delete", "notes.txt", request=None)
 
     assert result == {"success": True, "message": "Deleted notes.txt"}
     assert not await asyncio.to_thread(target.exists)

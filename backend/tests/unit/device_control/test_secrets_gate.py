@@ -47,9 +47,7 @@ class FakeRuntimeConnection:
         self.sent.append(value)
 
 
-def _client(
-    server_public_key: str, device_key: Ed25519PrivateKey, tmp_path: Path
-) -> LocalRuntimeClient:
+def _client(server_public_key: str, device_key: Ed25519PrivateKey, tmp_path: Path) -> LocalRuntimeClient:
     return LocalRuntimeClient(
         server_url="ws://unused",
         device_id="device-1",

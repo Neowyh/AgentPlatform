@@ -64,8 +64,8 @@ src/
 │   └── utils/              # Utility functions
 ├── hooks/                  # Custom React hooks
 ├── lib/                    # Shared libraries & utilities
-├── server/                 # Server-side code (Not available yet)
-│   └── better-auth/        # Authentication setup (Not available yet)
+├── server/                 # Server-side authentication code
+│   └── better-auth/        # Authentication setup
 └── styles/                 # Global styles
 ```
 
@@ -106,3 +106,13 @@ When adding new agent features:
 ## License
 
 This agent architecture is part of the iDeer project.
+
+## Active ownership rules
+
+`src/app/workspace/chats/[thread_id]/page.tsx` owns chat-page composer busy state. `src/core/threads/hooks.ts` owns pre-submit upload state and thread submission. `src/hooks/usePoseStream.ts` only selects from the store; `App.tsx` owns the global WebSocket lifecycle. Keep new state and effects with the existing owner.
+
+`ui/` and `ai-elements/` contain generated components. Change their source registry or generation input instead of editing generated output by hand. Keep server components as the default and add `"use client"` only where browser interaction or client state requires it.
+
+Follow the root test selection policy. Preserve the repository's Rstest/Vitest allocation and run the focused test plus the narrowest relevant check for each local slice. Use the frontend standard lane at implementation completion; use `pr-standard` for cross-stack and high-risk changes.
+
+Use `@/*` for `src/*` imports and inline type imports. Keep import groups ordered by the existing ESLint rules, prefix intentionally unused variables with `_`, and use `cn()` from `@/lib/utils` for conditional Tailwind classes. Obtain the LangGraph singleton through `getAPIClient()`; thread hooks own streaming. TanStack Query owns server state, including `core/knowledge-admin/hooks.ts`; localStorage owns user settings. Validate environment variables through `src/env.js`. Auth server code in `src/server/` is active.

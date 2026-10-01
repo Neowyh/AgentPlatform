@@ -1,0 +1,32 @@
+name: Upstream main mirror
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Permit first creation when main is absent
+        type: boolean
+        default: false
+      apply:
+        description: Update main after verifying a fast-forward
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: upstream-main-mirror
+  cancel-in-progress: false
+jobs:
+  mirror:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+      - name: Verify and optionally update pure upstream mirror
+        shell: bash
+        env:
+          UPSTREAM_MIRROR_BOOTSTRAP: ${{ inputs.bootstrap && '1' || '0' }}
+          UPSTREAM_MIRROR_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: bash scripts/sync_upstream_mirror.sh

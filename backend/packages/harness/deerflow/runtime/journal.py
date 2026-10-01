@@ -57,9 +57,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _LEGACY_SUMMARY_MESSAGE_NAME = "summary"
-_PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES = frozenset(
-    {"ask_clarification", "sandbox_network"}
-)
+_PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES = frozenset({"ask_clarification", "sandbox_network"})
 
 
 def _should_persist_human_input_message(message: BaseMessage) -> bool:
@@ -70,10 +68,7 @@ def _should_persist_human_input_message(message: BaseMessage) -> bool:
     if message.additional_kwargs.get("hide_from_ui") is not True:
         return True
     response = read_human_input_response(message.additional_kwargs)
-    return (
-        response is not None
-        and response["source"] in _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES
-    )
+    return response is not None and response["source"] in _PERSISTED_HIDDEN_HUMAN_INPUT_RESPONSE_SOURCES
 
 
 def _coerce_seed_message(message: Any) -> Any:
@@ -93,9 +88,7 @@ def _coerce_seed_message(message: Any) -> Any:
         msg_type = message.get("type")
         if isinstance(msg_type, str) and msg_type:
             try:
-                return messages_from_dict([{"type": msg_type, "data": dict(message)}])[
-                    0
-                ]
+                return messages_from_dict([{"type": msg_type, "data": dict(message)}])[0]
             except Exception:
                 logger.warning(
                     "branch seed: could not deserialize checkpoint message dict (type=%s)",
@@ -300,9 +293,7 @@ class RunJournal(BaseCallbackHandler):
 
         # LLM request/response tracking
         self._llm_call_index = 0
-        self._seen_llm_starts: set[str] = (
-            set()
-        )  # langchain run_ids that fired on_chat_model_start
+        self._seen_llm_starts: set[str] = set()  # langchain run_ids that fired on_chat_model_start
         self._current_run_tool_call_names: dict[str, str] = {}
         self._active_tool_names: dict[str, str] = {}
         self._persisted_tool_message_identities: set[str] = set()
@@ -325,18 +316,14 @@ class RunJournal(BaseCallbackHandler):
         """Extract displayable text from a message's mixed content shape."""
         return message_to_text(message, text_attribute_fallback=True)
 
-    def _record_message_summary(
-        self, message: BaseMessage, *, caller: str | None = None
-    ) -> None:
+    def _record_message_summary(self, message: BaseMessage, *, caller: str | None = None) -> None:
         """Update run-level convenience fields for persisted run rows."""
         self._msg_count += 1
 
         # ``last_ai_message`` should represent the lead agent's user-facing
         # answer. Middleware/subagent model calls and empty tool-call-only
         # AI messages must not overwrite the last useful assistant text.
-        is_ai_message = (
-            isinstance(message, AIMessage) or getattr(message, "type", None) == "ai"
-        )
+        is_ai_message = isinstance(message, AIMessage) or getattr(message, "type", None) == "ai"
         if is_ai_message and (caller is None or caller == "lead_agent"):
             text = self._message_text(message).strip()
             if text:
@@ -385,9 +372,7 @@ class RunJournal(BaseCallbackHandler):
         )
         self._flush_sync()
 
-    def on_chain_error(
-        self, error: BaseException, *, run_id: UUID, **kwargs: Any
-    ) -> None:
+    def on_chain_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         self._put(
             event_type=RUN_ERROR_EVENT.event_type,
             category=RUN_ERROR_EVENT.category,
@@ -433,9 +418,7 @@ class RunJournal(BaseCallbackHandler):
                 for m in reversed(batch):
                     if _should_persist_human_input_message(m):
                         persisted_message = restore_original_human_message(m)
-                        self.set_first_human_message(
-                            self._message_text(persisted_message)
-                        )
+                        self.set_first_human_message(self._message_text(persisted_message))
                         self._put(
                             event_type=LLM_HUMAN_INPUT_EVENT.event_type,
                             category=LLM_HUMAN_INPUT_EVENT.category,
@@ -504,9 +487,7 @@ class RunJournal(BaseCallbackHandler):
                 if hasattr(gen, "message"):
                     messages.append(gen.message)
                 else:
-                    logger.warning(
-                        f"on_llm_end {run_id}: generation has no message attribute: {gen}"
-                    )
+                    logger.warning(f"on_llm_end {run_id}: generation has no message attribute: {gen}")
 
         for message in messages:
             caller = self._identify_caller(tags)
@@ -521,9 +502,7 @@ class RunJournal(BaseCallbackHandler):
             usage = getattr(message, "usage_metadata", None)
             usage_dict = dict(usage) if usage else {}
             additional_kwargs = getattr(message, "additional_kwargs", None) or {}
-            if isinstance(additional_kwargs, dict) and additional_kwargs.get(
-                "deerflow_error_fallback"
-            ):
+            if isinstance(additional_kwargs, dict) and additional_kwargs.get("deerflow_error_fallback"):
                 self._had_llm_error_fallback = True
                 detail = additional_kwargs.get("error_detail")
                 reason = additional_kwargs.get("error_reason")
@@ -581,14 +560,10 @@ class RunJournal(BaseCallbackHandler):
                         self._lead_agent_tokens += total_tk
 
                     # Per-model bucket
-                    response_metadata = (
-                        getattr(message, "response_metadata", None) or {}
-                    )
+                    response_metadata = getattr(message, "response_metadata", None) or {}
                     per_call_model: str | None = None
                     if isinstance(response_metadata, Mapping):
-                        per_call_model = response_metadata.get(
-                            "model_name"
-                        ) or response_metadata.get("model")
+                        per_call_model = response_metadata.get("model_name") or response_metadata.get("model")
                     self._record_model_usage(
                         per_call_model,
                         input_tk,
@@ -602,9 +577,7 @@ class RunJournal(BaseCallbackHandler):
         if messages:
             self._counted_message_llm_run_ids.add(str(run_id))
 
-    def on_llm_error(
-        self, error: BaseException, *, run_id: UUID, **kwargs: Any
-    ) -> None:
+    def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
         self._llm_start_times.pop(str(run_id), None)
         self._llm_first_token_run_ids.discard(str(run_id))
         self._put(
@@ -630,9 +603,7 @@ class RunJournal(BaseCallbackHandler):
         tool_name = serialized.get("name") if isinstance(serialized, Mapping) else None
         if isinstance(tool_name, str) and tool_name:
             self._active_tool_names[tool_run_id] = tool_name
-        logger.debug(
-            "Tool start for node %s, tool_run_id=%s, tags=%s", run_id, tool_run_id, tags
-        )
+        logger.debug("Tool start for node %s, tool_run_id=%s, tags=%s", run_id, tool_run_id, tags)
 
     def on_tool_end(self, output, *, run_id, parent_run_id=None, **kwargs):
         """Handle tool end event, append message and clear node data"""
@@ -656,24 +627,18 @@ class RunJournal(BaseCallbackHandler):
                         if artifacts and isinstance(message, ToolMessage):
                             tool_call_id = getattr(message, "tool_call_id", None)
                             if isinstance(tool_call_id, str):
-                                tool_name = self._current_run_tool_call_names.get(
-                                    tool_call_id
-                                )
+                                tool_name = self._current_run_tool_call_names.get(tool_call_id)
                                 if tool_name:
                                     artifact_tool_names.add(tool_name)
                     else:
-                        logger.warning(
-                            f"on_tool_end {run_id}: command update message is not BaseMessage: {type(message)}"
-                        )
+                        logger.warning(f"on_tool_end {run_id}: command update message is not BaseMessage: {type(message)}")
                 if artifacts:
                     artifact_tool_name = active_tool_name
                     if artifact_tool_name is None and len(artifact_tool_names) == 1:
                         artifact_tool_name = next(iter(artifact_tool_names))
                     self._record_produced_artifacts(artifacts, artifact_tool_name)
             else:
-                logger.warning(
-                    f"on_tool_end {run_id}: output is not ToolMessage: {type(output)}"
-                )
+                logger.warning(f"on_tool_end {run_id}: output is not ToolMessage: {type(output)}")
         finally:
             logger.debug("Tool end for node %s", run_id)
 
@@ -695,14 +660,10 @@ class RunJournal(BaseCallbackHandler):
             return tool_call.get(key)
         return getattr(tool_call, key, None)
 
-    def _remember_current_run_tool_calls(
-        self, message: AnyMessage, *, caller: str
-    ) -> None:
+    def _remember_current_run_tool_calls(self, message: AnyMessage, *, caller: str) -> None:
         if caller != "lead_agent":
             return
-        is_ai_message = (
-            isinstance(message, AIMessage) or getattr(message, "type", None) == "ai"
-        )
+        is_ai_message = isinstance(message, AIMessage) or getattr(message, "type", None) == "ai"
         if not is_ai_message:
             return
         tool_calls = getattr(message, "tool_calls", None) or []
@@ -756,10 +717,7 @@ class RunJournal(BaseCallbackHandler):
         if self._current_run_tool_call_names.get(tool_call_id) is None:
             return False
         identity = self._message_identity(message)
-        return (
-            identity is not None
-            and identity not in self._persisted_tool_message_identities
-        )
+        return identity is not None and identity not in self._persisted_tool_message_identities
 
     def _reconcile_final_tool_messages(self, outputs: Any) -> None:
         for message in self._final_output_messages(outputs):
@@ -845,11 +803,7 @@ class RunJournal(BaseCallbackHandler):
     def _identify_caller(self, tags: list[str] | None) -> str:
         _tags = tags or []
         for tag in _tags:
-            if isinstance(tag, str) and (
-                tag.startswith("subagent:")
-                or tag.startswith("middleware:")
-                or tag == "lead_agent"
-            ):
+            if isinstance(tag, str) and (tag.startswith("subagent:") or tag.startswith("middleware:") or tag == "lead_agent"):
                 return tag
         # Default to lead_agent: the main agent graph does not inject
         # callback tags, while subagents and middleware explicitly tag
@@ -885,9 +839,7 @@ class RunJournal(BaseCallbackHandler):
         bucket["output_tokens"] += int(output_tokens or 0)
         bucket["total_tokens"] += int(total_tokens)
         if cache_read_tokens > 0:
-            bucket["cache_read_tokens"] = bucket.get("cache_read_tokens", 0) + int(
-                cache_read_tokens
-            )
+            bucket["cache_read_tokens"] = bucket.get("cache_read_tokens", 0) + int(cache_read_tokens)
 
     @staticmethod
     def _extract_cache_read(usage_dict: dict) -> int:
@@ -966,9 +918,7 @@ class RunJournal(BaseCallbackHandler):
         """Record the first human message for convenience fields."""
         self._first_human_msg = content[:2000] if content else None
 
-    def record_middleware(
-        self, tag: str, *, name: str, hook: str, action: str, changes: dict
-    ) -> None:
+    def record_middleware(self, tag: str, *, name: str, hook: str, action: str, changes: dict) -> None:
         """Record a middleware state-change event.
 
         Called by middleware implementations when they perform a meaningful
@@ -1050,9 +1000,7 @@ class RunJournal(BaseCallbackHandler):
         if self._closed:
             return
         if self._pending_flush_tasks:
-            await asyncio.gather(
-                *tuple(self._pending_flush_tasks), return_exceptions=True
-            )
+            await asyncio.gather(*tuple(self._pending_flush_tasks), return_exceptions=True)
         while self._pending_progress_task is not None:
             pending_progress_task = self._pending_progress_task
             if pending_progress_task.done():
@@ -1148,14 +1096,9 @@ class RunJournal(BaseCallbackHandler):
         elapsed = now - self._last_progress_flush
         if elapsed < self._progress_flush_interval:
             self._progress_dirty = True
-            self._schedule_delayed_progress_flush(
-                self._progress_flush_interval - elapsed
-            )
+            self._schedule_delayed_progress_flush(self._progress_flush_interval - elapsed)
             return
-        if (
-            self._pending_progress_task is not None
-            and not self._pending_progress_task.done()
-        ):
+        if self._pending_progress_task is not None and not self._pending_progress_task.done():
             self._progress_dirty = True
             return
         try:
@@ -1163,15 +1106,10 @@ class RunJournal(BaseCallbackHandler):
         except RuntimeError:
             return
         self._progress_dirty = False
-        self._pending_progress_task = loop.create_task(
-            self._flush_progress_async(snapshot=self.get_completion_data())
-        )
+        self._pending_progress_task = loop.create_task(self._flush_progress_async(snapshot=self.get_completion_data()))
 
     def _schedule_delayed_progress_flush(self, delay: float) -> None:
-        if (
-            self._pending_progress_task is not None
-            and not self._pending_progress_task.done()
-        ):
+        if self._pending_progress_task is not None and not self._pending_progress_task.done():
             return
         try:
             loop = asyncio.get_running_loop()
@@ -1179,13 +1117,9 @@ class RunJournal(BaseCallbackHandler):
             return
         delay = max(0.0, delay)
         self._pending_progress_delayed = delay > 0
-        self._pending_progress_task = loop.create_task(
-            self._flush_progress_async(delay=delay)
-        )
+        self._pending_progress_task = loop.create_task(self._flush_progress_async(delay=delay))
 
-    async def _flush_progress_async(
-        self, *, snapshot: dict | None = None, delay: float = 0.0
-    ) -> None:
+    async def _flush_progress_async(self, *, snapshot: dict | None = None, delay: float = 0.0) -> None:
         if self._progress_reporter is None:
             return
         if delay > 0:
@@ -1219,9 +1153,7 @@ class RunJournal(BaseCallbackHandler):
             "lead_agent_tokens": self._lead_agent_tokens,
             "subagent_tokens": self._subagent_tokens,
             "middleware_tokens": self._middleware_tokens,
-            "token_usage_by_model": {
-                model: dict(usage) for model, usage in self._tokens_by_model.items()
-            },
+            "token_usage_by_model": {model: dict(usage) for model, usage in self._tokens_by_model.items()},
             "message_count": self._msg_count,
             "last_ai_message": self._last_ai_msg,
             "first_human_message": self._first_human_msg,

@@ -48,19 +48,13 @@ def build_canonical_agent_factory(
             "resource_id": definition.resource_id,
             "version": definition.version,
             "content_hash": definition.content_hash,
-            **(
-                {"knowledge_scope": knowledge_scope.model_mapping()}
-                if knowledge_scope is not None
-                else {}
-            ),
+            **({"knowledge_scope": knowledge_scope.model_mapping()} if knowledge_scope is not None else {}),
         },
     )
 
     def factory(config: Any, app_config: Any = None):
         if knowledge_scope is None and local_tool_executor is None:
-            return assemble_lead_agent(
-                config, app_config=app_config, frozen=frozen
-            ).graph
+            return assemble_lead_agent(config, app_config=app_config, frozen=frozen).graph
         # The upstream assembly resolves tools before compiling the graph. A
         # short-lived module-level seam lets the extension replace only the
         # knowledge tool at that point, without changing the DeerFlow fork.
@@ -86,13 +80,9 @@ def build_canonical_agent_factory(
 
             deerflow_tools.get_available_tools = scoped_tools
             try:
-                return assemble_lead_agent(
-                    config, app_config=app_config, frozen=frozen
-                ).graph
+                return assemble_lead_agent(config, app_config=app_config, frozen=frozen).graph
             finally:
                 deerflow_tools.get_available_tools = original
 
-    factory.knowledge_scope = (
-        knowledge_scope.model_mapping() if knowledge_scope is not None else None
-    )
+    factory.knowledge_scope = knowledge_scope.model_mapping() if knowledge_scope is not None else None
     return factory

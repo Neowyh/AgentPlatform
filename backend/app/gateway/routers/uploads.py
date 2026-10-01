@@ -171,22 +171,11 @@ def _make_file_sandbox_writable(file_path: os.PathLike[str] | str) -> None:
     """
     file_stat = os.lstat(file_path)
     if stat.S_ISLNK(file_stat.st_mode):
-        logger.warning(
-            "Skipping sandbox chmod for symlinked upload path: %s", file_path
-        )
+        logger.warning("Skipping sandbox chmod for symlinked upload path: %s", file_path)
         return
 
-    writable_mode = (
-        stat.S_IMODE(file_stat.st_mode)
-        | stat.S_IWUSR
-        | stat.S_IWGRP
-        | stat.S_IWOTH
-        | stat.S_IRGRP
-        | stat.S_IROTH
-    )
-    chmod_kwargs = (
-        {"follow_symlinks": False} if os.chmod in os.supports_follow_symlinks else {}
-    )
+    writable_mode = stat.S_IMODE(file_stat.st_mode) | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH | stat.S_IRGRP | stat.S_IROTH
+    chmod_kwargs = {"follow_symlinks": False} if os.chmod in os.supports_follow_symlinks else {}
     os.chmod(file_path, writable_mode, **chmod_kwargs)
 
 
@@ -201,15 +190,11 @@ def _make_file_sandbox_readable(file_path: os.PathLike[str] | str) -> None:
     """
     file_stat = os.lstat(file_path)
     if stat.S_ISLNK(file_stat.st_mode):
-        logger.warning(
-            "Skipping sandbox chmod for symlinked upload path: %s", file_path
-        )
+        logger.warning("Skipping sandbox chmod for symlinked upload path: %s", file_path)
         return
 
     readable_mode = stat.S_IMODE(file_stat.st_mode) | stat.S_IRGRP | stat.S_IROTH
-    chmod_kwargs = (
-        {"follow_symlinks": False} if os.chmod in os.supports_follow_symlinks else {}
-    )
+    chmod_kwargs = {"follow_symlinks": False} if os.chmod in os.supports_follow_symlinks else {}
     os.chmod(file_path, readable_mode, **chmod_kwargs)
 
 
@@ -217,9 +202,7 @@ def _uses_thread_data_mounts(sandbox_provider: SandboxProvider) -> bool:
     return bool(getattr(sandbox_provider, "uses_thread_data_mounts", False))
 
 
-def _get_uploads_config_value(
-    app_config: AppConfig, key: str, default: object
-) -> object:
+def _get_uploads_config_value(app_config: AppConfig, key: str, default: object) -> object:
     """Read a value from the uploads config, supporting dict and attribute access."""
     uploads_cfg = getattr(app_config, "uploads", None)
     if isinstance(uploads_cfg, dict):
@@ -227,9 +210,7 @@ def _get_uploads_config_value(
     return getattr(uploads_cfg, key, default)
 
 
-def _get_upload_limit(
-    app_config: AppConfig, key: str, default: int, *, legacy_key: str | None = None
-) -> int:
+def _get_upload_limit(app_config: AppConfig, key: str, default: int, *, legacy_key: str | None = None) -> int:
     try:
         value = _get_uploads_config_value(app_config, key, None)
         if value is None and legacy_key is not None:
@@ -247,18 +228,14 @@ def _get_upload_limit(
 
 def _get_upload_limits(app_config: AppConfig) -> UploadLimits:
     return UploadLimits(
-        max_files=_get_upload_limit(
-            app_config, "max_files", DEFAULT_MAX_FILES, legacy_key="max_file_count"
-        ),
+        max_files=_get_upload_limit(app_config, "max_files", DEFAULT_MAX_FILES, legacy_key="max_file_count"),
         max_file_size=_get_upload_limit(
             app_config,
             "max_file_size",
             DEFAULT_MAX_FILE_SIZE,
             legacy_key="max_single_file_size",
         ),
-        max_total_size=_get_upload_limit(
-            app_config, "max_total_size", DEFAULT_MAX_TOTAL_SIZE
-        ),
+        max_total_size=_get_upload_limit(app_config, "max_total_size", DEFAULT_MAX_TOTAL_SIZE),
     )
 
 
@@ -300,9 +277,7 @@ async def _write_upload_file_with_limits(
 ) -> tuple[os.PathLike[str] | str, int, int]:
     file_size = 0
     try:
-        destination, staging_name, fh = await asyncio.to_thread(
-            _prepare_upload_staging, uploads_dir, display_filename
-        )
+        destination, staging_name, fh = await asyncio.to_thread(_prepare_upload_staging, uploads_dir, display_filename)
     except Exception:
         raise
     try:
@@ -310,13 +285,9 @@ async def _write_upload_file_with_limits(
             file_size += len(chunk)
             total_size += len(chunk)
             if file_size > max_single_file_size:
-                raise HTTPException(
-                    status_code=413, detail=f"File too large: {display_filename}"
-                )
+                raise HTTPException(status_code=413, detail=f"File too large: {display_filename}")
             if total_size > max_total_size:
-                raise HTTPException(
-                    status_code=413, detail="Total upload size too large"
-                )
+                raise HTTPException(status_code=413, detail="Total upload size too large")
             await asyncio.to_thread(fh.write, chunk)
     except Exception:
         await asyncio.to_thread(fh.close)
@@ -341,9 +312,7 @@ def _prepare_upload_staging(
     os.close(staging_fd)
     try:
         # Exercise the shared no-symlink boundary before streaming.
-        _probe_path, probe_fh = open_upload_file_no_symlink(
-            Path(uploads_dir), Path(staging_name).name
-        )
+        _probe_path, probe_fh = open_upload_file_no_symlink(Path(uploads_dir), Path(staging_name).name)
         probe_fh.close()
         fh = open(staging_name, "wb")
     except Exception:
@@ -386,9 +355,7 @@ async def upload_files(
 
     limits = _get_upload_limits(config)
     if len(files) > limits.max_files:
-        raise HTTPException(
-            status_code=413, detail=f"Too many files: maximum is {limits.max_files}"
-        )
+        raise HTTPException(status_code=413, detail=f"Too many files: maximum is {limits.max_files}")
 
     try:
         uploads_dir = await asyncio.to_thread(ensure_uploads_dir, thread_id)
@@ -471,9 +438,7 @@ async def upload_files(
                 except CodeEvidencePackageError as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
                 except (OSError, zipfile.BadZipFile) as exc:
-                    raise HTTPException(
-                        status_code=400, detail=f"Invalid code evidence package: {exc}"
-                    ) from exc
+                    raise HTTPException(status_code=400, detail=f"Invalid code evidence package: {exc}") from exc
                 finally:
                     file.file.seek(0, 2)
                 code_packages.append(manifest.as_dict())
@@ -494,22 +459,16 @@ async def upload_files(
             if safe_filename != original_filename:
                 file_info["original_filename"] = original_filename
 
-            logger.info(
-                f"Saved file: {safe_filename} ({file_size} bytes) to {file_info['path']}"
-            )
+            logger.info(f"Saved file: {safe_filename} ({file_size} bytes) to {file_info['path']}")
 
             file_ext = file_path.suffix.lower()
             convert_started = time.perf_counter()
             if auto_convert_documents and file_ext in CONVERTIBLE_EXTENSIONS:
                 # Reserve the companion name in the same request namespace as
                 # user uploads so conversion cannot overwrite a sibling file.
-                companion_name = claim_unique_filename(
-                    f"{file_path.stem}.md", seen_filenames
-                )
+                companion_name = claim_unique_filename(f"{file_path.stem}.md", seen_filenames)
                 try:
-                    md_path = await convert_file_to_markdown(
-                        file_path, output_path=uploads_dir / companion_name
-                    )
+                    md_path = await convert_file_to_markdown(file_path, output_path=uploads_dir / companion_name)
                 except TypeError as exc:
                     # Keep compatibility with older conversion adapters that
                     # only accept the source path. Do not hide other TypeErrors.
@@ -528,9 +487,7 @@ async def upload_files(
                     file_info["markdown_file"] = md_path.name
                     file_info["markdown_path"] = str(sandbox_uploads / md_path.name)
                     file_info["markdown_virtual_path"] = md_virtual_path
-                    file_info["markdown_artifact_url"] = upload_artifact_url(
-                        thread_id, md_path.name
-                    )
+                    file_info["markdown_artifact_url"] = upload_artifact_url(thread_id, md_path.name)
 
             uploaded_files.append(file_info)
             file_timings.append(
@@ -538,9 +495,7 @@ async def upload_files(
                     "filename": safe_filename,
                     "size": file_size,
                     "type": file_ext or "<none>",
-                    "convert_ms": round(
-                        (time.perf_counter() - convert_started) * 1000, 1
-                    ),
+                    "convert_ms": round((time.perf_counter() - convert_started) * 1000, 1),
                     "total_ms": round((time.perf_counter() - file_started) * 1000, 1),
                 }
             )
@@ -556,9 +511,7 @@ async def upload_files(
                 await sandbox_lease.release()
             raise e
         except UnsafeUploadPathError as e:
-            logger.warning(
-                "Skipping upload with unsafe destination %s: %s", file.filename, e
-            )
+            logger.warning("Skipping upload with unsafe destination %s: %s", file.filename, e)
             skipped_files.append(safe_filename)
             continue
         except Exception as e:
@@ -571,9 +524,7 @@ async def upload_files(
                     pass
             if sandbox_lease is not None:
                 await sandbox_lease.release()
-            raise HTTPException(
-                status_code=500, detail=f"Failed to upload {file.filename}: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}: {str(e)}")
 
     # Uploaded files are created with 0o600 permissions (owner read/write only).
     # In Docker sandbox deployments the gateway writes as root but the sandbox
@@ -590,10 +541,7 @@ async def upload_files(
         if sync_to_sandbox:
             semaphore = asyncio.Semaphore(SANDBOX_SYNC_CONCURRENCY)
             sync_results = await asyncio.gather(
-                *(
-                    _sync_upload_to_sandbox(sandbox, file_path, virtual_path, semaphore)
-                    for file_path, virtual_path in sandbox_sync_targets
-                ),
+                *(_sync_upload_to_sandbox(sandbox, file_path, virtual_path, semaphore) for file_path, virtual_path in sandbox_sync_targets),
                 return_exceptions=True,
             )
             for result in sync_results:
@@ -644,9 +592,7 @@ async def get_upload_limits(
 
 @router.get("/list", response_model=UploadedFilesResponse)
 @require_permission("threads", "read", owner_check=True)
-async def list_uploaded_files(
-    thread_id: ThreadId, request: Request
-) -> UploadedFilesResponse:
+async def list_uploaded_files(thread_id: ThreadId, request: Request) -> UploadedFilesResponse:
     """List all files in a thread's uploads directory."""
     try:
         uploads_dir = await asyncio.to_thread(get_uploads_dir, thread_id)
@@ -669,9 +615,7 @@ async def list_uploaded_files(
 
 @router.delete("/{filename}")
 @require_permission("threads", "delete", owner_check=True, require_existing=True)
-async def delete_uploaded_file(
-    thread_id: ThreadId, filename: str, request: Request
-) -> dict:
+async def delete_uploaded_file(thread_id: ThreadId, filename: str, request: Request) -> dict:
     """Delete a file from a thread's uploads directory."""
     try:
         uploads_dir = await asyncio.to_thread(get_uploads_dir, thread_id)
@@ -690,6 +634,4 @@ async def delete_uploaded_file(
         raise HTTPException(status_code=400, detail="Invalid path")
     except Exception as e:
         logger.error(f"Failed to delete {filename}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete {filename}: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete {filename}: {str(e)}")

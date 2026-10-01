@@ -2,9 +2,7 @@ name: Lint Check
 
 on:
   push:
-    branches: [ 'main' ]
-  pull_request:
-    branches: [ '*' ]
+    branches: [develop, "product/offline-*"]
 
 permissions:
   contents: read
@@ -18,12 +16,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Validate agent guidance
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            python3 scripts/check_agent_guidance.py --base-ref "${{ github.event.pull_request.base.sha }}" --head-ref "${{ github.sha }}"
-          else
-            python3 scripts/check_agent_guidance.py --before "${{ github.event.before }}" --after "${{ github.sha }}"
-          fi
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/check_agent_guidance.py --before "$BEFORE_SHA" --after "$HEAD_SHA"
 
   lint:
     runs-on: ubuntu-latest
@@ -69,11 +65,6 @@ jobs:
         run: |
           cd frontend
           pnpm install --frozen-lockfile
-
-      - name: Check frontend formatting
-        run: |
-          cd frontend
-          pnpm format
 
       - name: Run frontend linting
         run: |

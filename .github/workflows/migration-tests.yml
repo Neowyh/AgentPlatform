@@ -2,17 +2,13 @@ name: Migration Tests
 
 on:
   push:
-    branches: [ 'main' ]
+    branches: [develop, "product/offline-*"]
     paths:
       - 'backend/packages/harness/deerflow/persistence/**'
       - 'backend/tests/integration/persistence/**'
       - '.github/workflows/migration-tests.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'backend/packages/harness/deerflow/persistence/**'
-      - 'backend/tests/integration/persistence/**'
-      - '.github/workflows/migration-tests.yml'
 
 concurrency:
   group: migration-${{ github.event.pull_request.number || github.ref }}
@@ -22,8 +18,47 @@ permissions:
   contents: read
 
 jobs:
+  select-migration:
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.select.outputs.required }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "Migration validation is deferred until the PR is ready."
+            exit 0
+          fi
+          set +e
+          git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
+            backend/packages/harness/deerflow/persistence \
+            backend/tests/integration/persistence \
+            .github/workflows/migration-tests.yml
+          STATUS=$?
+          set -e
+          case "$STATUS" in
+            0) echo "required=false" >> "$GITHUB_OUTPUT"; echo "No migration inputs changed." ;;
+            1) echo "required=true" >> "$GITHUB_OUTPUT"; echo "Persistence, schema tests, or migration workflow changed." ;;
+            *) exit "$STATUS" ;;
+          esac
+
   migration-up-down:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    needs: select-migration
+    if: needs.select-migration.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -79,3 +114,27 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -f backend/data/deerflow.db
+
+  migration-gate:
+    name: Migration Gate
+    if: always()
+    needs: [select-migration, migration-up-down]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify migration selection and result
+        shell: bash
+        env:
+          SELECT_RESULT: ${{ needs.select-migration.result }}
+          RUN_MIGRATION: ${{ needs.select-migration.outputs.required }}
+          MIGRATION_RESULT: ${{ needs.migration-up-down.result }}
+        run: |
+          test "$SELECT_RESULT" = "success"
+          if [[ "$RUN_MIGRATION" == "true" ]]; then
+            test "$MIGRATION_RESULT" = "success"
+            echo "Migration validation succeeded."
+          elif [[ "$RUN_MIGRATION" == "false" ]]; then
+            echo "Migration validation was not required."
+          else
+            echo "Missing migration selection result." >&2
+            exit 1
+          fi

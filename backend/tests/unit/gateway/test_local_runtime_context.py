@@ -13,9 +13,7 @@ class _Socket:
         pass
 
 
-def _connection(
-    *, allowed: bool = True, owner_id: str | None = None
-) -> DeviceConnection:
+def _connection(*, allowed: bool = True, owner_id: str | None = None) -> DeviceConnection:
     key = Ed25519PrivateKey.generate()
     return DeviceConnection(
         "device-context",
@@ -60,9 +58,7 @@ def test_local_context_uses_authenticated_connection_facts(
     _bind_local_runtime_context(context)
 
     assert context["local_authorization"]["device_online"] is True
-    assert context["local_authorization"]["device_capabilities"] == [
-        "local.mcp.fs.read_file"
-    ]
+    assert context["local_authorization"]["device_capabilities"] == ["local.mcp.fs.read_file"]
     assert set(context["local_tool_descriptors"]) == {"local.mcp.fs.read_file"}
 
 

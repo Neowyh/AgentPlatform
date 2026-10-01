@@ -3,12 +3,81 @@
 > audience: testers, developers, release maintainers<br>
 > status: current<br>
 > owner: test maintainers<br>
-> last-verified: 2026-07-15<br>
+> last-verified: 2026-10-01<br>
 > canonical-path: `docs/testing/test-migration-ledger.md`
 
 This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.
+
+## Batch 2026-10-01: Exact backend test copies at upstream paths
+
+Removed the nested local-migration copy in each row and retained the identical
+test file at its original root path from upstream baseline `0f7d8709`. Each
+pair was byte-for-byte identical (matching SHA-256, size, and line count), had
+the same only applicable fixture file (`backend/tests/conftest.py`), and had
+no `__file__`, package-relative import, or path-sensitive behavior. All 26
+retained root paths exist in `0f7d8709`; none of the removed nested paths does.
+The test bodies have no path-dependent references. Text hits for a few generic
+test method names outside these pairs were separate methods in other test
+classes, not imports or calls. A repository path search found one documentation
+reference to the removed readability path in
+`UPSTREAM_PATCH_LEDGER.md`; its two test IDs remain in the retained upstream
+path; the root patch ledger now references the retained upstream file.
+
+GitNexus could not resolve these test symbols in the current index (26
+`UNKNOWN` results). A repository text search confirmed no caller or active
+configuration references to the removed paths. No test was skipped or
+weakened.
+
+Each pair was run separately, with both files supplied to pytest:
+
+```bash
+cd backend
+UV_CACHE_DIR=/tmp/deer-flow-uv-cache PYTHONPATH=.:tests \
+  /home/neowyh/code/AgentPlatform/backend/.venv/bin/python -m pytest \
+  <removed-copy> <retained-upstream-file> -q
+```
+
+The preconfigured Python 3.12.3 backend environment was used directly because
+the new worktree had no dependency environment and network resolution for
+`hatchling` was unavailable. All commands exited 0: 390 passed across the
+paired runs (195 test executions per copy), with 11 non-failing warnings and
+no skips.
+
+| Removed nested copy | Retained upstream path | Paired result |
+| --- | --- | ---: |
+| `tests/integration/sandbox/test_provisioner_kubeconfig.py` | `tests/test_provisioner_kubeconfig.py` | 10 passed |
+| `tests/unit/gateway/test_auth_config.py` | `tests/test_auth_config.py` | 12 passed |
+| `tests/unit/gateway/test_auth_errors.py` | `tests/test_auth_errors.py` | 16 passed; 2 warnings |
+| `tests/unit/models/test_claude_provider_oauth_billing.py` | `tests/test_claude_provider_oauth_billing.py` | 22 passed |
+| `tests/unit/models/test_claude_provider_prompt_caching.py` | `tests/test_claude_provider_prompt_caching.py` | 26 passed |
+| `tests/unit/models/test_cli_auth_providers.py` | `tests/test_cli_auth_providers.py` | 24 passed |
+| `tests/unit/models/test_client_message_serialization.py` | `tests/test_client_message_serialization.py` | 4 passed |
+| `tests/unit/runtime/test_converters.py` | `tests/test_converters.py` | 30 passed |
+| `tests/unit/scripts/test_credential_loader.py` | `tests/test_credential_loader.py` | 16 passed |
+| `tests/unit/gateway/test_ensure_admin.py` | `tests/test_ensure_admin.py` | 22 passed |
+| `tests/unit/tools/test_exa_tools.py` | `tests/test_exa_tools.py` | 24 passed |
+| `tests/unit/tools/test_firecrawl_tools.py` | `tests/test_firecrawl_tools.py` | 4 passed |
+| `tests/unit/tools/test_local_bash_tool_loading.py` | `tests/test_local_bash_tool_loading.py` | 10 passed |
+| `tests/unit/scripts/test_loop_detection_config.py` | `tests/test_loop_detection_config.py` | 16 passed |
+| `tests/unit/tools/test_mcp_custom_interceptors.py` | `tests/test_mcp_custom_interceptors.py` | 20 passed |
+| `tests/unit/models/test_patched_openai.py` | `tests/test_patched_openai.py` | 16 passed |
+| `tests/unit/persistence/test_persistence_timezone.py` | `tests/test_persistence_timezone.py` | 8 passed; 9 warnings |
+| `tests/unit/tools/test_readability.py` | `tests/test_readability.py` | 4 passed |
+| `tests/unit/tools/test_reflection_resolvers.py` | `tests/test_reflection_resolvers.py` | 6 passed |
+| `tests/unit/runtime/test_run_event_store_pagination.py` | `tests/test_run_event_store_pagination.py` | 12 passed |
+| `tests/unit/runtime/test_run_naming.py` | `tests/test_run_naming.py` | 14 passed |
+| `tests/unit/scripts/test_safety_termination_detectors.py` | `tests/test_safety_termination_detectors.py` | 36 passed |
+| `tests/unit/skills/test_skills_archive_root.py` | `tests/test_skills_archive_root.py` | 6 passed |
+| `tests/unit/runtime/test_sse_format.py` | `tests/test_sse_format.py` | 6 passed |
+| `tests/unit/scripts/test_token_usage_config.py` | `tests/test_token_usage_config.py` | 2 passed |
+| `tests/unit/tools/test_utils_time.py` | `tests/test_utils_time.py` | 24 passed |
+
+The actual paired command elapsed 192.1 seconds. After removing these copies,
+the backend test-shaped file count is 1,137, down from 1,163. The keeper
+assertions remain at the upstream paths; no mechanical migration of other
+root-level tests is part of this batch.
 
 ## Batch 2026-07-14: Phase 5 final verification
 

@@ -3,12 +3,18 @@
 > audience: developers, testers, release maintainers<br>
 > status: current<br>
 > owner: test maintainers<br>
-> last-verified: 2026-09-11<br>
+> last-verified: 2026-10-01<br>
 > canonical-path: `docs/testing/test-lane-runbook.md`
 
 `scripts/run-test-lane.sh` 是测试 lane 的唯一权威入口。本手册说明如何
 运行、判定和交接跨端 PR 与交付级验证；具体覆盖责任见
 [覆盖矩阵](coverage-matrix.md)。
+
+本地改动以聚焦回归测试和相关静态检查为完成条件。公共契约、权限、持久化、迁移或核心运行时改动还需对应契约及集成检查。每个 TDD 切片运行聚焦检查；PR 执行标准门禁。
+
+选择组合 lane 后，同一候选不重复执行其中已包含的基础 lane。只有候选、依赖、测试配置和环境都相同，才复用通过结果。相关改动、失败或证据不完整时，重跑受影响的检查。保持断言和覆盖范围，`core-full` 仅用于明确的发布、交付或完整验收请求。
+
+记录每次运行的候选（提交或未提交 diff 指纹）、完整命令、环境、依赖与测试配置、状态和耗时。状态区分 `passed`、`failed`、`cancelled`、`unexecuted` 和 `incomplete`。`incomplete` 包括挂起、超时或没有最终摘要的运行。
 
 新增或移动测试后运行 `python3 scripts/test_inventory.py --collect --json`。它保留
 无法导入外部服务测试的静态归属；`collection_status` 为
@@ -36,8 +42,9 @@ lane 归属变化；删除、skip 或范围缩小时必须在迁移账本中记�
 后者必须在候选提交上独立执行，不能以历史通过记录代替。
 
 后端 standard 递归收集整个 `backend/tests/`，排除
-`tests/blocking_io` 以及 `serial`、`requires_llm`、`live` marker；serial
-lane 只运行离线 serial 用例。由于递归集合包含临时服务测试，两个后端
+`tests/blocking_io` 以及 `serial`、`requires_llm`、`live`、`external` marker；serial
+lane 只运行离线 serial 用例。定时和手动验证中，standard 可分片，serial 由一个
+独立 job 顺序运行全套用例，不随 standard matrix 重复或并发执行。由于递归集合包含临时服务测试，两个后端
 lane 都要求 preflight 先确认本地 socket 可创建。live/LLM、blocking-I/O、
 visual、a11y 和 real E2E 必须由各自专项 lane 显式选择。
 
@@ -79,7 +86,7 @@ visual、a11y 和 real E2E 必须由各自专项 lane 显式选择。
 skip/warning 概要、父 lane exit code，以及任何未运行的 specialty lane（如
 blocking-I/O、visual、a11y、real-model）。
 
-## 已验证示例：2026-09-10 PR 标准通道
+## 历史运行记录：2026-09-10 PR 标准通道
 
 在允许本地 socket 的环境执行
 `UV_CACHE_DIR=/tmp/deer-flow-uv-cache bash scripts/run-test-lane.sh pr-standard`
@@ -98,7 +105,7 @@ blocking-I/O、visual、a11y、real-model）。
 
 本示例只证明该次 `pr-standard` 运行；它不表示本次已运行 `core-full`。
 
-## 当前候选复验：2026-09-12
+## 历史候选复验：2026-09-12
 
 在允许本地 socket 的环境中，`test-preflight pr-standard`、`make doctor`、
 测试契约和 runner 契约均通过。最近一次 `pr-standard` 完整复验耗时 1,471
@@ -117,7 +124,7 @@ frontend-core 为 9,965 passed，均保留各自退出状态。frontend-mock-e2e
 会继续执行子 lane，同时明确记录 mock E2E 的服务装配缺口，不能将该次 core-full
 标记为通过。
 
-随后补齐 mock Gateway shell 请求并收紧移动端选择器后，thread-history、subtask
+该历史候选随后补齐 mock Gateway shell 请求并收紧移动端选择器后，thread-history、subtask
 card 和 mobile sidebar 三个代表用例在允许浏览器权限的环境中均为 **3 passed**；
 完整 348 用例集合随后复验为 **328 passed、1 failed、19 skipped**；剩余失败是
 线程删除错误路径下的导航契约，未归因于环境或依赖。
@@ -133,6 +140,8 @@ a11y 和 Stagehand 目录由各自专项 lane 负责，不再混入该通道。
 passed、0 failed、144 skipped、817 warnings，耗时约 900 秒；该次运行的父
 lane 以 `status=0` 结束。该次运行已包含认证 envelope、严格线程准入、旧线程删除、SSE 心跳、事件查询兼容、bootstrap schema parity、subagent 管理、OpenViking MCP、身份上下文、lease 续期、并发内存事实、OIDC seam、canonical agent HTTP、上传事件循环和 sandbox retention 修复。日志仍可能显示可选 memory 更新尝试连接外部模型并失败；该后台更新不会改变测试结果，离线通道也不会把它当作业务调用成功。
 
-本轮 `pr-standard` 组合复验中，backend-standard 为 25,754 passed、0 failed、
+该历史候选的 `pr-standard` 组合复验中，backend-standard 为 25,754 passed、0 failed、
 144 skipped，父子退出状态均保留；frontend-standard 的 Rstest 为 120 files /
 755 tests passed。Vitest 完整运行 357 files / 9,965 tests 通过（约 353 秒），frontend-smoke 29 项通过；父 lane `pr-standard` 最终以 `status=0` 结束（约 1,516 秒）。运行中仍会显示 jsdom navigation warning，但不影响退出状态。
+
+以上带日期的运行数据是历史证据，不能代表当前候选的状态。新的验收交接应记录本次实际运行结果，并逐项列出组合 lane 的子 lane 摘要和父 lane 状态。

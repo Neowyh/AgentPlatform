@@ -1,7 +1,7 @@
 name: Publish Helm Chart
 
 # Publishes the DeerFlow Helm chart as an OCI artifact to GHCR alongside the
-# container images (see container.yaml). Triggers on the same `v*` tags.
+# container images (see container.yaml). Triggers on the same `ideer-*` tags.
 #
 # On pull requests touching the chart or config.example.yaml, `validate-chart`
 # runs lint + template render + a sandbox Service-type gating check + a
@@ -14,7 +14,7 @@ name: Publish Helm Chart
 on:
   push:
     tags:
-      - "v*"
+      - "ideer-*"
   pull_request:
     paths:
       - "deploy/helm/deer-flow/**"
@@ -28,9 +28,9 @@ jobs:
   validate-chart:
     # Runs on PRs and release tags: catch a broken render or a stale
     # config_version before merge / publish. A broken chart published under a
-    # vX.Y.Z tag is an immutable OCI artifact (GHCR won't let you overwrite
+    # ideer-X.Y.Z tag is an immutable OCI artifact (GHCR won't let you overwrite
     # --version), so a regression must fail here, not on install.
-    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/ideer-')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -70,11 +70,11 @@ jobs:
     # Gate the release: every version source must match the v* tag. A forgotten
     # bump in Chart.yaml, pyproject.toml, or package.json fails here and skips
     # the publish. See scripts/verify_versions.sh.
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/ideer-')
     uses: ./.github/workflows/verify-versions.yml
 
   publish-chart:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/ideer-')
     needs: [verify-versions, validate-chart]
     runs-on: ubuntu-latest
     permissions:

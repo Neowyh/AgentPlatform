@@ -14,6 +14,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 PATCH_MARKERS = ("coverage", "boost", "gaps", "full", "extra")
@@ -23,12 +24,7 @@ TEST_SUFFIXES = (".py", ".ts", ".tsx")
 def _is_test_file(path: Path) -> bool:
     if path.suffix not in TEST_SUFFIXES:
         return False
-    return (
-        path.name.startswith("test_")
-        or path.name.endswith(".spec.ts")
-        or path.name.endswith(".test.ts")
-        or path.name.endswith(".test.tsx")
-    )
+    return path.name.startswith("test_") or path.name.endswith(".spec.ts") or path.name.endswith(".test.ts") or path.name.endswith(".test.tsx")
 
 
 def _iter_test_files(root: Path) -> list[Path]:
@@ -46,12 +42,23 @@ def _iter_test_files(root: Path) -> list[Path]:
         "playwright-artifacts",
         "coverage",
     }
-    files: list[Path] = []
-    for path in root.rglob("*"):
-        if any(part in ignored for part in path.parts):
+    files: set[Path] = set()
+    # Match the test roots consumed by the lane runner. Repository tooling,
+    # examples, vendored skills, and docs may contain test-shaped filenames;
+    # those files are not tests owned by this repository's test runners.
+    for relative_root in (
+        "backend/tests",
+        "frontend/tests",
+        "local-runtime/tests",
+    ):
+        test_root = root / relative_root
+        if not test_root.is_dir():
             continue
-        if path.is_file() and _is_test_file(path):
-            files.append(path)
+        for path in test_root.rglob("*"):
+            if any(part in ignored for part in path.parts):
+                continue
+            if path.is_file() and _is_test_file(path):
+                files.add(path)
     return sorted(files)
 
 
@@ -60,21 +67,14 @@ def _python_inventory(path: Path) -> tuple[list[str], list[str]]:
     tests: list[str] = []
     imports: set[str] = set()
     for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name.startswith("test_")
-        ) or (isinstance(node, ast.ClassDef) and node.name.startswith("Test")):
+        if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")) or (isinstance(node, ast.ClassDef) and node.name.startswith("Test")):
             tests.append(node.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 imports.add(alias.name.split(".", 1)[0])
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.add(node.module)
-    production_imports = sorted(
-        item
-        for item in imports
-        if not item.startswith(("tests", "pytest", "unittest", "typing", "_"))
-    )
+    production_imports = sorted(item for item in imports if not item.startswith(("tests", "pytest", "unittest", "typing", "_")))
     return sorted(tests), production_imports
 
 
@@ -82,12 +82,7 @@ def _markers(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     found = set(re.findall(r"(?:pytest\.mark\.|@pytest\.mark\.)([A-Za-z_]+)", text))
     found.update(re.findall(r"@([A-Za-z_]+)", text))
-    return sorted(
-        item
-        for item in found
-        if item
-        in {"serial", "live", "requires_llm", "external", "smoke", "skip", "skipif"}
-    )
+    return sorted(item for item in found if item in {"serial", "live", "requires_llm", "external", "smoke", "skip", "skipif"})
 
 
 def _typescript_inventory(path: Path) -> tuple[list[str], list[str]]:
@@ -111,6 +106,8 @@ def _target_bucket(path: Path) -> str:
     name = path.name.lower()
     parts = set(path.parts)
     if "e2e" in parts or any(part.startswith("e2e-") for part in parts):
+        if "e2e-record" in parts:
+            return "frontend/e2e/record"
         if "auth" in parts or any(part.startswith("e2e-auth") for part in parts):
             return "frontend/e2e/auth"
         if "visual" in parts:
@@ -125,11 +122,7 @@ def _target_bucket(path: Path) -> str:
             return "frontend/e2e/smoke"
         return "frontend/e2e/workflows"
     if "unit" in parts:
-        return (
-            "frontend/unit"
-            if "frontend" in parts
-            else "/".join(path.parts[path.parts.index("unit") : -1])
-        )
+        return "frontend/unit" if "frontend" in parts else "/".join(path.parts[path.parts.index("unit") : -1])
     if "script" in name or name in {"test_doctor.py", "test_setup_wizard.py"}:
         return "backend/unit/scripts"
     if "auth" in name or "rbac" in name or "permission" in name:
@@ -157,6 +150,8 @@ def _lanes(path: Path) -> list[str]:
     if "local-runtime" in parts:
         return ["local-runtime"]
     if "e2e" in parts or any(part.startswith("e2e-") for part in parts):
+        if "e2e-record" in parts:
+            return ["frontend-record"]
         if "auth" in parts or any(part.startswith("e2e-auth") for part in parts):
             return ["frontend-auth"]
         if "visual" in parts:
@@ -168,63 +163,116 @@ def _lanes(path: Path) -> list[str]:
         if "stagehand" in parts or "stagehand" in name:
             return ["frontend-stagehand"]
         if "smoke" in parts or "smoke" in name:
-            return ["frontend-smoke", "frontend-mock-e2e"]
+            return ["frontend-mock-e2e"]
         return ["frontend-mock-e2e"]
     if path.suffix == ".py":
         if "blocking_io" in parts:
             return ["backend-blocking-io"]
-        if "test_extension_manager.py" == name:
-            return ["backend-external"]
-        if "live" in name or "requires_llm" in name:
-            return ["backend-llm"]
-        if "serial" in name or "serial" in parts:
-            return ["backend-serial"]
+        if path.is_file():
+            markers = set(_markers(path))
+            if markers.intersection({"external", "live", "requires_llm", "serial"}):
+                return _node_lanes(path, markers)
         return ["backend-standard"]
     return ["frontend-standard"]
 
 
-def _pytest_collected_nodes(root: Path) -> tuple[set[str], str | None]:
-    """Collect backend nodes once, keeping failures visible to the report."""
+def _matching_lanes(path: Path, markers: set[str]) -> list[str]:
+    """Return every backend command whose current marker selector matches."""
+    if "blocking_io" in {part.lower() for part in path.parts}:
+        return ["backend-blocking-io"]
+    lanes: list[str] = []
+    if "external" in markers:
+        lanes.append("backend-external")
+    if "requires_llm" in markers and not markers.intersection({"external", "live"}):
+        lanes.append("backend-llm")
+    if "live" in markers and "external" not in markers:
+        lanes.append("backend-live")
+    if "serial" in markers and not markers.intersection({"requires_llm", "live", "external"}):
+        lanes.append("backend-serial")
+    if not markers.intersection({"serial", "requires_llm", "live", "external"}):
+        lanes.append("backend-standard")
+    return lanes
+
+
+def _node_lanes(path: Path, markers: set[str]) -> list[str]:
+    """Assign one primary owner while retaining overlaps in matching_lanes."""
+    if "blocking_io" in {part.lower() for part in path.parts}:
+        return ["backend-blocking-io"]
+    if "external" in markers:
+        return ["backend-external"]
+    if "live" in markers:
+        return ["backend-live"]
+    if "requires_llm" in markers:
+        return ["backend-llm"]
+    if "serial" in markers:
+        return ["backend-serial"]
+    return ["backend-standard"]
+
+
+def _pytest_collected_nodes(
+    root: Path,
+) -> tuple[dict[str, list[str]], dict[str, str], str | None]:
+    """Collect backend node IDs and effective marker sets once."""
     backend = root / "backend"
     if not backend.is_dir():
-        return set(), "backend directory is missing"
-    command = ["uv", "run", "pytest", "tests", "--collect-only", "-q"]
-    try:
-        env = os.environ.copy()
-        env.setdefault("UV_CACHE_DIR", "/tmp/deer-flow-uv-cache")
-        env["PYTHONPATH"] = (
-            ".:tests" if not env.get("PYTHONPATH") else f".:tests:{env['PYTHONPATH']}"
-        )
-        result = subprocess.run(
-            command,
-            cwd=backend,
-            capture_output=True,
-            text=True,
-            timeout=180,
-            check=False,
-            env=env,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return set(), f"pytest collection unavailable: {exc}"
-    nodes = {
-        line.strip()
-        for line in result.stdout.splitlines()
-        if line.startswith("tests/") and "::" in line
-    }
-    if result.returncode:
-        detail = result.stderr.strip().splitlines()[-1:] or [
-            "pytest collect-only failed"
+        return {}, {}, "backend directory is missing"
+    plugin_source = """\
+import json, os
+skipped = {}
+def pytest_collectreport(report):
+    if report.outcome == "skipped":
+        skipped[report.nodeid] = str(report.longrepr)
+def pytest_collection_finish(session):
+    nodes = {}
+    for item in session.items:
+        nodes[item.nodeid] = sorted({marker.name for marker in item.iter_markers()})
+    with open(os.environ["TEST_INVENTORY_COLLECTION_OUTPUT"], "w", encoding="utf-8") as stream:
+        json.dump({"nodes": nodes, "skipped": skipped}, stream)
+"""
+    with tempfile.TemporaryDirectory(prefix="test-inventory-") as temp_dir:
+        plugin_path = Path(temp_dir) / "test_inventory_collection_plugin.py"
+        output_path = Path(temp_dir) / "nodes.json"
+        plugin_path.write_text(plugin_source, encoding="utf-8")
+        command = [
+            "uv",
+            "run",
+            "--no-sync",
+            "pytest",
+            "tests",
+            "--collect-only",
+            "-q",
+            "-p",
+            "test_inventory_collection_plugin",
         ]
-        return nodes, detail[0]
-    return nodes, None
+        try:
+            env = os.environ.copy()
+            env.setdefault("UV_CACHE_DIR", "/tmp/deer-flow-uv-cache")
+            env["TEST_INVENTORY_COLLECTION_OUTPUT"] = str(output_path)
+            env["PYTHONPATH"] = os.pathsep.join([temp_dir, ".", "tests", env.get("PYTHONPATH", "")])
+            result = subprocess.run(
+                command,
+                cwd=backend,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+                env=env,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {}, {}, f"pytest collection unavailable: {exc}"
+        payload = json.loads(output_path.read_text(encoding="utf-8")) if output_path.exists() else {"nodes": {}, "skipped": {}}
+        nodes = payload.get("nodes", {})
+        skipped = payload.get("skipped", {})
+        if result.returncode:
+            detail = result.stderr.strip().splitlines()[-1:] or ["pytest collect-only failed"]
+            return nodes, skipped, detail[0]
+        return nodes, skipped, None
 
 
 def build_inventory(root: Path, *, collect: bool = False) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     root = root.resolve()
-    collected_nodes, collection_error = (
-        _pytest_collected_nodes(root) if collect else (set(), None)
-    )
+    collected_nodes, skipped_nodes, collection_error = _pytest_collected_nodes(root) if collect else ({}, {}, None)
     for path in _iter_test_files(root):
         if path.suffix == ".py":
             tests, imports = _python_inventory(path)
@@ -232,77 +280,96 @@ def build_inventory(root: Path, *, collect: bool = False) -> list[dict[str, obje
             tests, imports = _typescript_inventory(path)
         lanes = _lanes(path)
         markers = _markers(path)
-        runner = (
-            "pytest"
-            if path.suffix == ".py"
-            else ("playwright" if "e2e" in path.parts else "vitest/rstest")
-        )
+        if path.suffix == ".py":
+            runner = "pytest"
+        elif "e2e" in path.parts or any(part.startswith("e2e-") for part in path.parts):
+            runner = "playwright"
+        elif "frontend" in path.parts and "tests" in path.parts:
+            runner = "rstest" if "@rstest/core" in path.read_text(encoding="utf-8") else "vitest"
+        else:
+            runner = "pytest" if path.suffix == ".ts" else "unknown"
         relative_path = path.relative_to(root).as_posix()
         static_nodes = [f"{relative_path}::{name}" for name in tests]
-        if collect and path.suffix == ".py":
-            backend_nodes = {
-                node for node in collected_nodes if node.startswith("tests/")
-            }
-            actual_nodes = [
-                f"backend/{node}"
-                for node in sorted(backend_nodes)
-                if node.startswith(relative_path.removeprefix("backend/"))
-            ]
-            collection_status = (
-                "collected"
-                if actual_nodes
-                else ("collection-error" if collection_error else "not-collected")
-            )
+        node_details: list[dict[str, object]] = []
+        if collect and relative_path.startswith("backend/") and path.suffix == ".py":
+            backend_relative_path = relative_path.removeprefix("backend/")
+            collected_for_file = {node: node_markers for node, node_markers in collected_nodes.items() if node.startswith(f"{backend_relative_path}::")}
+            collection_skip_reason = skipped_nodes.get(backend_relative_path)
+            actual_nodes = [f"backend/{node}" for node in sorted(collected_for_file)]
+            for node, node_markers in sorted(collected_for_file.items()):
+                marker_set = set(node_markers)
+                node_details.append(
+                    {
+                        "node_id": f"backend/{node}",
+                        "markers": sorted(marker_set),
+                        "lanes": _node_lanes(path, marker_set),
+                        "matching_lanes": _matching_lanes(path, marker_set),
+                        "execution_status": "not-observed",
+                    }
+                )
+            collection_status = "collection-error" if collection_error else ("collected" if node_details else ("collection-skipped" if collection_skip_reason else "not-collected"))
         else:
             actual_nodes = static_nodes
             collection_status = "static-only"
+            collection_skip_reason = None
+        if collect and node_details:
+            lanes = sorted({lane for node in node_details for lane in node["lanes"]})
+        node_ownership_status = (
+            "collection-error"
+            if collect and relative_path.startswith("backend/") and collection_error
+            else (
+                "collected"
+                if collect and relative_path.startswith("backend/") and node_details
+                else (
+                    "collection-skipped"
+                    if collect and relative_path.startswith("backend/") and collection_status == "collection-skipped"
+                    else ("not-collected" if collect and relative_path.startswith("backend/") else "unverified-file-static")
+                )
+            )
+        )
+        aggregate_lanes = ["frontend-smoke"] if lanes == ["frontend-mock-e2e"] and "smoke" in path.parts else []
         rows.append(
             {
                 "path": path.relative_to(root).as_posix(),
                 "tests": tests,
                 "production_imports": imports,
-                "is_patch_coverage_file": any(
-                    marker in path.stem.lower() for marker in PATCH_MARKERS
-                ),
+                "is_patch_coverage_file": any(marker in path.stem.lower() for marker in PATCH_MARKERS),
                 "suggested_bucket": _target_bucket(path),
                 "lanes": lanes,
-                "base_lane": lanes[0] if lanes else None,
+                "base_lane": (lanes[0] if node_ownership_status == "collected" and len(lanes) == 1 else None),
+                "aggregate_lanes": aggregate_lanes,
                 "runner": runner,
                 "node_ids": actual_nodes,
-                "entry": lanes[0] if lanes else None,
+                "nodes": node_details,
+                "node_ownership_status": node_ownership_status,
+                "entry": lanes[0] if node_ownership_status == "collected" and len(lanes) == 1 else None,
                 "markers": markers,
                 "skip": any(marker in markers for marker in ("skip", "skipif")),
+                "discovery_status": "discovered",
+                "framework_collection_status": (collection_status if collect and relative_path.startswith("backend/") else "not-checked"),
+                "execution_status": "not-observed",
                 "collection_status": collection_status,
+                "collection_skip_reason": collection_skip_reason,
             }
         )
     return rows
 
 
-def compare_inventory(
-    current: list[dict[str, object]], baseline: list[dict[str, object]]
-) -> dict[str, object]:
+def compare_inventory(current: list[dict[str, object]], baseline: list[dict[str, object]]) -> dict[str, object]:
     """Return stable path and ownership changes between two snapshots."""
     old = {str(row["path"]): row for row in baseline}
     new = {str(row["path"]): row for row in current}
     added = sorted(set(new) - set(old))
     removed = sorted(set(old) - set(new))
-    changed = sorted(
-        path
-        for path in set(old) & set(new)
-        if old[path].get("lanes") != new[path].get("lanes")
-    )
+    changed = sorted(path for path in set(old) & set(new) if old[path].get("lanes") != new[path].get("lanes"))
     return {"added": added, "removed": removed, "lane_changed": changed}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default=".", help="Repository root")
-    parser.add_argument(
-        "--json", action="store_true", help="Emit JSON instead of a table"
-    )
-    parser.add_argument(
-        "--baseline", type=Path, help="Compare against a prior JSON inventory"
-    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
+    parser.add_argument("--baseline", type=Path, help="Compare against a prior JSON inventory")
     parser.add_argument(
         "--collect",
         action="store_true",
@@ -318,20 +385,13 @@ def main() -> None:
             raise SystemExit("baseline inventory must be a JSON list")
         comparison = compare_inventory(rows, baseline)
     if args.json:
-        payload: object = (
-            {"tests": rows, "comparison": comparison}
-            if comparison is not None
-            else rows
-        )
+        payload: object = {"tests": rows, "comparison": comparison} if comparison is not None else rows
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return
 
     print("path\tlanes\tpatch_file\tsuggested_bucket\ttest_count\tproduction_imports")
     for row in rows:
-        print(
-            f"{row['path']}\t{','.join(row['lanes'])}\t{row['is_patch_coverage_file']}\t{row['suggested_bucket']}\t"
-            f"{len(row['tests'])}\t{', '.join(row['production_imports'])}"
-        )
+        print(f"{row['path']}\t{','.join(row['lanes'])}\t{row['is_patch_coverage_file']}\t{row['suggested_bucket']}\t{len(row['tests'])}\t{', '.join(row['production_imports'])}")
     if comparison is not None:
         print("\nchanges:")
         for kind in ("added", "removed", "lane_changed"):

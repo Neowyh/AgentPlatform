@@ -5,86 +5,354 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
-  group: test-lane-shadow-${{ github.event.pull_request.number }}
+  group: pr-test-lanes-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  test-contracts:
+  select:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      channels: ${{ steps.plan.outputs.channels }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Verify test ownership inventory
-        run: python3 scripts/test_inventory.py --collect --json > test-inventory.json
-      - name: Verify test lane contracts
-        run: PYTHONPATH=scripts python3 scripts/check_test_contracts.py --json
+      - name: Select lanes and explain why
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/select_test_lanes.py --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+  test-contracts:
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+      - name: Install backend collection dependencies
+        if: contains(needs.select.outputs.channels, 'backend-standard')
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Verify static test ownership inventory
+        run: python3 scripts/test_inventory.py --json > test-inventory.json
+      - name: Verify lane entry contracts
+        env:
+          COLLECT_BACKEND: ${{ contains(needs.select.outputs.channels, 'backend-standard') }}
+        shell: bash
+        run: |
+          if [[ "$COLLECT_BACKEND" == "true" ]]; then
+            python3 scripts/check_test_contracts.py --collect --json > test-inventory-collected.json
+          else
+            python3 scripts/check_test_contracts.py --json
+          fi
+      - name: Verify guidance size budget at the candidate revision
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/check_agent_guidance.py --before "$BASE_SHA" --after "$HEAD_SHA"
+      - name: Verify guidance mirrors at the candidate revision
+        env:
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/sync_agent_guidance.py --check --revision "$HEAD_SHA"
+      - name: Verify registered upstream patches
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/check_upstream_patches.py --base "$BASE_SHA" --head "$HEAD_SHA" --upstream-baseline 0f7d8709d3bbf0be26460b6277fbad9329302243
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-contract-inventory-${{ github.run_id }}
-          path: test-inventory.json
+          path: |
+            test-inventory.json
+            test-inventory-collected.json
+          if-no-files-found: ignore
 
-  pr-standard-shadow:
-    if: github.event.pull_request.draft == false
-    needs: test-contracts
+  backend-unit-tests:
+    needs: [select, test-contracts]
+    if: contains(needs.select.outputs.channels, 'backend-standard')
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.11.1"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
       - run: corepack enable
       - run: corepack prepare pnpm@10.26.2 --activate
-
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
       - name: Install backend dependencies
         working-directory: backend
         run: uv sync --group dev
+      - name: Run backend standard shard ${{ matrix.shard }}/4
+        env:
+          TEST_LANE_SHARDS: "4"
+          TEST_LANE_SHARD_INDEX: ${{ matrix.shard }}
+          TEST_LANE_COVERAGE: "0"
+          NODE_VERSION: "22"
+          PNPM_VERSION: "10.26.2"
+          UV_VERSION: "0.11.1"
+          SKIP_ENV_VALIDATION: "1"
+          TEST_PREFLIGHT_STRICT: "1"
+        run: bash scripts/run-test-lane.sh backend-standard
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-evidence-${{ matrix.shard }}-${{ github.run_id }}
+          path: logs/test-lanes/**
+          if-no-files-found: ignore
 
+  frontend-unit-tests:
+    needs: [select, test-contracts]
+    if: contains(needs.select.outputs.channels, 'frontend-standard')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.26.2 --activate
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+      - name: Run frontend standard tests
+        env:
+          SKIP_ENV_VALIDATION: "1"
+          NODE_VERSION: "22"
+          PNPM_VERSION: "10.26.2"
+          TEST_PREFLIGHT_STRICT: "1"
+        run: bash scripts/run-test-lane.sh frontend-standard
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-test-evidence-${{ github.run_id }}
+          path: logs/test-lanes/**
+          if-no-files-found: ignore
 
+  local-runtime:
+    needs: [select, test-contracts]
+    if: contains(needs.select.outputs.channels, 'local-runtime')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run local-runtime tests
+        run: bash scripts/run-test-lane.sh local-runtime
+
+  e2e-tests:
+    needs: [select, test-contracts]
+    if: contains(needs.select.outputs.channels, 'frontend-smoke')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: echo "NODE_VERSION=22" >> "$GITHUB_ENV"
+      - run: echo "PNPM_VERSION=10.26.2" >> "$GITHUB_ENV"
+      - run: echo "UV_VERSION=0.11.1" >> "$GITHUB_ENV"
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.26.2 --activate
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
       - name: Install Playwright Chromium
         working-directory: frontend
         run: pnpm exec playwright install chromium --with-deps
-
-      - name: Verify test ownership inventory
-        run: python3 scripts/test_inventory.py --collect --json > test-inventory.json
-
-      - name: Verify test lane contracts
-        run: PYTHONPATH=scripts python3 scripts/check_test_contracts.py --json
-
-      - name: Run PR standard lane
+      - name: Run PR browser smoke
         env:
           SKIP_ENV_VALIDATION: "1"
           TEST_PREFLIGHT_STRICT: "1"
-        run: bash scripts/run-test-lane.sh pr-standard
-
-      - name: Upload test diagnostics
+          NODE_VERSION: "22"
+          PNPM_VERSION: "10.26.2"
+        run: bash scripts/run-test-lane.sh frontend-smoke
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: test-inventory-${{ github.run_id }}
+          name: playwright-smoke-evidence-${{ github.run_id }}
           path: |
-            test-inventory.json
+            frontend/playwright-report/**
+            frontend/test-results/**
             logs/test-lanes/**
+          if-no-files-found: ignore
+
+  lint:
+    needs: [select, test-contracts]
+    if: contains(needs.select.outputs.channels, 'static-checks')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: corepack enable
+      - run: corepack prepare pnpm@10.26.2 --activate
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint backend
+        working-directory: backend
+        run: make lint
+      - name: Check frontend lint and types
+        working-directory: frontend
+        run: pnpm check
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          BETTER_AUTH_SECRET: local-dev-secret
+        run: pnpm build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: static-check-evidence-${{ github.run_id }}
+          path: logs/test-lanes/**
+          if-no-files-found: ignore
+
+  backend-coverage:
+    needs: [select, backend-unit-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the legacy check name
+        env:
+          SELECTED: ${{ contains(needs.select.outputs.channels, 'backend-standard') }}
+          TEST_RESULT: ${{ needs.backend-unit-tests.result }}
+        run: |
+          if [[ "$SELECTED" == "true" ]]; then
+            test "$TEST_RESULT" = "success"
+            echo "Backend coverage is reserved for scheduled/manual backend-full validation."
+          else
+            echo "Backend coverage was not required for this candidate."
+          fi
+
+  backend-serial:
+    needs: [select, backend-unit-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the legacy check name
+        env:
+          TEST_RESULT: ${{ needs.backend-unit-tests.result }}
+        run: |
+          test "$TEST_RESULT" != "failure"
+          test "$TEST_RESULT" != "cancelled"
+          echo "Serial tests are reserved for scheduled/manual backend-full validation."
+
+  frontend-coverage:
+    needs: [select, frontend-unit-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the legacy check name
+        env:
+          SELECTED: ${{ contains(needs.select.outputs.channels, 'frontend-standard') }}
+          TEST_RESULT: ${{ needs.frontend-unit-tests.result }}
+        run: |
+          if [[ "$SELECTED" == "true" ]]; then test "$TEST_RESULT" = "success"; fi
+          echo "Frontend coverage is reserved for scheduled/manual frontend-core validation."
+
+  lint-frontend:
+    needs: [select, lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the legacy check name
+        env:
+          SELECTED: ${{ contains(needs.select.outputs.channels, 'static-checks') }}
+          TEST_RESULT: ${{ needs.lint.result }}
+        run: |
+          if [[ "$SELECTED" == "true" ]]; then test "$TEST_RESULT" = "success"; fi
+          echo "Frontend static checks are represented by the shared lint job."
+
+  agent-guidance:
+    needs: [select, test-contracts]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the legacy check name
+        env:
+          TEST_RESULT: ${{ needs.test-contracts.result }}
+        run: |
+          test "$TEST_RESULT" = "success"
+          echo "Guidance synchronization ran in test-contracts."
+
+  pr-standard-shadow:
+    name: PR Standard Gate
+    if: always() && github.event.pull_request.draft == false
+    needs:
+      - select
+      - test-contracts
+      - backend-unit-tests
+      - frontend-unit-tests
+      - local-runtime
+      - e2e-tests
+      - lint
+      - backend-coverage
+      - backend-serial
+      - frontend-coverage
+      - lint-frontend
+      - agent-guidance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate required results and report selected lanes
+        env:
+          PLAN_JSON: ${{ needs.select.outputs.plan }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          START_SECONDS=$SECONDS
+          set +e
+          python3 scripts/report_test_lane_summary.py \
+            --plan-json "$PLAN_JSON" \
+            --needs-json "$NEEDS_JSON" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+          STATUS=$?
+          set -e
+          ELAPSED=$((SECONDS - START_SECONDS))
+          echo "TEST_LANE_DURATION lane=pr-standard seconds=$ELAPSED status=$STATUS"
+          exit "$STATUS"

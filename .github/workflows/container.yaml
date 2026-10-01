@@ -3,11 +3,15 @@ name: Publish Containers
 on:
   push:
     tags:
-      - "v*"
+      - "ideer-*"
 
 jobs:
+  verify-versions:
+    uses: ./.github/workflows/verify-versions.yml
+
 
   backend-container:
+    needs: verify-versions
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -54,6 +58,7 @@ jobs:
           push-to-registry: true
 
   frontend-container:
+    needs: verify-versions
     runs-on: ubuntu-latest
     permissions:
       contents: read

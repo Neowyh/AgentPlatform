@@ -176,5 +176,11 @@ def test_repository_exposes_one_local_and_one_ci_entrypoint() -> None:
     assert "scripts/check_agent_guidance.py" in makefile
     assert workflow.count("agent-guidance:") == 1
     assert "fetch-depth: 0" in workflow
-    assert "--base-ref" in workflow
     assert "--before" in workflow
+    assert "--after" in workflow
+    pr_workflow = (REPO_ROOT / ".github" / "workflows" / "test-lane-shadow.yml").read_text(encoding="utf-8")
+    assert pr_workflow.count("scripts/check_agent_guidance.py") == 1
+    assert "--before" in pr_workflow
+    assert "--after" in pr_workflow
+    assert "HEAD_SHA: ${{ github.sha }}" in pr_workflow
+    assert 'scripts/sync_agent_guidance.py --check --revision "$HEAD_SHA"' in pr_workflow

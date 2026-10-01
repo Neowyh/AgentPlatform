@@ -32,6 +32,7 @@ LANES = {
     "backend-serial": {"backend": True, "socket": True},
     "backend-full": {"backend": True, "socket": True},
     "backend-llm": {"backend": True, "llm": True},
+    "backend-live": {"backend": True, "llm": True},
     "backend-external": {"backend": True, "socket": True},
     "backend-blocking-io": {"backend": True},
     # Rstest's browser-like harness binds a local worker port even for unit

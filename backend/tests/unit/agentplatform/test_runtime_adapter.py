@@ -127,9 +127,7 @@ def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(
         observed.append(deerflow_tools.get_available_tools())
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr(
-        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
-    )
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
 
     factory = build_canonical_agent_factory(
@@ -153,9 +151,7 @@ def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(
         captured["frozen"] = frozen
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr(
-        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
-    )
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
 
     factory = build_canonical_agent_factory(
@@ -176,21 +172,15 @@ def test_canonical_factory_adds_executable_local_tools(monkeypatch) -> None:
 
     observed: list[list[object]] = []
 
-    monkeypatch.setattr(
-        deerflow_tools, "get_available_tools", lambda *args, **kwargs: []
-    )
+    monkeypatch.setattr(deerflow_tools, "get_available_tools", lambda *args, **kwargs: [])
 
     def fake_assemble(config, *, app_config=None, frozen=None):
         observed.append(deerflow_tools.get_available_tools())
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr(
-        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
-    )
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
-    authorization = LocalAuthorization.from_capabilities(
-        {"local.files.read"}, device_online=True
-    )
+    authorization = LocalAuthorization.from_capabilities({"local.files.read"}, device_online=True)
 
     class Route:
         def revalidate(self, value):
@@ -220,22 +210,16 @@ def test_canonical_factory_preserves_announced_mcp_schema(monkeypatch) -> None:
     import deerflow.tools as deerflow_tools
 
     observed: list[list[object]] = []
-    monkeypatch.setattr(
-        deerflow_tools, "get_available_tools", lambda *args, **kwargs: []
-    )
+    monkeypatch.setattr(deerflow_tools, "get_available_tools", lambda *args, **kwargs: [])
 
     def fake_assemble(config, *, app_config=None, frozen=None):
         observed.append(deerflow_tools.get_available_tools())
         return SimpleNamespace(graph="graph")
 
-    monkeypatch.setattr(
-        "app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble
-    )
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
     definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
     capability = "local.mcp.fs.read_file"
-    authorization = LocalAuthorization.from_capabilities(
-        {capability}, device_online=True
-    )
+    authorization = LocalAuthorization.from_capabilities({capability}, device_online=True)
 
     class Route:
         def revalidate(self, value):
@@ -268,6 +252,4 @@ def test_canonical_factory_preserves_announced_mcp_schema(monkeypatch) -> None:
     factory({"configurable": {}})
 
     tool = next(tool for tool in observed[0] if tool.name == capability)
-    assert (
-        tool.args_schema.model_json_schema()["properties"]["path"]["type"] == "string"
-    )
+    assert tool.args_schema.model_json_schema()["properties"]["path"]["type"] == "string"

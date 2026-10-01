@@ -5,18 +5,10 @@ on:
     - cron: "0 2 * * *"
   workflow_dispatch:
   push:
-    branches: ["main"]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/e2e-tests.yml"
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/e2e-tests.yml"
+    branches: [develop, "product/offline-*"]
 
 concurrency:
-  group: e2e-tests-${{ github.event.pull_request.number || github.ref }}
+  group: e2e-tests-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -24,7 +16,7 @@ permissions:
 
 jobs:
   e2e-tests:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -51,19 +43,13 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium --with-deps
 
-      - name: Run PR browser smoke
-        if: ${{ github.event_name == 'pull_request' }}
-        run: bash scripts/run-test-lane.sh frontend-smoke
-        env:
-          SKIP_ENV_VALIDATION: "1"
-          TEST_PREFLIGHT_STRICT: "1"
-
       - name: Run full mock E2E
-        if: ${{ github.event_name != 'pull_request' }}
         run: bash scripts/run-test-lane.sh frontend-mock-e2e
         env:
           SKIP_ENV_VALIDATION: "1"
           TEST_PREFLIGHT_STRICT: "1"
+          NODE_VERSION: "22"
+          PNPM_VERSION: "10.26.2"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -114,6 +100,8 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: "1"
           TEST_PREFLIGHT_STRICT: "1"
+          NODE_VERSION: "22"
+          PNPM_VERSION: "10.26.2"
 
       - name: Upload visual regression report
         uses: actions/upload-artifact@v4

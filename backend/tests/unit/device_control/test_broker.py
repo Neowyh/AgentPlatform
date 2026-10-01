@@ -31,13 +31,9 @@ async def test_signed_echo_task_has_ack_progress_result_receipt_lifecycle() -> N
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
     socket = FakeWebSocket()
-    connection = DeviceConnection(
-        "device-1", "session-1", "token", device_key.public_key(), socket
-    )
+    connection = DeviceConnection("device-1", "session-1", "token", device_key.public_key(), socket)
     await broker.attach(connection)
-    record = await broker.send_echo_task(
-        device_id="device-1", run_id="run-1", tool_call_id="tool-1", value="hello"
-    )
+    record = await broker.send_echo_task(device_id="device-1", run_id="run-1", tool_call_id="tool-1", value="hello")
     assert record.status == TaskStatus.SENT
     task = TaskEnvelope.model_validate_json(socket.sent[-1])
     task.verify(
@@ -70,25 +66,17 @@ async def test_signed_echo_task_has_ack_progress_result_receipt_lifecycle() -> N
 
 
 @pytest.mark.asyncio
-async def test_offline_task_and_cancel_are_explicit_and_no_system_command_is_run() -> (
-    None
-):
+async def test_offline_task_and_cancel_are_explicit_and_no_system_command_is_run() -> None:
     broker = DeviceBroker()
-    offline = await broker.send_echo_task(
-        device_id="missing", run_id="run-1", tool_call_id="tool-1", value="safe"
-    )
+    offline = await broker.send_echo_task(device_id="missing", run_id="run-1", tool_call_id="tool-1", value="safe")
     assert offline.status == TaskStatus.DEVICE_OFFLINE
     assert offline.expires_at is not None
 
     device_key = Ed25519PrivateKey.generate()
     socket = FakeWebSocket()
-    connection = DeviceConnection(
-        "device-2", "session-2", "token", device_key.public_key(), socket
-    )
+    connection = DeviceConnection("device-2", "session-2", "token", device_key.public_key(), socket)
     await broker.attach(connection)
-    record = await broker.send_echo_task(
-        device_id="device-2", run_id="run-2", tool_call_id="tool-2", value="echo only"
-    )
+    record = await broker.send_echo_task(device_id="device-2", run_id="run-2", tool_call_id="tool-2", value="echo only")
     cancelled = await broker.cancel_task(record.task_id)
     assert cancelled.status == TaskStatus.CANCELLED
     cancel_message = json.loads(socket.sent[-1])
@@ -143,9 +131,7 @@ async def test_invalidate_closes_session_and_fails_pending_tasks_closed() -> Non
 async def test_capability_update_is_stored_without_a_task_id() -> None:
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
-    connection = DeviceConnection(
-        "device-cap", "session-cap", "token", device_key.public_key(), FakeWebSocket()
-    )
+    connection = DeviceConnection("device-cap", "session-cap", "token", device_key.public_key(), FakeWebSocket())
     await broker.attach(connection)
 
     message = sign_envelope(
@@ -186,9 +172,7 @@ async def test_capability_update_keeps_only_descriptors_for_announced_tools() ->
                         "type": "object",
                         "properties": {"path": {"type": "string"}},
                     },
-                    "schema_hash": schema_digest(
-                        {"type": "object", "properties": {"path": {"type": "string"}}}
-                    ),
+                    "schema_hash": schema_digest({"type": "object", "properties": {"path": {"type": "string"}}}),
                 },
                 "local.mcp.fs.write_file": {"description": "must not be projected"},
             },
@@ -196,9 +180,7 @@ async def test_capability_update_keeps_only_descriptors_for_announced_tools() ->
     )
     await broker.receive(connection, message)
     assert set(connection.tool_descriptors) == {"local.mcp.fs.read_file"}
-    assert connection.tool_descriptors["local.mcp.fs.read_file"][
-        "schema_hash"
-    ] == schema_digest({"type": "object", "properties": {"path": {"type": "string"}}})
+    assert connection.tool_descriptors["local.mcp.fs.read_file"]["schema_hash"] == schema_digest({"type": "object", "properties": {"path": {"type": "string"}}})
 
 
 @pytest.mark.asyncio
@@ -361,9 +343,7 @@ async def test_cancelled_local_execution_receipt_preserves_cancelled_status() ->
         ("timed_out", TaskStatus.TIMED_OUT, "TIMED_OUT"),
     ],
 )
-async def test_device_terminal_receipts_preserve_distinct_denied_and_timeout_states(
-    receipt_status: str, expected_status: TaskStatus, expected_code: str
-) -> None:
+async def test_device_terminal_receipts_preserve_distinct_denied_and_timeout_states(receipt_status: str, expected_status: TaskStatus, expected_code: str) -> None:
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
     connection = DeviceConnection(
@@ -400,9 +380,7 @@ async def test_device_terminal_receipts_preserve_distinct_denied_and_timeout_sta
 async def test_terminal_task_ignores_late_ack_progress_and_result() -> None:
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
-    connection = DeviceConnection(
-        "device-late", "session-late", "token", device_key.public_key(), FakeWebSocket()
-    )
+    connection = DeviceConnection("device-late", "session-late", "token", device_key.public_key(), FakeWebSocket())
     await broker.attach(connection)
     record = await broker.send_echo_task(
         device_id=connection.device_id,
@@ -477,9 +455,7 @@ async def test_error_receipt_preserves_denied_status() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connected_device_without_requested_capability_rejects_local_task() -> (
-    None
-):
+async def test_connected_device_without_requested_capability_rejects_local_task() -> None:
     broker = DeviceBroker()
     device_key = Ed25519PrivateKey.generate()
     connection = DeviceConnection(
