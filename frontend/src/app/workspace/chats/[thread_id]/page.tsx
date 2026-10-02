@@ -498,7 +498,7 @@ export default function ChatPage() {
               )}
             >
               {!isMock && <SidebarTrigger className="md:hidden" />}
-              <div className="type-body flex w-full items-center font-medium">
+              <div className="type-body flex w-full min-w-0 items-center font-medium">
                 <ThreadTitle
                   threadId={threadId}
                   thread={thread}
