@@ -58,8 +58,8 @@
 
 ## Merge
 
-- ⏳ GitNexus `detect-changes --scope compare --base-ref product/offline-1.x` 干净（合并后在 develop 重建索引执行；partial/truncated 不算过）。
-- ⏳ `--no-ff` 合入 develop + 合并后 pr-standard 复验。
-- ⏳ integration 分支与 worktree 删除、stash@{0}（取消代理 WIP）确认被取代后删除、`.scratch` 票据全关。
-- ⏳ PR 材料定稿（PR_MATERIALS.md：用户可见变更/验证命令/high-risk lane Real E2E 选择注明）。
-- ⏳ 用户执行 `git push origin develop`。
+- ✅ GitNexus（合并后重建索引，commit c655813ee）：`--scope all` → **No changes detected**（干净）；`--scope compare --base-ref origin/product/offline-1.x` → 4372 files / 64737 symbols / 947 processes，**Risk: critical**（LISTING CAPPED）——对落后多个里程碑的产品分支基线，该量级即吸收级 PR 的预期形态，作为 Real E2E 高危选择依据上报，非回归信号。
+- ✅ `--no-ff` 合入 develop：merge commit `85075252a`（6 冲突件语义解决：runs/uploads/journal 取 integration 验证语义、治理测试取 develop 扩展覆盖、台账 Owner×reassess 行级并集 + readability 根测试引用修正 `c655813ee`、backend/AGENTS.md 并集保留 Benchmarks 节；sync_agent_guidance 28 对通过）；合并后 pr-standard **exit 0**（local-runtime 8s / backend-standard 1326s / frontend-standard 483s / frontend-smoke 155s，`PR_EXIT: 0`）。
+- ✅ 清理：integration/deerflow-v2.1.0 分支已删（tip 51dbcc142 为 develop 祖先）、worktree 已移除、取消代理 stash 已确认被评审后的工作树提交取代并 drop；证据归档 `dev-log/upgrade-evidence-20261002/`；`.scratch` 票据状态更新。
+- ✅ PR 材料定稿（PR_MATERIALS.md：用户可见变更/验证命令与结果/收敛修复清单/high-risk Real E2E 注明）。
+- ⏳ 用户执行 `git push origin develop`（merge commit + 后续票 13 提交一并推送）。
