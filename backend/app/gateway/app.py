@@ -290,10 +290,18 @@ async def _seed_bundled_resources() -> None:
         logger.info("No active super_admin found; skipping bundled resource seed")
         return
     repo_root = Path(__file__).resolve().parents[3]
+    manifest_path = repo_root / "bundled-resources.json"
+    if not manifest_path.exists():
+        # Container deployments do not ship the seed manifest inside the
+        # image; deploy-intranet.sh copies it in and runs the canonical
+        # seeder after the stack is healthy. Skipping here keeps first-admin
+        # initialization from 500ing on that deployment shape.
+        logger.info("bundled-resources.json not present at %s; skipping seed (deployment seeds out-of-band)", repo_root)
+        return
     await seed_bundled_resources(
         sf,
         ResourceStorage(get_paths().base_dir, allow_scanned_executables=True),
-        manifest_path=repo_root / "bundled-resources.json",
+        manifest_path=manifest_path,
         source_root=repo_root,
         owner_id=str(admin),
         conflict_policy="keep",
