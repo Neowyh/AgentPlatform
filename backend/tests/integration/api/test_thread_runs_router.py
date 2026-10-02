@@ -17,6 +17,7 @@ Covers gaps not addressed by existing test files:
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -105,6 +106,8 @@ def _make_app(**state_attrs):
     app.state.stream_bridge = _ImmediateEndBridge()
     app.state.run_store = MagicMock()
     app.state.run_manager = MagicMock()
+    app.state.run_manager.list_successful_regenerate_sources = AsyncMock(return_value=[])
+    app.state.run_manager.list_edit_replay_visibility = AsyncMock(return_value=SimpleNamespace(hidden_source_run_ids=set(), hidden_attempt_run_ids=set()))
     app.state.feedback_repo = MagicMock()
     app.state.checkpoint_channel_mode = "full"
     for key, val in state_attrs.items():

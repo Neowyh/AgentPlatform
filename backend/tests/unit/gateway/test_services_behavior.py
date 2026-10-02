@@ -187,6 +187,10 @@ class TestStartRun:
         def _record_with_abort_event(*args, **kwargs):
             rec = run_mgr.create_or_reject.return_value
             rec.abort_event = SimpleNamespace(wait=AsyncMock(return_value=None))
+            # v2.1.0 start_run consults idempotency-reuse metadata on every
+            # record; bare MagicMocks would read as "reused with a mismatch".
+            rec.idempotency_reused = False
+            rec.kwargs = None
             return rec
 
         run_mgr.create_or_reject.side_effect = _record_with_abort_event

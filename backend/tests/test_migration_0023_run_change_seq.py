@@ -18,7 +18,9 @@ PREVIOUS = "0022_scheduled_occurrence_seq"
 
 
 async def test_changed_run_revision_is_in_single_head_chain():
-    script = ScriptDirectory(str(_MIGRATIONS_DIR))
+    from deerflow.persistence.migrations._chain_meta import version_locations
+
+    script = ScriptDirectory(str(_MIGRATIONS_DIR), version_locations=version_locations(_MIGRATIONS_DIR).split())
     assert len(script.get_heads()) == 1
     # Later migrations may advance the head without removing this revision.
     assert REVISION in {revision.revision for revision in script.walk_revisions()}

@@ -160,11 +160,10 @@ def test_max_references_matches_the_field_bound():
 
 
 def test_start_run_grants_through_context_without_forwarding_the_key(monkeypatch):
-    from test_gateway_services import _make_start_run_persistence_context
-
     from app.gateway import services
     from deerflow.config.app_config import reset_app_config, set_app_config
     from deerflow.runtime.user_context import reset_current_user, set_current_user
+    from tests.test_gateway_services import _make_start_run_persistence_context
 
     async def exercise():
         request, _, threads = _make_start_run_persistence_context()

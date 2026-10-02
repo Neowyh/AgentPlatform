@@ -134,6 +134,12 @@ def test_url_redaction_filter_covers_urllib3_redirect_records() -> None:
     old_level = root.level
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
+    # Other test processes (e.g. the provisioner fixture importing the
+    # kubernetes client) pin the "urllib3" logger to WARNING; the INFO/DEBUG
+    # emits below must not depend on that residue.
+    urllib3_logger = logging.getLogger("urllib3")
+    old_urllib3_level = urllib3_logger.level
+    urllib3_logger.setLevel(logging.DEBUG)
 
     try:
         root.handlers = [handler]
@@ -160,6 +166,7 @@ def test_url_redaction_filter_covers_urllib3_redirect_records() -> None:
     finally:
         root.handlers = old_handlers
         root.setLevel(old_level)
+        urllib3_logger.setLevel(old_urllib3_level)
 
 
 def test_url_redaction_filter_covers_urllib3_request_line_records() -> None:

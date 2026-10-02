@@ -469,7 +469,10 @@ class TestLlmCallbacks:
         run_id = uuid4()
         j.on_llm_start({}, [], run_id=run_id, tags=["lead_agent"])
 
-        with caplog.at_level("INFO"):
+        # Scope to the journal's logger: earlier tests may run the gateway
+        # startup (apply_logging_level), which pins the "deerflow" hierarchy
+        # to a level a root-level caplog.at_level would not override.
+        with caplog.at_level("INFO", logger="deerflow.runtime.journal"):
             j.on_llm_new_token("", run_id=run_id, tags=["lead_agent"])
             j.on_llm_new_token("A", run_id=run_id, tags=["lead_agent"])
             j.on_llm_new_token("B", run_id=run_id, tags=["lead_agent"])

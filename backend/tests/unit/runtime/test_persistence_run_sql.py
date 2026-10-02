@@ -141,6 +141,9 @@ def _make_repo():
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
+    # The v2.1.0 run-change clock branches on the session dialect; pin the
+    # double to SQLite so _next_change_seq takes the real code path.
+    mock_session.bind.dialect.name = "sqlite"
 
     mock_sf = MagicMock()
     mock_sf.return_value = mock_session

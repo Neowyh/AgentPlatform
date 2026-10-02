@@ -1,6 +1,7 @@
 """Contract tests for the LangGraph-compatible assistants endpoints."""
 
 import pytest
+from _router_auth_helpers import make_authed_test_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -16,7 +17,9 @@ def _assistant(name: str) -> assistants_compat.AssistantResponse:
 
 
 def _make_app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    app = FastAPI()
+    # The merged search endpoint sits behind @require_permission; the shared
+    # helper stamps the trusted test identity for this isolated app.
+    app = make_authed_test_app()
     app.include_router(assistants_compat.router)
     monkeypatch.setattr(
         assistants_compat,

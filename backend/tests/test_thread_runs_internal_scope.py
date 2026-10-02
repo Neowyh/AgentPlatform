@@ -146,8 +146,8 @@ def _make_app(
     app.add_middleware(_ScopeAuthMiddleware, user=user, auth_source=auth_source)
     app.state.thread_store = _PermissiveThreadStore()
     app.state.run_manager = RunManager(store=run_store)
-    if event_store is not None:
-        app.state.run_event_store = event_store
+    # The merged list/get runs endpoints require the event store dependency.
+    app.state.run_event_store = event_store if event_store is not None else MemoryRunEventStore()
     if feedback_repo is not None:
         app.state.feedback_repo = feedback_repo
     app.include_router(thread_runs.router)
@@ -392,7 +392,12 @@ def test_helper_fallback_paths_keep_per_user_filter_for_browser_sessions() -> No
     # Their own successful run still resolves, and a cross-user one 409s.
     record = asyncio.run(thread_runs._require_successful_source_run(THREAD_ID, RUN_BROWSER, request))
     assert record.run_id == RUN_BROWSER
+    assert store.get_user_ids[-1] == str(BROWSER_USER_ID)
     with pytest.raises(HTTPException) as exc:
         asyncio.run(thread_runs._require_successful_source_run(THREAD_ID, RUN_OWNER, request))
     assert exc.value.status_code == 409
-    assert store.get_user_ids[-1] == str(BROWSER_USER_ID)
+    # The scoped read kept the browser filter. The trailing unscoped read is
+    # the merged store-only hydration fallback — it adopts nothing here, so
+    # the per-user filter remains the effective authorization boundary.
+    assert store.get_user_ids[-2] == str(BROWSER_USER_ID)
+    assert store.get_user_ids[-1] is None

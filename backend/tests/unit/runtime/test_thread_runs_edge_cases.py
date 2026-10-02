@@ -12,6 +12,7 @@ Targets specific uncovered lines:
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,6 +40,10 @@ def _make_run_record(
     record.status = status
     record.error = None
     record.task = task
+    record.store_only = store_only
+    # Fresh records are never idempotency-reused; a spec'd MagicMock would
+    # read as truthy "reused" and skip the checkpoint result path.
+    record.idempotency_reused = False
     record.assistant_id = "lead_agent"
     record.metadata = {}
     record.on_disconnect = DisconnectMode.cancel
@@ -149,23 +154,26 @@ class TestWaitRunCancelledError:
 class TestWaitRunCheckpointFound:
     """Cover the checkpoint_tuple found branch in wait_run (lines 191-193)."""
 
-    @patch("app.gateway.routers.thread_runs.serialize_channel_values")
+    @patch("app.gateway.routers.thread_runs.serialize_channel_values_for_api")
+    @patch("app.gateway.routers.thread_runs.abuild_checkpoint_state_accessor")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.deps.get_checkpointer")
-    def test_wait_run_with_checkpoint_returns_serialized_values(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
-        """When a checkpoint exists, wait_run returns serialized channel values."""
+    def test_wait_run_with_checkpoint_returns_serialized_values(self, mock_get_rm, mock_start_run, mock_build_accessor, mock_serialize):
+        """When the final checkpoint exists, wait_run returns serialized channel values."""
         record = _make_run_record(status=RunStatus.success)
         record.task = None
         mock_start_run.return_value = record
         mock_get_rm.return_value = MagicMock()
 
-        checkpoint_tuple = MagicMock()
-        checkpoint_tuple.checkpoint = {"channel_values": {"messages": [{"role": "user", "content": "hi"}]}}
-        checkpoint_tuple.config = {"configurable": {"checkpoint_id": "cp-final"}}
-        checkpointer = MagicMock()
-        checkpointer.aget_tuple = AsyncMock(return_value=checkpoint_tuple)
-        mock_get_cp.return_value = checkpointer
+        # The merged wait_run reads final state through the checkpoint state
+        # accessor and serializes snapshot.values.
+        snapshot = SimpleNamespace(
+            config={"configurable": {"checkpoint_id": "cp-final"}},
+            values={"messages": [{"role": "user", "content": "hi"}]},
+        )
+        accessor = MagicMock()
+        accessor.aget = AsyncMock(return_value=snapshot)
+        mock_build_accessor.return_value = (accessor, {"configurable": {}})
 
         mock_serialize.return_value = {"messages": [{"role": "user", "content": "hi"}]}
 
@@ -174,27 +182,28 @@ class TestWaitRunCheckpointFound:
         response = client.post("/api/threads/thread-1/runs/wait", json={})
 
         assert response.status_code == 200
-        mock_serialize.assert_called_once()
+        mock_serialize.assert_called_once_with({"messages": [{"role": "user", "content": "hi"}]})
         body = response.json()
         assert body["messages"][0]["content"] == "hi"
 
-    @patch("app.gateway.routers.thread_runs.serialize_channel_values")
+    @patch("app.gateway.routers.thread_runs.serialize_channel_values_for_api")
+    @patch("app.gateway.routers.thread_runs.abuild_checkpoint_state_accessor")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.deps.get_checkpointer")
-    def test_wait_run_checkpoint_empty_channel_values(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
-        """When checkpoint exists but has no channel_values, returns empty dict."""
+    def test_wait_run_checkpoint_empty_channel_values(self, mock_get_rm, mock_start_run, mock_build_accessor, mock_serialize):
+        """When the final checkpoint has empty values, returns the serialized empty dict."""
         record = _make_run_record(status=RunStatus.success)
         record.task = None
         mock_start_run.return_value = record
         mock_get_rm.return_value = MagicMock()
 
-        checkpoint_tuple = MagicMock()
-        checkpoint_tuple.checkpoint = {}
-        checkpoint_tuple.config = {"configurable": {"checkpoint_id": "cp-final"}}
-        checkpointer = MagicMock()
-        checkpointer.aget_tuple = AsyncMock(return_value=checkpoint_tuple)
-        mock_get_cp.return_value = checkpointer
+        snapshot = SimpleNamespace(
+            config={"configurable": {"checkpoint_id": "cp-final"}},
+            values={},
+        )
+        accessor = MagicMock()
+        accessor.aget = AsyncMock(return_value=snapshot)
+        mock_build_accessor.return_value = (accessor, {"configurable": {}})
 
         mock_serialize.return_value = {}
 
@@ -205,29 +214,29 @@ class TestWaitRunCheckpointFound:
         assert response.status_code == 200
         mock_serialize.assert_called_once_with({})
 
-    @patch("app.gateway.routers.thread_runs.serialize_channel_values")
+    @patch("app.gateway.routers.thread_runs.serialize_channel_values_for_api")
+    @patch("app.gateway.routers.thread_runs.abuild_checkpoint_state_accessor")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.deps.get_checkpointer")
-    def test_wait_run_checkpoint_none_attribute(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
-        """When getattr returns None, falls back to empty dict for channel_values."""
+    def test_wait_run_snapshot_without_checkpoint_id_falls_back_to_status(self, mock_get_rm, mock_start_run, mock_build_accessor, mock_serialize):
+        """A snapshot without a configurable checkpoint_id returns durable status."""
         record = _make_run_record(status=RunStatus.success)
         record.task = None
         mock_start_run.return_value = record
         mock_get_rm.return_value = MagicMock()
 
-        checkpoint_tuple = MagicMock(spec=[])  # no 'checkpoint' attr
-        checkpointer = MagicMock()
-        checkpointer.aget_tuple = AsyncMock(return_value=checkpoint_tuple)
-        mock_get_cp.return_value = checkpointer
-
-        mock_serialize.return_value = {}
+        snapshot = MagicMock(spec=[])  # no 'config' attribute at all
+        accessor = MagicMock()
+        accessor.aget = AsyncMock(return_value=snapshot)
+        mock_build_accessor.return_value = (accessor, {"configurable": {}})
 
         app = _make_app()
         client = TestClient(app)
         response = client.post("/api/threads/thread-1/runs/wait", json={})
 
         assert response.status_code == 200
+        mock_serialize.assert_not_called()
+        assert response.json() == {"status": "success", "error": None}
 
 
 # ---------------------------------------------------------------------------

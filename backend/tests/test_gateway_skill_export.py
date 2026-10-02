@@ -42,6 +42,15 @@ def app(tmp_path, monkeypatch):
 
     app.dependency_overrides[get_config] = lambda: SimpleNamespace()
     monkeypatch.setattr(skills, "_get_user_skill_storage", lambda _: stores["alice"])
+
+    # The merged admin definition resolves the platform identity from
+    # users_ext; stub that seam for this isolated app while keeping the
+    # role distinction (anonymous caller stays unstamped and yields 401).
+    async def _fake_platform_identity(request, user):
+        role = getattr(user, "system_role", None) or "user"
+        return {"role": "super_admin" if role in ("admin", "super_admin") else role, "department_id": None}
+
+    monkeypatch.setattr("app.gateway.authz.resolve_platform_identity", _fake_platform_identity)
     app.include_router(skills.router)
     app.state.stores = stores
     return app

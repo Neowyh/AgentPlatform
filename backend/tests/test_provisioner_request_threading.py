@@ -156,12 +156,11 @@ def test_list_sandboxes_skips_invalid_capacity_metadata(
 @pytest.mark.parametrize("async_acquire", [False, True], ids=["sync", "async"])
 async def test_capacity_upgrade_preserves_peer_pod_after_discovery_error(monkeypatch, tmp_path, provisioner_module, async_acquire):
     """Discovery failure must not bypass ownership; a later safe retry replaces."""
-    from test_sandbox_orphan_reconciliation import _make_provider_for_reconciliation, _make_shared_ownership_store
-
     from deerflow.community.aio_sandbox import aio_sandbox_provider as provider_mod
     from deerflow.community.aio_sandbox import remote_backend as remote_mod
     from deerflow.community.aio_sandbox.ownership import compute_lease_ttl
     from deerflow.config.paths import Paths
+    from tests.test_sandbox_orphan_reconciliation import _make_provider_for_reconciliation, _make_shared_ownership_store
 
     shared = _make_shared_ownership_store()
     old = _make_provider_for_reconciliation(worker_id="old-gateway", store=shared)

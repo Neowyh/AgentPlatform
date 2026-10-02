@@ -138,11 +138,10 @@ class TestSearchAssistants:
         data = resp.json()
         assert len(data) <= 1
 
-    def test_limit_zero_returns_empty(self):
-        """A limit of 0 returns an empty list."""
+    def test_limit_zero_rejected_by_contract(self):
+        """Upstream contract bounds the page size: limit must be >= 1."""
         resp = _client().post("/api/assistants/search", json={"limit": 0})
-        assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.status_code == 422
 
     def test_offset_parameter(self):
         """Offset skips the first N assistants."""
@@ -608,16 +607,15 @@ class TestAssistantSearchRequest:
 class TestEdgeCases:
     """Edge-case and regression tests."""
 
-    def test_search_with_large_limit(self):
-        """A very large limit does not error; returns all available."""
+    def test_search_with_large_limit_rejected_by_contract(self):
+        """Upstream contract bounds the page size: limit must be <= 1000."""
         resp = _client().post("/api/assistants/search", json={"limit": 10000})
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert resp.status_code == 422
 
-    def test_search_with_negative_offset(self):
-        """Negative offset is handled gracefully by Python slicing."""
+    def test_search_with_negative_offset_rejected_by_contract(self):
+        """Upstream contract bounds pagination: offset must be >= 0."""
         resp = _client().post("/api/assistants/search", json={"offset": -1})
-        assert resp.status_code == 200
+        assert resp.status_code == 422
 
     def test_get_assistant_special_characters_in_id(self):
         """URL-encoded special characters in assistant_id handled."""

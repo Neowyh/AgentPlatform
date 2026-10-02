@@ -223,7 +223,7 @@ class TestStartRunCanonicalLegacyName:
     async def test_canonical_mode_resolves_legacy_name_via_alias(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
-        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None, idempotency_reused=False, kwargs=None)
         record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
@@ -282,7 +282,7 @@ class TestStartRunCanonicalLegacyName:
     @pytest.mark.asyncio
     async def test_canonical_mode_default_assistant_keeps_default_path(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
-        record = MagicMock(run_id="run-123", task=None)
+        record = MagicMock(run_id="run-123", task=None, idempotency_reused=False, kwargs=None)
         run_mgr.create_or_reject.return_value = record
 
         with (
@@ -308,7 +308,7 @@ class TestStartRunCanonicalLegacyName:
     async def test_canonical_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
-        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None, idempotency_reused=False, kwargs=None)
         record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
@@ -347,7 +347,7 @@ class TestStartRunCanonicalLegacyName:
     async def test_canonical_mode_resolves_context_agent_name_legacy_name(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
-        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None, idempotency_reused=False, kwargs=None)
         record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
@@ -385,7 +385,7 @@ class TestStartRunCanonicalLegacyName:
     async def test_dual_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
-        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None, idempotency_reused=False, kwargs=None)
         record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 

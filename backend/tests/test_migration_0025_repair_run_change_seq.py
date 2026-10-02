@@ -26,6 +26,16 @@ pytestmark = pytest.mark.asyncio
 
 REVISION = "0025_repair_run_change_seq"
 PREVIOUS = "0024_project_documents"
+# The v2.1.0 rejoin merge made the chain a DAG: downgrading to a revision on
+# the upstream branch leaves the local branch's head stamped alongside it.
+LOCAL_TAIL = "20260918_knowledge_publish_eval_gate"
+
+
+def _version_rows(db_path) -> set[str]:
+    with sqlite3.connect(db_path) as raw:
+        return {row[0] for row in raw.execute("SELECT version_num FROM alembic_version").fetchall()}
+
+
 STAMP_BEFORE_INSERTION = "0023_user_preferences"
 
 
@@ -66,8 +76,14 @@ def _table_and_column_state(db_path) -> tuple[bool, bool, set[str], str | None]:
     return "run_change_clock" in tables, "change_seq" in run_columns, run_indexes, version_row[0] if version_row else None
 
 
-async def test_0025_is_the_chain_head():
-    assert _get_head_revision() == REVISION
+async def test_0025_is_in_the_unified_chain():
+    # The unified chain's head moved past 0025 to the v2.1.0 rejoin merge
+    # revision; 0025 must remain an ancestor of that head.
+    from deerflow.persistence.bootstrap import _get_known_revisions
+
+    script_head = _get_head_revision()
+    assert script_head == "20261001_rejoin_upstream_line"
+    assert REVISION in _get_known_revisions()
 
 
 async def test_0025_repairs_schema_skipped_by_the_0023_insertion(tmp_path):
@@ -123,22 +139,24 @@ async def test_0025_downgrade_preserves_ancestor_owned_schema_and_data(tmp_path)
             await session.commit()
 
         await asyncio.to_thread(command.downgrade, cfg, PREVIOUS)
-        has_table, has_column, run_indexes, version = _table_and_column_state(db_path)
+        has_table, has_column, run_indexes, _ = _table_and_column_state(db_path)
         assert has_table
         assert has_column
         assert {"ix_runs_change_seq", "ix_runs_user_change_seq"} <= run_indexes
-        assert version == PREVIOUS
+        # Merge-graph semantics: the walk down to 0024 (upstream branch) leaves
+        # the local branch head 20260918 stamped next to it.
+        assert _version_rows(db_path) == {PREVIOUS, LOCAL_TAIL}
         with sqlite3.connect(db_path) as raw:
             assert raw.execute("SELECT value FROM run_change_clock WHERE id = 1").fetchone()[0] == 1
 
         # Downgrade is idempotent; re-upgrading re-runs the guarded repair as a no-op.
         await asyncio.to_thread(command.downgrade, cfg, PREVIOUS)
         await asyncio.to_thread(command.upgrade, cfg, REVISION)
-        has_table, has_column, run_indexes, version = _table_and_column_state(db_path)
+        has_table, has_column, run_indexes, _ = _table_and_column_state(db_path)
         assert has_table
         assert has_column
         assert {"ix_runs_change_seq", "ix_runs_user_change_seq"} <= run_indexes
-        assert version == REVISION
+        assert _version_rows(db_path) == {REVISION, LOCAL_TAIL}
         with sqlite3.connect(db_path) as raw:
             assert raw.execute("SELECT value FROM run_change_clock WHERE id = 1").fetchone()[0] == 1
     finally:

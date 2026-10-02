@@ -450,12 +450,12 @@ def test_upload_files_syncs_non_local_sandbox_and_marks_markdown_file(tmp_path):
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.return_value = "aio-1"
+    provider.acquire_async = AsyncMock(return_value="aio-1")
     sandbox = MagicMock()
     provider.get.return_value = sandbox
 
-    async def fake_convert(file_path: Path) -> Path:
-        md_path = file_path.with_suffix(".md")
+    async def fake_convert(file_path: Path, output_path: Path | None = None) -> Path:
+        md_path = output_path if output_path is not None else file_path.with_suffix(".md")
         md_path.write_text("converted", encoding="utf-8")
         return md_path
 
@@ -486,12 +486,12 @@ def test_upload_files_makes_non_local_files_sandbox_writable(tmp_path):
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.return_value = "aio-1"
+    provider.acquire_async = AsyncMock(return_value="aio-1")
     sandbox = MagicMock()
     provider.get.return_value = sandbox
 
-    async def fake_convert(file_path: Path) -> Path:
-        md_path = file_path.with_suffix(".md")
+    async def fake_convert(file_path: Path, output_path: Path | None = None) -> Path:
+        md_path = output_path if output_path is not None else file_path.with_suffix(".md")
         md_path.write_text("converted", encoding="utf-8")
         return md_path
 
@@ -547,7 +547,7 @@ def test_upload_files_acquires_non_local_sandbox_before_writing(tmp_path):
         assert list(thread_uploads_dir.iterdir()) == []
         return "aio-1"
 
-    provider.acquire.side_effect = acquire_before_writes
+    provider.acquire_async = AsyncMock(side_effect=lambda thread_id, user_id=None: acquire_before_writes(thread_id))
 
     with (
         patch.object(uploads, "ensure_uploads_dir", return_value=thread_uploads_dir),
@@ -557,7 +557,8 @@ def test_upload_files_acquires_non_local_sandbox_before_writing(tmp_path):
         result = asyncio.run(call_unwrapped(uploads.upload_files, "thread-aio", request=MagicMock(), files=[file], config=SimpleNamespace()))
 
     assert result.success is True
-    provider.acquire.assert_called_once_with("thread-aio")
+    provider.acquire_async.assert_called_once()
+    assert provider.acquire_async.call_args.args[0] == "thread-aio"
     sandbox.update_file.assert_called_once_with("/mnt/user-data/uploads/notes.txt", b"hello uploads")
 
 
@@ -567,7 +568,7 @@ def test_upload_files_fails_before_writing_when_non_local_sandbox_unavailable(tm
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.side_effect = RuntimeError("sandbox unavailable")
+    provider.acquire_async = AsyncMock(side_effect=RuntimeError("sandbox unavailable"))
     file = ChunkedUpload("notes.txt", [b"hello uploads"])
 
     with (
@@ -649,7 +650,7 @@ def test_upload_files_does_not_sync_non_local_sandbox_when_total_size_exceeds_li
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.return_value = "aio-1"
+    provider.acquire_async = AsyncMock(return_value="aio-1")
     sandbox = MagicMock()
     provider.get.return_value = sandbox
 
@@ -675,7 +676,7 @@ def test_upload_files_does_not_sync_non_local_sandbox_when_conversion_fails(tmp_
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.return_value = "aio-1"
+    provider.acquire_async = AsyncMock(return_value="aio-1")
     sandbox = MagicMock()
     provider.get.return_value = sandbox
 
@@ -792,7 +793,13 @@ def test_upload_files_rejects_dangling_symlink_destination(tmp_path):
     assert not missing_target.exists()
 
 
-def test_upload_files_rejects_hardlinked_destination_without_truncating(tmp_path):
+def test_upload_files_never_truncates_hardlinked_destination(tmp_path):
+    """A hardlinked destination is an ordinary collision under no-overwrite.
+
+    The atomic link commit refuses ANY existing name, so an outside file
+    hardlinked into the uploads dir keeps its bytes; the upload lands under
+    the next suffix instead of being written through the link.
+    """
     thread_uploads_dir = tmp_path / "uploads"
     thread_uploads_dir.mkdir(parents=True)
     outside_file = tmp_path / "outside.txt"
@@ -810,13 +817,15 @@ def test_upload_files_rejects_hardlinked_destination_without_truncating(tmp_path
         file = UploadFile(filename="victim.txt", file=BytesIO(b"attacker upload"))
         result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
 
-    assert result.success is False
-    assert result.files == []
-    assert result.skipped_files == ["victim.txt"]
+    assert result.success is True
+    assert [file_info["filename"] for file_info in result.files] == ["victim_1.txt"]
+    assert result.files[0]["original_filename"] == "victim.txt"
+    assert (thread_uploads_dir / "victim_1.txt").read_text(encoding="utf-8") == "attacker upload"
     assert outside_file.read_text(encoding="utf-8") == "protected"
 
 
-def test_upload_files_overwrites_existing_regular_file(tmp_path):
+def test_upload_files_never_overwrites_existing_regular_file(tmp_path):
+    """A same-name re-upload lands as name_1.ext; the existing file keeps its bytes."""
     thread_uploads_dir = tmp_path / "uploads"
     thread_uploads_dir.mkdir(parents=True)
     existing_file = thread_uploads_dir / "notes.txt"
@@ -835,8 +844,9 @@ def test_upload_files_overwrites_existing_regular_file(tmp_path):
         result = asyncio.run(uploads.upload_files("thread-local", files=[file]))
 
     assert result.success is True
-    assert [file_info["filename"] for file_info in result.files] == ["notes.txt"]
-    assert existing_file.read_bytes() == b"new upload"
+    assert [file_info["filename"] for file_info in result.files] == ["notes_1.txt"]
+    assert result.files[0]["original_filename"] == "notes.txt"
+    assert existing_file.read_bytes() == b"old upload"
 
 
 def test_upload_files_no_files_provided(tmp_path):
@@ -874,7 +884,7 @@ def test_upload_files_sandbox_acquire_returns_none(tmp_path):
 
     provider = MagicMock()
     provider.uses_thread_data_mounts = False
-    provider.acquire.return_value = "aio-1"
+    provider.acquire_async = AsyncMock(return_value="aio-1")
     provider.get.return_value = None
 
     with (
@@ -940,7 +950,7 @@ def test_upload_files_generic_exception_returns_500(tmp_path):
     with (
         patch.object(uploads, "ensure_uploads_dir", return_value=thread_uploads_dir),
         patch.object(uploads, "get_sandbox_provider", return_value=provider),
-        patch.object(uploads, "open_upload_file_no_symlink", side_effect=RuntimeError("disk full")),
+        patch.object(uploads, "_prepare_upload_destination", side_effect=RuntimeError("disk full")),
     ):
         file = UploadFile(filename="test.txt", file=BytesIO(b"x"))
         with pytest.raises(HTTPException) as exc_info:
@@ -1085,7 +1095,7 @@ def test_upload_files_generic_error_returns_500(tmp_path):
     with (
         patch.object(uploads, "ensure_uploads_dir", return_value=thread_uploads_dir),
         patch.object(uploads, "get_sandbox_provider", return_value=provider),
-        patch.object(uploads, "open_upload_file_no_symlink", side_effect=RuntimeError("boom")),
+        patch.object(uploads, "_prepare_upload_destination", side_effect=RuntimeError("boom")),
     ):
         file = UploadFile(filename="test.txt", file=BytesIO(b"x"))
         with pytest.raises(HTTPException) as exc_info:
@@ -1106,7 +1116,7 @@ def test_upload_files_http_exception_during_write_is_reraised(tmp_path):
     with (
         patch.object(uploads, "ensure_uploads_dir", return_value=thread_uploads_dir),
         patch.object(uploads, "get_sandbox_provider", return_value=provider),
-        patch.object(uploads, "open_upload_file_no_symlink", side_effect=HTTPException(status_code=413, detail="File too large")),
+        patch.object(uploads, "_prepare_upload_destination", side_effect=HTTPException(status_code=413, detail="File too large")),
     ):
         file = UploadFile(filename="big.bin", file=BytesIO(b"x"))
         with pytest.raises(HTTPException) as exc_info:

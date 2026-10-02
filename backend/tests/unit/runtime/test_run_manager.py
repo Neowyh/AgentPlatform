@@ -373,14 +373,19 @@ async def test_list_by_thread(manager: RunManager):
 
 @pytest.mark.anyio
 async def test_list_by_thread_is_stable_when_timestamps_tie(manager: RunManager, monkeypatch: pytest.MonkeyPatch):
-    """Ordering should be stable (insertion order) even when timestamps tie."""
+    """Ordering is deterministic even when timestamps tie.
+
+    Upstream sorts newest-first by ``(created_at, run_id)``; run_id is a
+    random UUID, so a timestamp tie is broken by run_id — not insertion
+    order.
+    """
     monkeypatch.setattr("deerflow.runtime.runs.manager._now_iso", lambda: "2026-01-01T00:00:00+00:00")
 
     r1 = await manager.create("thread-1")
     r2 = await manager.create("thread-1")
 
     runs = await manager.list_by_thread("thread-1")
-    assert [run.run_id for run in runs] == [r1.run_id, r2.run_id]
+    assert [run.run_id for run in runs] == sorted([r1.run_id, r2.run_id], reverse=True)
 
 
 @pytest.mark.anyio
@@ -394,13 +399,26 @@ async def test_has_inflight(manager: RunManager):
 
 
 @pytest.mark.anyio
-async def test_cleanup(manager: RunManager):
-    """After cleanup, the run should be gone."""
-    record = await manager.create("thread-1")
+async def test_cleanup(manager_with_store: RunManager):
+    """Upstream cleanup contract: eviction is store-gated.
+
+    With a RunStore behind the manager, cleanup drops the live in-memory entry
+    while history stays readable through the store fallback in ``get()``.
+    A store-less manager keeps the record (retain-forever).
+    """
+    record = await manager_with_store.create("thread-1")
     run_id = record.run_id
 
-    await manager.cleanup(run_id, delay=0)
-    assert await manager.get(run_id) is None
+    await manager_with_store.cleanup(run_id, delay=0)
+    assert run_id not in manager_with_store._runs
+    # History remains readable through the store fallback (rehydrated copy).
+    hydrated = await manager_with_store.get(run_id)
+    assert hydrated is not None and hydrated.run_id == run_id
+
+    storeless = RunManager()
+    stale = await storeless.create("thread-1")
+    await storeless.cleanup(stale.run_id, delay=0)
+    assert stale.run_id in storeless._runs
 
 
 @pytest.mark.anyio
@@ -1498,8 +1516,11 @@ async def test_reconcile_no_orphans_found():
 
 @pytest.mark.anyio
 async def test_cleanup_with_delay():
-    """cleanup with positive delay should sleep before removing (line 643)."""
-    mgr = RunManager()
+    """cleanup with positive delay should sleep before removing (line 643).
+
+    Upstream evicts only when a RunStore backs the manager, so this uses one.
+    """
+    mgr = RunManager(store=MemoryRunStore())
     record = await mgr.create("thread-1")
     run_id = record.run_id
 

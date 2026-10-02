@@ -90,6 +90,10 @@ async def test_preload_failure_does_not_fail_start_run():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    # v2.1.0 start_run consults idempotency-reuse metadata on every record;
+    # bare MagicMocks would read as "reused with a mismatch".
+    record.idempotency_reused = False
+    record.kwargs = None
     record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     body = SimpleNamespace(
@@ -156,7 +160,7 @@ async def test_start_run_binds_dynamic_evidence_to_background_worker():
     request = MagicMock()
     request.state = SimpleNamespace(user=SimpleNamespace(id="caller-1"))
     request.headers = {}
-    record = MagicMock(run_id="run-1", task=None)
+    record = MagicMock(run_id="run-1", task=None, idempotency_reused=False, kwargs=None)
     record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     body = SimpleNamespace(

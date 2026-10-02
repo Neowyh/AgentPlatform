@@ -172,7 +172,7 @@ def test_lifespan_sweeps_upload_staging_files_on_startup():
 async def _run_lifespan_with_mcp_task_config_snapshot() -> None:
     from app.gateway.app import lifespan
     from deerflow.config.extensions_config import ExtensionsConfig
-    from deerflow.mcp.tasks.runtime import validate_mcp_task_config_snapshot
+    from deerflow.mcp.tasks.runtime import McpTaskConfigurationError, validate_mcp_task_config_snapshot
 
     app = FastAPI()
     startup_config = SimpleNamespace(
@@ -219,11 +219,14 @@ async def _run_lifespan_with_mcp_task_config_snapshot() -> None:
         patch("deerflow.config.extensions_config.ExtensionsConfig.from_file", return_value=startup_extensions),
     ):
         async with lifespan(app):
-            # Lifespan no longer owns an extension-config snapshot. The
-            # runtime validator is a no-op until a task worker explicitly
-            # establishes one, so a changed config must not fail startup.
-            validate_mcp_task_config_snapshot(changed_extensions)
+            # Upstream design: lifespan owns the snapshot — startup freezes
+            # the (empty) task-server config, so a changed task-server config
+            # fails closed while the gateway is running.
+            with pytest.raises(McpTaskConfigurationError):
+                validate_mcp_task_config_snapshot(changed_extensions)
 
+    # Shutdown clears the snapshot: a stopped gateway no longer gates
+    # validation against its own stale config.
     validate_mcp_task_config_snapshot(changed_extensions)
 
 

@@ -178,27 +178,32 @@ class TestDownloadFileMaxSize:
 
 
 class TestListDirException:
-    def test_returns_empty_list_on_exception(self, sandbox):
-        """Lines 169-171: exception returns empty list."""
+    def test_raises_oserror_on_exception(self, sandbox):
+        """Upstream fail-closed evolution: a client failure raises instead of
+        returning an empty listing."""
         sandbox._client.shell.exec_command = MagicMock(side_effect=RuntimeError("sandbox down"))
-        result = sandbox.list_dir("/mnt/user-data/workspace")
-        assert result == []
+        with pytest.raises(OSError, match="sandbox down"):
+            sandbox.list_dir("/mnt/user-data/workspace")
 
-    def test_returns_empty_list_when_output_is_empty(self, sandbox):
-        """When output is empty, returns empty list."""
+    def test_raises_oserror_when_output_is_empty(self, sandbox):
+        """Upstream fail-closed evolution: empty stdout carries no find-status
+        marker, so it is an error rather than a silent empty listing."""
         sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="")))
-        result = sandbox.list_dir("/empty/dir")
-        assert result == []
+        with pytest.raises(OSError):
+            sandbox.list_dir("/empty/dir")
 
-    def test_returns_empty_list_when_data_is_none(self, sandbox):
-        """When data is None, returns empty list."""
+    def test_raises_oserror_when_data_is_none(self, sandbox):
+        """Upstream fail-closed evolution: a None payload carries no marker and
+        is an error rather than a silent empty listing."""
         sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=None))
-        result = sandbox.list_dir("/test")
-        assert result == []
+        with pytest.raises(OSError):
+            sandbox.list_dir("/test")
 
     def test_parses_multiline_output(self, sandbox):
         """Normal output with multiple lines is parsed correctly."""
-        sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="/a/file1.py\n/a/file2.py\n/b/dir\n")))
+        # The remote command terminates listings with the find-status marker.
+        output = "/a/file1.py\n/a/file2.py\n/b/dir\n\n__DF_FIND_STATUS__:0\n"
+        sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output=output)))
         result = sandbox.list_dir("/test")
         assert "/a/file1.py" in result
         assert "/a/file2.py" in result
@@ -206,7 +211,8 @@ class TestListDirException:
 
     def test_filters_blank_lines(self, sandbox):
         """Blank lines are dropped; whitespace-only entries are preserved verbatim."""
-        sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="/a\n\n/b\n  \n")))
+        output = "/a\n\n/b\n  \n\n__DF_FIND_STATUS__:0\n"
+        sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output=output)))
         result = sandbox.list_dir("/test")
         assert result == ["/a", "/b", "  "]
 
@@ -223,25 +229,27 @@ class TestWriteFileException:
         with pytest.raises(IOError, match="disk full"):
             sandbox.write_file("/mnt/user-data/workspace/test.txt", "content")
 
-    def test_append_mode_concatenates_content(self, sandbox):
-        """Lines 183-186: append mode reads existing content first."""
-        sandbox._client.file.read_file = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(content="existing")))
+    def test_append_mode_delegates_to_native_append(self, sandbox):
+        """Upstream append design: the worker delegates to the sandbox's
+        server-side append instead of a client-side read-modify-write."""
+        sandbox._client.file.read_file = MagicMock()
         sandbox._client.file.write_file = MagicMock()
 
         sandbox.write_file("/mnt/user-data/workspace/log.txt", " appended", append=True)
 
-        sandbox._client.file.write_file.assert_called_once_with(file="/mnt/user-data/workspace/log.txt", content="existing appended")
+        # No read-back: the sandbox service owns the append.
+        sandbox._client.file.read_file.assert_not_called()
+        sandbox._client.file.write_file.assert_called_once_with(file="/mnt/user-data/workspace/log.txt", content=" appended", append=True)
 
     def test_append_mode_with_error_existing_content(self, sandbox):
-        """Lines 185: when read returns an error, don't prepend content."""
+        """Upstream append design: delegation happens even when a legacy
+        reader would have reported an error — the read path is never used."""
         sandbox._client.file.read_file = MagicMock(return_value="Error: file not found")
         sandbox._client.file.write_file = MagicMock()
 
         sandbox.write_file("/mnt/user-data/workspace/log.txt", "new content", append=True)
 
-        # Should write just "new content" since existing starts with "Error:"
-        call_args = sandbox._client.file.write_file.call_args
-        assert call_args[1]["content"] == "new content"
+        sandbox._client.file.write_file.assert_called_once_with(file="/mnt/user-data/workspace/log.txt", content="new content", append=True)
 
     def test_write_file_no_append(self, sandbox):
         """Normal write (no append) just writes content."""

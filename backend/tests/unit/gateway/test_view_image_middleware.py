@@ -217,10 +217,12 @@ class TestCreateImageDetailsMessage:
         }
         blocks = mw._create_image_details_message(state)
         assert len(blocks) == 3
-        assert blocks[2] == {"type": "text", "text": f"  (file unavailable or changed on disk: {tmp_path / 'missing.png'})"}
+        # Upstream notes the unavailability against the virtual image path.
+        assert blocks[2] == {"type": "text", "text": "  (file unavailable or changed: /gone.png)"}
 
-    def test_omits_image_block_without_actual_path(self):
-        """Legacy state entries without actual_path render the description only."""
+    def test_notes_unavailable_without_actual_path(self):
+        """Legacy state entries without actual_path render the description plus
+        an availability note — never a stale image block."""
         mw = ViewImageMiddleware()
         state = {
             "viewed_images": {
@@ -228,9 +230,10 @@ class TestCreateImageDetailsMessage:
             }
         }
         blocks = mw._create_image_details_message(state)
-        # header + description only (no image_url since there is nothing to read)
-        assert len(blocks) == 2
+        # header + description + availability note (no image_url: nothing to read)
+        assert len(blocks) == 3
         assert all(not (isinstance(b, dict) and b.get("type") == "image_url") for b in blocks)
+        assert blocks[2] == {"type": "text", "text": "  (file unavailable or changed: /broken.png)"}
 
     def test_uses_unknown_mime_type_when_missing(self):
         mw = ViewImageMiddleware()
@@ -240,10 +243,12 @@ class TestCreateImageDetailsMessage:
             }
         }
         blocks = mw._create_image_details_message(state)
-        # The description block should mention unknown
-        description_blocks = [b for b in blocks if b.get("type") == "text" and "/mystery.bin" in b.get("text", "")]
-        assert len(description_blocks) == 1
-        assert "unknown" in description_blocks[0]["text"]
+        # The description block mentions unknown; the availability note also
+        # names the path.
+        path_blocks = [b for b in blocks if b.get("type") == "text" and "/mystery.bin" in b.get("text", "")]
+        assert len(path_blocks) == 2
+        assert "unknown" in path_blocks[0]["text"]
+        assert "file unavailable or changed" in path_blocks[1]["text"]
 
 
 class TestShouldInjectImageMessage:

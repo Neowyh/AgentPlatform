@@ -120,7 +120,8 @@ class TestListDirSerialization:
         """list_dir should hold the lock during execution."""
         lock_was_held = []
 
-        original_exec = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="/a\n/b")))
+        # Remote listings terminate with the find-status marker.
+        original_exec = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="/a\n/b\n\n__DF_FIND_STATUS__:0\n")))
 
         def tracking_exec(command, **kwargs):
             lock_was_held.append(sandbox._lock.locked())
@@ -175,7 +176,8 @@ class TestNoChangeTimeout:
 
         def mock_exec(command, **kwargs):
             calls.append(kwargs)
-            return SimpleNamespace(data=SimpleNamespace(output="/a\n/b"))
+            # Remote listings terminate with the find-status marker.
+            return SimpleNamespace(data=SimpleNamespace(output="/a\n/b\n\n__DF_FIND_STATUS__:0\n"))
 
         sandbox._client.shell.exec_command = mock_exec
 
@@ -189,32 +191,23 @@ class TestConcurrentFileWrites:
     """Verify file write paths do not lose concurrent updates."""
 
     def test_append_should_preserve_both_parallel_writes(self, sandbox):
+        """Upstream append design: the worker delegates append to the sandbox's
+        server-side native append, so parallel appends never read-modify-write
+        and both payloads land in the file."""
         storage = {"content": "seed\n"}
-        active_reads = 0
+        write_calls: list[dict] = []
         state_lock = threading.Lock()
-        overlap_detected = threading.Event()
 
-        def overlapping_read_file(path):
-            nonlocal active_reads
+        def native_append(*, file, content, append=False, **kwargs):
             with state_lock:
-                active_reads += 1
-                snapshot = storage["content"]
-                if active_reads == 2:
-                    overlap_detected.set()
-
-            overlap_detected.wait(0.05)
-
-            with state_lock:
-                active_reads -= 1
-
-            return snapshot
-
-        def write_back(*, file, content, **kwargs):
-            storage["content"] = content
+                write_calls.append({"file": file, "content": content, "append": append})
+                if append:
+                    storage["content"] += content
+                else:
+                    storage["content"] = content
             return SimpleNamespace(data=SimpleNamespace())
 
-        sandbox.read_file = overlapping_read_file
-        sandbox._client.file.write_file = write_back
+        sandbox._client.file.write_file = native_append
 
         barrier = threading.Barrier(2)
 

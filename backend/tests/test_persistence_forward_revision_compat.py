@@ -62,9 +62,18 @@ async def _set_database_revision(engine, revision: str) -> None:
 
 
 def _rollback_binary_revisions() -> frozenset[str]:
-    """Revisions the published 0020 rollback binary knows: ancestors of its head."""
+    """Revisions the published 0020 rollback binary knows: ancestors of its head.
+
+    The unified chain spans two version trees, so the ScriptDirectory must
+    scan both (``_chain_meta.version_locations``) for the revision map to
+    resolve at all; walking ancestors of 0020 still yields exactly the
+    runtime revisions the pre-unification binary shipped.
+    """
+    from deerflow.persistence.migrations._chain_meta import version_locations
+
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", str(bootstrap_mod._MIGRATIONS_DIR))
+    cfg.set_main_option("version_locations", version_locations(bootstrap_mod._MIGRATIONS_DIR))
     script = ScriptDirectory.from_config(cfg)
     return frozenset(revision.revision for revision in script.iterate_revisions(ROLLBACK_HEAD, "base"))
 
@@ -414,7 +423,7 @@ async def test_empty_alembic_version_fails_closed(tmp_path: Path) -> None:
         async with engine.begin() as conn:
             await conn.execute(sa.text("DELETE FROM alembic_version"))
 
-        with pytest.raises(RuntimeError, match="expected exactly one alembic_version row, found 0"):
+        with pytest.raises(RuntimeError, match="alembic_version contains no revision row"):
             await bootstrap_schema(engine, backend="sqlite")
     finally:
         await engine.dispose()
@@ -431,7 +440,7 @@ async def test_multiple_alembic_versions_fail_closed(tmp_path: Path) -> None:
                 {"revision": "0017_personal_access_tokens"},
             )
 
-        with pytest.raises(RuntimeError, match="expected exactly one alembic_version row, found 2"):
+        with pytest.raises(CommandError, match="overlaps with other requested revisions"):
             await bootstrap_schema(engine, backend="sqlite")
     finally:
         await engine.dispose()

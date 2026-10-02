@@ -73,7 +73,7 @@ class TestReadWecomInboundFile:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            result = await _read_wecom_inbound_file({"url": "http://x/f"}, mock_client)
+            result = await _read_wecom_inbound_file({"url": "http://x.qq.com/f"}, mock_client)
         assert result is None
 
     @pytest.mark.asyncio
@@ -85,7 +85,7 @@ class TestReadWecomInboundFile:
             new_callable=AsyncMock,
             return_value=b"raw_bytes",
         ):
-            result = await _read_wecom_inbound_file({"url": "http://x/f"}, mock_client)
+            result = await _read_wecom_inbound_file({"url": "http://x.qq.com/f"}, mock_client)
         assert result == b"raw_bytes"
 
     @pytest.mark.asyncio
@@ -98,7 +98,7 @@ class TestReadWecomInboundFile:
             return_value=b"raw",
         ):
             result = await _read_wecom_inbound_file(
-                {"url": "http://x/f", "aeskey": 12345},
+                {"url": "http://x.qq.com/f", "aeskey": 12345},
                 mock_client,
             )
         assert result == b"raw"
@@ -120,7 +120,7 @@ class TestReadWecomInboundFile:
             patch.dict("sys.modules", {"aibot.crypto_utils": mock_module}),
         ):
             result = await _read_wecom_inbound_file(
-                {"url": "http://x/f", "aeskey": "secretkey"},
+                {"url": "http://x.qq.com/f", "aeskey": "secretkey"},
                 mock_client,
             )
         assert result == b"decrypted"
@@ -149,7 +149,7 @@ class TestReadWecomInboundFile:
             patch("builtins.__import__", side_effect=fake_import),
         ):
             result = await _read_wecom_inbound_file(
-                {"url": "http://x/f", "aeskey": "key123"},
+                {"url": "http://x.qq.com/f", "aeskey": "key123"},
                 mock_client,
             )
         assert result is None
@@ -431,7 +431,7 @@ class TestIngestInboundFilesLine469:
     async def test_unsafe_filename_skipped(self, tmp_path):
         msg = _make_inbound(
             channel_name="slack",
-            files=[{"type": "file", "filename": "bad/name.txt", "url": "http://x/f"}],
+            files=[{"type": "file", "filename": "bad/name.txt", "url": "http://x.qq.com/f"}],
         )
 
         mock_uploads_dir = MagicMock()
@@ -466,7 +466,7 @@ class TestIngestInboundFilesLine483:
     async def test_write_failure_skipped(self, tmp_path):
         msg = _make_inbound(
             channel_name="slack",
-            files=[{"type": "file", "filename": "ok.txt", "url": "http://x/f"}],
+            files=[{"type": "file", "filename": "ok.txt", "url": "http://x.qq.com/f"}],
         )
 
         mock_uploads_dir = MagicMock()
@@ -566,6 +566,7 @@ class TestHandleChatLine761:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "existing_thread"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(
             return_value={
                 "messages": [{"type": "ai", "content": "done"}],
@@ -611,6 +612,7 @@ class TestHandleChatLine790:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "existing_thread"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(side_effect=RuntimeError("server error"))
         mgr._client = mock_client
 
@@ -637,6 +639,7 @@ class TestHandleChatLine806:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "t1"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(
             return_value={
                 "messages": [
@@ -883,6 +886,7 @@ class TestHandleChatUploadedFilesNoResponse:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "t1"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(return_value={})
         mgr._client = mock_client
 
@@ -1028,7 +1032,7 @@ class TestIngestInboundFilesReaderException:
     async def test_reader_exception_skips_file(self, tmp_path):
         msg = _make_inbound(
             channel_name="custom_channel",
-            files=[{"type": "file", "filename": "test.txt", "url": "http://x/f"}],
+            files=[{"type": "file", "filename": "test.txt", "url": "http://x.qq.com/f"}],
         )
 
         mock_uploads_dir = MagicMock()
@@ -1061,7 +1065,7 @@ class TestIngestInboundFilesNoData:
     async def test_reader_returns_none_skips_file(self, tmp_path):
         msg = _make_inbound(
             channel_name="custom_channel",
-            files=[{"type": "file", "filename": "test.txt", "url": "http://x/f"}],
+            files=[{"type": "file", "filename": "test.txt", "url": "http://x.qq.com/f"}],
         )
 
         mock_uploads_dir = MagicMock()

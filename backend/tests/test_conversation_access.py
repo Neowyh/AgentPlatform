@@ -159,11 +159,10 @@ def test_missing_transcript_is_reported_without_checkpoint_reconstruction():
 
 
 def test_start_run_installs_fresh_capability_without_persisting_it(monkeypatch):
-    from test_gateway_services import _make_start_run_persistence_context
-
     from app.gateway import services
     from deerflow.config.app_config import reset_app_config, set_app_config
     from deerflow.runtime.user_context import reset_current_user, set_current_user
+    from tests.test_gateway_services import _make_start_run_persistence_context
 
     async def exercise():
         request, _, threads = _make_start_run_persistence_context()

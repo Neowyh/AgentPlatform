@@ -29,6 +29,10 @@ def _make_app(records: list[RunRecord]) -> tuple:
     run_manager = MagicMock()
     run_manager.list_by_thread = AsyncMock(return_value=records)
     app.state.run_manager = run_manager
+    # The merged list/get runs endpoints require the event store dependency.
+    from deerflow.runtime.events.store.memory import MemoryRunEventStore
+
+    app.state.run_event_store = MemoryRunEventStore()
     return app, run_manager
 
 

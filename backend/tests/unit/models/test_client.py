@@ -18,6 +18,7 @@ from app.gateway.routers.models import ModelResponse, ModelsListResponse
 from app.gateway.routers.uploads import UploadResponse
 from deerflow.client import DeerFlowClient
 from deerflow.config.paths import Paths
+from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.uploads.manager import PathTraversalError
 
 # ---------------------------------------------------------------------------
@@ -734,6 +735,7 @@ class TestStream:
                 "values",
                 {
                     "title": None,
+                    "summary_text": None,
                     "messages": [
                         {"type": "human", "content": "hi", "id": "h-1"},
                         {"type": "ai", "content": "Hello", "id": "ai-1", "usage_metadata": usage},
@@ -1037,20 +1039,22 @@ class TestEnsureAgent:
         # key is None, matching the pre-seeded key below.
         client._app_config.authorization.enabled = False
         # Upstream key arity: model/thinking/plan/subagent settings, subagent
-        # caps, agent name, available skills, checkpoint mode/frequency, auth
-        # identity.
+        # caps, agent name, memory-enabled compat default, available skills,
+        # checkpoint mode/frequency, storage user, auth identity.
         client._agent_config_key = (
-            None,
-            True,
-            False,
-            False,
-            None,
-            None,
-            None,
-            None,
+            None,  # model_name
+            True,  # thinking_enabled
+            False,  # is_plan_mode
+            False,  # subagent_enabled
+            None,  # max_concurrent_subagents
+            None,  # max_total_subagents
+            client._agent_name,  # agent_name
+            True,  # memory_enabled (compat default when no agent config)
+            None,  # available_skills
             client._checkpoint_channel_mode,
             client._checkpoint_snapshot_frequency,
-            None,
+            get_effective_user_id(),  # autouse fixture binds test-user-autouse
+            None,  # authorization_identity (auth disabled)
         )
 
         config = client._get_runnable_config("t1")

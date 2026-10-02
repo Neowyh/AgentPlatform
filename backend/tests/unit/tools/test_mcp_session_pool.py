@@ -94,7 +94,7 @@ async def test_get_session_creates_new():
 
     assert session is mock_session
     mock_session.initialize.assert_awaited_once()
-    assert ("server", "thread-1") in pool._entries
+    assert ("server", "thread-1", asyncio.get_running_loop()) in pool._entries
 
 
 @pytest.mark.asyncio
@@ -171,20 +171,21 @@ async def test_lru_eviction():
     assert cms[0].closed is True
     assert cms[1].closed is False
     assert cms[2].closed is False
-    assert ("s", "t1") not in pool._entries
-    assert ("s", "t3") in pool._entries
+    assert ("s", "t1", asyncio.get_running_loop()) not in pool._entries
+    assert ("s", "t3", asyncio.get_running_loop()) in pool._entries
 
 
 @pytest.mark.asyncio
-async def test_evicts_session_from_different_loop():
-    """Sessions from a different event loop are evicted and replaced."""
+async def test_closed_foreign_loop_entry_is_never_reused():
+    """Entries are keyed by owning loop: a closed loop's session is not reused."""
     pool = MCPSessionPool()
     old_session = _make_mock_session()
     foreign_loop = asyncio.new_event_loop()
     foreign_loop.close()  # a closed foreign loop must not be reused
 
-    # Manually insert an entry owned by the closed foreign loop.
-    pool._entries[("s1", "sc1")] = (old_session, foreign_loop, MagicMock(), asyncio.Event())
+    # Manually insert an entry owned by the closed foreign loop, under the
+    # foreign loop's own key.
+    pool._entries[("s1", "sc1", foreign_loop)] = (old_session, foreign_loop, MagicMock(), asyncio.Event())
 
     new_session = _make_mock_session()
     new_cm = _make_mock_cm(new_session)
@@ -192,7 +193,10 @@ async def test_evicts_session_from_different_loop():
         result = await pool.get_session("s1", "sc1", {"url": "http://x"})
 
     assert result is new_session
-    assert pool._entries[("s1", "sc1")][0] is new_session
+    # The current loop got its own fresh session; the stale foreign entry
+    # stays put (LRU eviction retires it later).
+    assert pool._entries[("s1", "sc1", asyncio.get_running_loop())][0] is new_session
+    assert pool._entries[("s1", "sc1", foreign_loop)][0] is old_session
     foreign_loop.close()
 
 
@@ -506,7 +510,7 @@ async def test_session_pool_tool_extracts_thread_id():
 
     pool = get_session_pool()
     # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
-    assert ("server", "test-user-autouse:from-config") in pool._entries
+    assert ("server", "test-user-autouse:from-config", asyncio.get_running_loop()) in pool._entries
 
 
 @pytest.mark.asyncio
@@ -540,7 +544,7 @@ async def test_session_pool_tool_default_scope():
 
     pool = get_session_pool()
     # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
-    assert ("server", "test-user-autouse:default") in pool._entries
+    assert ("server", "test-user-autouse:default", asyncio.get_running_loop()) in pool._entries
 
 
 @pytest.mark.asyncio
@@ -579,7 +583,7 @@ async def test_session_pool_tool_get_config_fallback():
 
     pool = get_session_pool()
     # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
-    assert ("server", "test-user-autouse:from-langgraph-config") in pool._entries
+    assert ("server", "test-user-autouse:from-langgraph-config", asyncio.get_running_loop()) in pool._entries
 
 
 def test_session_pool_tool_sync_wrapper_path_is_safe():

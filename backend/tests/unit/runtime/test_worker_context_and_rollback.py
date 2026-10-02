@@ -390,9 +390,10 @@ class TestMultiModeStreamAbort:
         record.ownership_lost = False
         record.abort_event = MagicMock()
         # 1st call: chunk check (continue), 2nd: chunk check (abort → break),
-        # then the goal-continuation while-condition and the final status check
-        # each poll once more; both must see True.
-        record.abort_event.is_set.side_effect = [False, True, True, True]
+        # then the goal-continuation while-condition and the final status
+        # checks poll again; the merged finally block additionally polls is_set
+        # for the extension task-stop outcome, so keep every later poll True.
+        record.abort_event.is_set.side_effect = [False, True, True, True, True, True, True, True]
         record.abort_action = "interrupt"
         record.status = RunStatus.interrupted
 
