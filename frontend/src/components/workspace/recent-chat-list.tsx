@@ -530,6 +530,7 @@ export function RecentChatList() {
         <SidebarMenu>
           {/* Keep pagination at the old list boundary when this switches to virtual rows. */}
           <div
+            data-testid="thread-list"
             className="flex w-full flex-col gap-1"
             style={{ overflowAnchor: "none" }}
           >
