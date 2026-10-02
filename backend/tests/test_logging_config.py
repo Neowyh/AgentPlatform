@@ -234,6 +234,12 @@ def test_url_redaction_filter_covers_urllib3_request_line_through_real_emit() ->
     old_level = root.level
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
+    # Other test processes (e.g. the provisioner fixture importing the
+    # kubernetes client) pin the "urllib3" logger to WARNING; the DEBUG
+    # emits below must not depend on that residue.
+    urllib3_logger = logging.getLogger("urllib3")
+    old_urllib3_level = urllib3_logger.level
+    urllib3_logger.setLevel(logging.DEBUG)
 
     try:
         root.handlers = [handler]
@@ -260,6 +266,7 @@ def test_url_redaction_filter_covers_urllib3_request_line_through_real_emit() ->
     finally:
         root.handlers = old_handlers
         root.setLevel(old_level)
+        urllib3_logger.setLevel(old_urllib3_level)
 
 
 def test_url_redaction_filter_covers_urllib3_retry_lines() -> None:
@@ -410,6 +417,11 @@ def test_url_redaction_filter_covers_urllib3_retry_lines_through_real_emit() -> 
     old_level = root.level
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
+    # Same residue guard as the request-line real-emit test: a prior test in
+    # this worker may have pinned "urllib3" to WARNING.
+    urllib3_logger = logging.getLogger("urllib3")
+    old_urllib3_level = urllib3_logger.level
+    urllib3_logger.setLevel(logging.DEBUG)
 
     try:
         root.handlers = [handler]
@@ -446,6 +458,7 @@ def test_url_redaction_filter_covers_urllib3_retry_lines_through_real_emit() -> 
     finally:
         root.handlers = old_handlers
         root.setLevel(old_level)
+        urllib3_logger.setLevel(old_urllib3_level)
 
 
 def test_configure_logging_installs_url_redaction_on_httpx_logger_and_root_handlers() -> None:
