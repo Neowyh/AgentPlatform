@@ -401,7 +401,7 @@
   （IndexError/TypeError/ValueError）时记告警并回退空文章，不再让整页抓取崩溃。
 - **原因**: 引入提交 `7ae6b5907`（fix(testing): make backend and smoke lanes
   hermetic）——hermetic lane 中纯 Python readability 路径崩溃。
-- **测试**: `backend/tests/unit/tools/test_readability.py::test_extract_article_falls_back_when_readability_js_fails`、
+- **测试**: `backend/tests/test_readability.py::test_extract_article_falls_back_when_readability_js_fails`、
   `::test_extract_article_re_raises_unexpected_exception`。
 - **Owner**: tools 域维护者
 - **移除条件**: 上游 readability 封装提供等价回退并被采纳时。
