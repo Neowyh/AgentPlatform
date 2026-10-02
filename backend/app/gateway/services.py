@@ -237,88 +237,6 @@ def _log_thread_metadata_task_result(task: asyncio.Task, *, thread_id: str) -> N
         )
 
 
-async def _ensure_thread_metadata(
-    run_ctx: RunContext,
-    record: RunRecord,
-    *,
-    owner_user_id: str | None,
-    require_existing_thread: bool = False,
-    metadata: dict[str, Any] | None = None,
-) -> None:
-    """Ensure an admitted run's thread exists without delaying task attachment."""
-    thread_store = run_ctx.thread_store
-    existing = await thread_store.get(record.thread_id)
-    if existing is None and owner_user_id:
-        unscoped = await thread_store.get(record.thread_id, user_id=None)
-        if unscoped is not None:
-            if unscoped.get("user_id") != owner_user_id:
-                await thread_store.update_owner(record.thread_id, owner_user_id, user_id=None)
-            existing = await thread_store.get(record.thread_id)
-    if existing is None:
-        if require_existing_thread:
-            raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
-        from deerflow.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
-
-        run_metadata = record.metadata if metadata is None else metadata
-        metadata = {
-            key: value
-            for key, value in (run_metadata or {}).items()
-            # Strip the run-scoped trace id (existing) and the reserved
-            # membership key: run admission never modifies project membership —
-            # the column is written only by POST /api/threads and
-            # /threads/{id}/move — so the key must not persist either.
-            if key not in (DEERFLOW_TRACE_METADATA_KEY, THREAD_PROJECT_METADATA_KEY)
-        }
-        await thread_store.create(
-            record.thread_id,
-            assistant_id=record.assistant_id,
-            metadata=metadata,
-        )
-        return
-
-
-async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
-    """True when a terminal run has no retained stream on bridges that can tell."""
-    if not _run_is_terminal(record):
-        return False
-    stream_exists = getattr(bridge, "stream_exists", None)
-    if stream_exists is None:
-        return False
-    try:
-        return not bool(await stream_exists(record.run_id))
-    except Exception:
-        logger.debug(
-            "Failed to probe stream existence for terminal run %s",
-            sanitize_log_param(record.run_id),
-            exc_info=True,
-        )
-        return False
-
-
-async def _orphan_recovery_observed_after_heartbeat(
-    record: RunRecord,
-    run_mgr: RunManager,
-) -> bool:
-    """Return whether durable orphan recovery is the consumer's liveness edge.
-
-    A normal terminal status is not sufficient: the producer persists status
-    before publishing its final error/data frames and END. Orphan recovery is
-    different because the producer is known to be gone and the durable
-    ``stop_reason`` is written atomically with the terminal status. Only that
-    explicit signal may synthesize END after a heartbeat.
-    """
-    if getattr(record, "store_only", False) is not True:
-        return False
-    getter = getattr(run_mgr, "get", None)
-    if getter is None:
-        return False
-    refreshed_result = getter(record.run_id, user_id=record.user_id)
-    if not inspect.isawaitable(refreshed_result):
-        return False
-    refreshed = await refreshed_result
-    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
-
-
 # ---------------------------------------------------------------------------
 # Input / config helpers
 # ---------------------------------------------------------------------------
@@ -1728,11 +1646,24 @@ async def _ensure_thread_metadata(
     if existing is None:
         if require_existing_thread:
             raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
+        from deerflow.persistence.thread_meta import THREAD_PROJECT_METADATA_KEY
+
+        run_metadata = record.metadata if metadata is None else metadata
+        metadata = {
+            key: value
+            for key, value in (run_metadata or {}).items()
+            # Strip the run-scoped trace id (existing) and the reserved
+            # membership key: run admission never modifies project membership —
+            # the column is written only by POST /api/threads and
+            # /threads/{id}/move — so the key must not persist either.
+            if key not in (DEERFLOW_TRACE_METADATA_KEY, THREAD_PROJECT_METADATA_KEY)
+        }
         await thread_store.create(
             record.thread_id,
             assistant_id=record.assistant_id,
-            metadata=record.metadata if metadata is None else metadata,
+            metadata=metadata,
         )
+        return
 
 
 async def start_run(
@@ -2104,7 +2035,7 @@ def _resolve_scheduler_recursion_limit() -> int:
                 configured,
                 ceiling,
             )
-        return _clamp_recursion_limit(configured, ceiling)
+        return _clamp_recursion_limit(configured, ceiling, _DEFAULT_RECURSION_LIMIT)
     except Exception:
         logger.warning(
             "failed to load app config; falling back to recursion_limit=%s",
@@ -2285,6 +2216,50 @@ async def sse_consumer(
             return
         yield format_sse("end", None)
         return
+
+    gap_emitted = False
+    try:
+        async for entry in bridge.subscribe(record.run_id, last_event_id=last_event_id):
+            if await request.is_disconnected():
+                break
+
+            if isinstance(entry, StreamGap):
+                gap_emitted = True
+                yield format_sse(
+                    "gap",
+                    {
+                        "code": "stream_replay_gap",
+                        "run_id": record.run_id,
+                        "requested_event_id": entry.requested_event_id,
+                        "earliest_available_event_id": entry.earliest_available_event_id,
+                        "latest_available_event_id": entry.latest_available_event_id,
+                        "recovery": "reload_durable_state",
+                    },
+                )
+                return
+
+            if entry is HEARTBEAT_SENTINEL:
+                if await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
+                    yield format_sse("end", None)
+                    return
+                yield ": heartbeat\n\n"
+                continue
+
+            if entry is END_SENTINEL:
+                yield format_sse("end", None, event_id=entry.id or None)
+                return
+
+            yield format_sse(entry.event, entry.data, event_id=entry.id or None)
+
+    finally:
+        # store_only records are cross-worker observation handles. An explicit
+        # cancel-then-stream action has already persisted its request before
+        # subscribing; a plain join disconnect must not invent a new
+        # cancellation request. Only apply on_disconnect to locally-owned runs,
+        # and only on the creator's own stream — never on an observer join.
+        if apply_on_disconnect and not gap_emitted and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
+            if record.on_disconnect == DisconnectMode.cancel:
+                await run_mgr.cancel(record.run_id)
 
 
 async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
