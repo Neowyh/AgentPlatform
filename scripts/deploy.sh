@@ -315,37 +315,62 @@ if [ "$sandbox_mode" = "provisioner" ]; then
     services="$services provisioner"
 fi
 
-# ── IDEER_DOCKER_SOCKET ───────────────────────────────────────────────────
-
-# Resolve the socket the way Compose --env-file would interpolate it (shell
-# environment wins, then .env); the file is never sourced by the shell.
-docker_socket="$IDEER_DOCKER_SOCKET"
+# ── Docker socket (DooD) ─────────────────────────────────────────────────
+# DEER_FLOW_DOCKER_SOCKET is the upstream variable and what the opt-in
+# docker-compose.dood.yaml overlay interpolates; IDEER_DOCKER_SOCKET is the
+# variable the default compose file interpolates. Resolve the socket the way
+# Compose --env-file would interpolate it (shell environment wins, then
+# .env); the file is never sourced by the shell.
+docker_socket="$DEER_FLOW_DOCKER_SOCKET"
+if [ -z "$docker_socket" ]; then
+    docker_socket="$IDEER_DOCKER_SOCKET"
+fi
 if [ -z "$docker_socket" ] && [ -f "$REPO_ROOT/.env" ]; then
-    docker_socket="$(sed -n 's/^[[:space:]]*IDEER_DOCKER_SOCKET[[:space:]]*=[[:space:]]*//p' "$REPO_ROOT/.env" | head -n 1)"
+    docker_socket="$(sed -n 's/^[[:space:]]*DEER_FLOW_DOCKER_SOCKET[[:space:]]*=[[:space:]]*//p' "$REPO_ROOT/.env" | head -n 1)"
+    if [ -z "$docker_socket" ]; then
+        docker_socket="$(sed -n 's/^[[:space:]]*IDEER_DOCKER_SOCKET[[:space:]]*=[[:space:]]*//p' "$REPO_ROOT/.env" | head -n 1)"
+    fi
     docker_socket="${docker_socket%$'\r'}"
     docker_socket="${docker_socket%\"}"
     docker_socket="${docker_socket#\"}"
     docker_socket="${docker_socket%\'}"
     docker_socket="${docker_socket#\'}"
 fi
+docker_socket="${docker_socket:-/var/run/docker.sock}"
 if [ -z "$IDEER_DOCKER_SOCKET" ]; then
-    export IDEER_DOCKER_SOCKET="${docker_socket:-/var/run/docker.sock}"
+    export IDEER_DOCKER_SOCKET="$docker_socket"
 fi
 
+# Only non-local sandbox modes need the host Docker socket. Mounting the
+# socket = root-equivalent host control; see SECURITY.md.
 if [ "$sandbox_mode" != "local" ]; then
-    if [ ! -S "$IDEER_DOCKER_SOCKET" ]; then
+    if [ ! -S "$docker_socket" ]; then
         # On Windows (Git Bash / MSYS), Docker Desktop mounts the default
         # /var/run/docker.sock into containers even though no host socket
         # file exists.
-        if [ "$IDEER_DOCKER_SOCKET" = "/var/run/docker.sock" ] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && docker info >/dev/null 2>&1; then
+        if [ "$docker_socket" = "/var/run/docker.sock" ] && [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && docker info >/dev/null 2>&1; then
             :
         else
-            echo -e "${RED}⚠ Docker socket not found at $IDEER_DOCKER_SOCKET${NC}"
+            echo -e "${RED}⚠ Docker socket not found at $docker_socket${NC}"
             echo "  AioSandboxProvider (DooD) will not work."
             exit 1
         fi
     fi
-    echo -e "${GREEN}✓ Docker socket: $IDEER_DOCKER_SOCKET${NC}"
+    if [ "$sandbox_mode" = "aio" ]; then
+        # On Windows (Git Bash / MSYS), exporting /var/run/docker.sock causes
+        # MSYS to convert it to C:\Program Files\Git\var\run\docker.sock when
+        # invoking native docker compose, triggering mkdir errors. Unsetting
+        # the default allows Compose to evaluate its own default literal
+        # fallback (${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}).
+        if [[ "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]] && [ "$DEER_FLOW_DOCKER_SOCKET" = "/var/run/docker.sock" ]; then
+            unset DEER_FLOW_DOCKER_SOCKET
+        fi
+        echo -e "${GREEN}✓ Docker socket: $docker_socket${NC}"
+        echo -e "${YELLOW}  Mounting host Docker socket into gateway (DooD = host root-equivalent). See SECURITY.md.${NC}"
+        COMPOSE_CMD+=(-f "$DOCKER_DIR/docker-compose.dood.yaml")
+    else
+        echo -e "${GREEN}✓ Docker socket: $docker_socket${NC}"
+    fi
 fi
 
 echo ""
