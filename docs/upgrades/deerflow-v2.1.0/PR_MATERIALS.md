@@ -34,13 +34,23 @@
 | 检查 | 结果 |
 | --- | --- |
 | `import deerflow` + `create_app()`（236 路由） | ✅ |
-| focused suites（authz/PAT 222、threads 167、journal 119、subagents 150、bootstrap 34、migrations 3、frozen inputs、extension contracts） | ✅ |
+| 后端全量（非 serial，排除 blocking_io/llm/live/external） | ✅ 29386 passed / 237 skipped / 0 failed（2103s） |
+| focused suites（authz/PAT 222、threads 167、journal 119、subagents 150、bootstrap 34、migrations、skills 607、extension contracts） | ✅ |
 | `check-frontend-entry-parity.sh` 四层 | ✅ PASSED |
-| `npx tsc --noEmit` | ✅ 0 错误 |
-| `scripts/run-test-lane.sh pr-standard` | ⏳ 票 11 |
+| frontend vitest + `pnpm check` | ✅ 1281/1282（唯一失败 `input-box-project-attachment` 为合并前预存在、bisect 判依赖漂移，登记 develop 跟进）；check exit 0 |
+| `scripts/run-test-lane.sh pr-standard` | ✅ exit 0（local-runtime 11s / backend-standard 1030s / frontend-standard 458s / frontend-smoke 63s；收敛期 6 处顺序依赖问题逐根因修复，见 DoD Tests 节） |
 | `scripts/run-test-lane.sh core-full` | ⏳ 票 11 |
-| 技能包边界加载 | ⏳ 票 11 |
-| 内网 bundle 重建 + `check-intranet.sh` + 容器冒烟 | ⏳ 票 11（沙箱无 docker 则如实 incomplete） |
+| 技能包边界加载 | ✅ 607 测试绿 + bundled-skills.txt 59/59 在 resources/skills + skills-lock 一致 |
+| 内网 bundle 重建 + `check-intranet.sh` + 容器冒烟 | ⏳ 票 11（Docker 29.8.0 可用） |
+
+## 本轮收敛修复（合并丢失/对齐类，票 11 评审产出）
+
+- `1f18d4170` sse_consumer 订阅循环恢复（合并去重误删）+ services 去重
+- `a868441a6` agent store 引导缝（#5324 display_name 保留）
+- `b0b12ba4c` MCP 任务快照关停清理；`277b28343` 上传虚拟路径 skip 包络
+- `76c049e6b` 迁移真实链头探测；`7298b85c8` DooD socket 上游优先
+- `27e571842` skill-creator quick_validate 回补；`c18d47b59` 51 件测试对齐
+- `30c70ccbf` 虚拟化侧栏列表恢复 thread-list testid（P6）；`4a054ef1b` smoke 对齐合并后模型选择器；`5d1aad7d3` logging real-emit 测试 urllib3 级别隔离
 
 ## High-risk lane 选择（CI 注记）
 

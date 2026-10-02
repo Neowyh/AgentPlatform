@@ -110,14 +110,14 @@ Makefile 目标并集；AGENTS.md 家族保本地重写+回填上游事实句（
 
 | 片 | 票 | 状态 |
 | --- | --- | --- |
-| A（6 冲突 + 16 暗冲突） | 03/04 | open |
-| B（9 + §3 gateway/channels 暗冲突） | 05 | open |
-| C（13，含 D2 修复） | 06 | open |
-| D（3） | 07 | open |
-| E（40，含 D3/D4 与 §3 frontend 暗冲突） | 08 | open |
-| F（12） | 09 | open |
-| 回流修复（§4） | 并入对应片 | open |
+| A（6 冲突 + 16 暗冲突） | 03/04 | closed 2026-10-02：12 文件语义合并；P005/027/028 退役条件不满足（上游 run_evidence 只读投影）；`import deerflow` + 12/12 py_compile；后端全量 29386✓ 覆盖 |
+| B（9 + §3 gateway/channels 暗冲突） | 05 | closed 2026-10-02：services 6 hunk + sse_consumer 循环恢复 + 三上游语义移植（conversation_references/project_context/idempotency-reuse）；authz 并集（THREADS*/RUNS* ∪ ASSISTANTS/MODELS/PROJECTS）；PAT 交集语义；222+130 focused 绿 |
+| C（13，含 D2 修复） | 06 | closed 2026-10-02：`20261001_rejoin_upstream_line`（down=20260918×0025）单 head；119/34/3/150 focused 绿；迁移套件（TestUnifiedMigrationChain、0022/0023/0025、chain_adoption）全量绿；真实链头探测修复 76c049e6b |
+| D（3） | 07 | closed 2026-10-02：D1 落地（known-revisions 经 version_locations 71 修订两树）；D2 实测修正；回流两项证伪（aio_sandbox 2/5、local_sandbox 1/5 缩进伪影）；P011 不可退役 |
+| E（40，含 D3/D4 与 §3 frontend 暗冲突） | 08 | closed 2026-10-02：40 件按台账裁决；i18n 键并集；api-client/message-merge 框架拆分（vitest 本地 + rstest 上游）；star-counter/github-stars 等按 D3/D4 撤销；skills router 挂载；entry-parity 四层 PASSED；vitest 1281/1282（唯一失败为合并前预存在） |
+| F（12） | 09 | closed 2026-10-02：24 件全解（CI 保本地收窄、Makefile 并集、deploy.sh socket/Windows、nginx timeout 语义并入、docs 端点核对） |
+| 回流修复（§4） | 并入对应片 | closed 2026-10-02（含 ⚠️）：确证 4 项——test_artifact_archive.py 为上游移位（ARCHIVE_URL POST 断言保留于 backend/tests/ 根）、nginx.local.conf 超时/websocket 块为票 09 有意并入、settings/local.ts 为 ideer.* 键替换 + 上游 safeLocalStorage 门面（0f632ade4）、aio_sandbox 2/5 证伪；疑似 8 项中 local_sandbox 1/5 证伪，其余 6 项随片 A-F 处置吸收未单独留痕（全量绿背书） |
 
 ## Closure record
 
-所有行保持 open，直至每行指名 focused test 或报告后关闭（沿用 0f7d8709 轮纪律）。
+2026-10-02 关闭：各片以票 03-09 status 行 + 后端全量（29386 passed / 237 skipped / 0 failed，候选 `1f18d4170..c18d47b59` 同内容）+ 前端 vitest/pnpm check + entry-parity 四层为证据；标准/交付级 lane 结果由票 11 记录于 DoD_CHECKLIST（不影响片处置关闭）。
