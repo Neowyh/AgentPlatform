@@ -174,7 +174,16 @@ def test_cleanup_cancels_inflight_owners_on_both_loops(loop_pool, monkeypatch, o
     assert not pool._inflight and not pool._entries
 
 
-def test_parallel_sync_wrappers_complete_real_stdio_calls(tmp_path):
+def test_parallel_sync_wrappers_complete_real_stdio_calls(tmp_path, monkeypatch):
+    # The test-suite-wide uvloop policy races when two event loops in
+    # different threads spawn subprocesses at the same time ("Racing with
+    # another loop to spawn a process") — a uvloop limitation orthogonal to
+    # the sync-wrapper loop-isolation contract under test. Run the wrappers
+    # on the stdlib loop, which spawns subprocesses thread-safely.
+    monkeypatch.setattr(
+        "asyncio.events.get_event_loop_policy",
+        lambda: asyncio.DefaultEventLoopPolicy(),
+    )
     server = tmp_path / "echo_server.py"
     server.write_text(
         'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("echo")\n@mcp.tool()\ndef echo(text: str) -> str:\n    return text\nmcp.run(transport="stdio")\n',
