@@ -777,6 +777,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await knowledge_worker.stop()
         app.state.knowledge_worker_available = False
 
+        # Upstream v2.1.0: the frozen MCP task-server snapshot is owned by one
+        # Gateway process lifetime. Clearing it here keeps tool discovery and
+        # background calls from validating against a stale process's config
+        # after a hot restart inside the same interpreter.
+        from deerflow.mcp.tasks.runtime import set_mcp_task_config_snapshot
+
+        set_mcp_task_config_snapshot(None)
+
     logger.info("Shutting down API Gateway")
 
 
