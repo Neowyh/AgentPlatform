@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import stat
 import tempfile
 import zipfile
@@ -217,12 +218,17 @@ def test_skillscan_scans_eval_fixture_files_other_than_skill_markdown(tmp_path, 
 
 
 def _is_case_insensitive_directory(path: Path) -> bool:
-    probe = path / "CaseProbe"
+    # This runs at collection time in every xdist worker; a fixed probe name
+    # lets one worker delete another's probe mid-check, so key the probe by
+    # pid and tolerate a lost cleanup race.
+    probe = path / f"CaseProbe{os.getpid()}"
+    folded = path / f"caseprobe{os.getpid()}"
     probe.touch()
     try:
-        return (path / "caseprobe").exists()
+        return folded.exists()
     finally:
-        probe.unlink()
+        probe.unlink(missing_ok=True)
+        folded.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize(
