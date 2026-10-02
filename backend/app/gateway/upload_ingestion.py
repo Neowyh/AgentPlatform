@@ -211,6 +211,11 @@ class ThreadUploadIngestionService:
                     break
                 except FileExistsError:
                     safe_filename = uploads.claim_unique_filename(safe_filename, self._seen_filenames)
+            # The virtual path derives from the (now-validated) safe name, but
+            # it is computed inside the same unsafe-path envelope as the rest
+            # of the per-file pipeline so a failure here still records the
+            # file as skipped instead of failing the whole request.
+            virtual_path = uploads.upload_virtual_path(safe_filename)
             upload_temp = None
         except uploads.UnsafeUploadPathError as exc:
             if upload_temp is not None:
@@ -222,7 +227,6 @@ class ThreadUploadIngestionService:
             raise
 
         self._written_paths.append(file_path)
-        virtual_path = uploads.upload_virtual_path(safe_filename)
         if self._sync_to_sandbox:
             self._sync_targets.append((file_path, virtual_path))
 
