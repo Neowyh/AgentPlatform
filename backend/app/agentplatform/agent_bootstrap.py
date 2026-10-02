@@ -20,10 +20,9 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import shutil
 from pathlib import Path
+from typing import Any
 
-import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
@@ -41,23 +40,32 @@ _BUILTINS_MODULE_NAME = "deerflow.tools.builtins"
 _installed = False
 
 
-def _write_user_agent_files(*, user_id: str, agent_name: str, description: str, soul: str) -> None:
-    """Keep the per-user file projection in sync with catalog publication."""
-    from deerflow.config.agents_config import get_paths
+def _write_user_agent_files(*, user_id: str, agent_name: str, description: str, soul: str, skills: list[str] | None = None) -> None:
+    """Upsert the agent record when the catalog seam is unavailable.
 
-    target = get_paths().user_agent_dir(user_id, agent_name)
-    created = not target.exists()
+    Standalone tool graphs (and first boot before persistence startup) still
+    need a durable, user-scoped result, so this fallback goes through the
+    configured agent store (file or db — the same patchable seam the stock
+    tool exposes) instead of writing the file projection directly. That keeps
+    the store's upsert contract intact, including the upstream #5324
+    semantic: re-bootstrap preserves the owner's authored display label while
+    the soul / description / skills arguments win.
+    """
+    tool_module = importlib.import_module(_TOOL_MODULE_NAME)
+    store = tool_module.get_agent_store()
+    config: dict[str, Any] = {"name": agent_name}
     try:
-        target.mkdir(parents=True, exist_ok=True)
-        config: dict[str, str] = {"name": agent_name}
-        if description:
-            config["description"] = description
-        (target / "config.yaml").write_text(yaml.dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
-        (target / "SOUL.md").write_text(soul, encoding="utf-8")
-    except BaseException:
-        if created:
-            shutil.rmtree(target, ignore_errors=True)
-        raise
+        existing = store.get(agent_name, user_id=user_id)
+    except FileNotFoundError:
+        pass  # First bootstrap has no user-authored label to preserve.
+    else:
+        if existing.display_name is not None:
+            config["display_name"] = existing.display_name
+    if description:
+        config["description"] = description
+    if skills is not None:
+        config["skills"] = skills
+    store.update(agent_name, config, soul, user_id=user_id)
 
 
 def _create_canonical_agent(
@@ -87,7 +95,7 @@ def _create_canonical_agent(
     if session_factory is None:
         # Standalone tool graphs (and first boot before persistence startup)
         # still need a durable, user-scoped file result.
-        _write_user_agent_files(user_id=user_id, agent_name=agent_name, description=description, soul=soul)
+        _write_user_agent_files(user_id=user_id, agent_name=agent_name, description=description, soul=soul, skills=skills)
         return agent_name
 
     async def _create() -> str:
