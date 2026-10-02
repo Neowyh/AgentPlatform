@@ -246,7 +246,13 @@ describe("InputBox staged project attachments", () => {
     stageProjectAttachment("thread-1", ATTACHMENT);
     const onSubmit: SubmitSpy = rs.fn(
       (_message: unknown, options?: InputBoxSubmitOptions) => {
+        // The composer clears one-time send state (staged project
+        // attachments, quotes, references) in the onSendCompleted
+        // completion callback, not in onSent — the draft-preservation
+        // restructure moved the cleanup site. Simulate the full
+        // lifecycle: send accepted, then completed.
         options?.onSent?.();
+        options?.onSendCompleted?.();
       },
     );
     const { container } = renderComposer({ onSubmit });
@@ -255,8 +261,8 @@ describe("InputBox staged project attachments", () => {
     fireEvent.click(getSubmitButton(container));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
 
-    // onSent cleared the staged attachments; a second empty submit is a
-    // no-op again.
+    // onSendCompleted cleared the staged attachments; a second empty
+    // submit is a no-op again.
     await waitFor(() =>
       expect(screen.queryByTestId("project-attachment-chip")).toBeNull(),
     );
