@@ -207,10 +207,13 @@ function MCPServerList({
         </Button>
       </div>
 
-      {entries.length === 0 && !children ? (
-        <div className="text-muted-foreground type-body">
-          {query ? t.capabilities.noResults : t.settings.tools.empty}
-        </div>
+      {entries.length === 0 ? (
+        <>
+          <div className="text-muted-foreground type-body">
+            {query ? t.capabilities.noResults : t.settings.tools.empty}
+          </div>
+          {children}
+        </>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {children}

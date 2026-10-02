@@ -19,6 +19,13 @@ const channelProvidersState = vi.hoisted(() => ({
   isLoading: false,
   error: null as unknown,
 }));
+
+const larkIntegrationState = vi.hoisted(() => ({
+  data: null as unknown,
+  isLoading: false,
+  error: null as unknown,
+  usable: false,
+}));
 vi.mock("@/core/channels/hooks", () => ({
   useChannelProviders: () => ({
     enabled: channelProvidersState.enabled,
@@ -26,6 +33,15 @@ vi.mock("@/core/channels/hooks", () => ({
     isLoading: channelProvidersState.isLoading,
     error: channelProvidersState.error,
   }),
+}));
+
+vi.mock("@/core/integrations/lark", () => ({
+  useLarkIntegrationStatus: () => ({
+    data: larkIntegrationState.data,
+    isLoading: larkIntegrationState.isLoading,
+    error: larkIntegrationState.error,
+  }),
+  isLarkIntegrationUsable: () => larkIntegrationState.usable,
 }));
 
 function usableChannelProvider() {
@@ -130,8 +146,11 @@ const mockT = {
       appearance: "Appearance",
       notification: "Notifications",
       channels: "Channels",
+      integrations: "Integrations",
       memory: "Memory",
       subagents: "Subagents",
+      skills: "Skills",
+      tools: "Tools",
       about: "About",
     },
   },
@@ -191,22 +210,23 @@ describe("SettingsDialog", () => {
 
   // ── Navigation tabs ──────────────────────────────────────────────────────
 
-  test("renders the merged seven settings sections", () => {
+  test("renders the merged settings sections", () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
-    // 合并形态为七分区；上游新增 subagents，已删的
-    // integrations/tools/skills 分区不再作为对话框 tab 渲染。
+    // 合并形态为本地分区 ∪ 上游 subagents。skills/tools 保留为对话框 tab
+    //（点击后按 D4 决议重定向能力中心），integrations 仍受可用性探测门控
+    //（默认 mock 不可用 → 不渲染）。
     expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-notification")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-memory")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-channels")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-subagents")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-skills")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-tools")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
     expect(
       screen.queryByTestId("settings-tab-integrations"),
     ).not.toBeInTheDocument();
-    expect(screen.queryByTestId("settings-tab-tools")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("settings-tab-skills")).not.toBeInTheDocument();
   });
 
   test("renders merged tab labels", () => {
@@ -217,6 +237,8 @@ describe("SettingsDialog", () => {
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.getByText("Channels")).toBeInTheDocument();
     expect(screen.getByText("Subagents")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Tools")).toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
   });
 

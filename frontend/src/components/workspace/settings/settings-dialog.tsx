@@ -6,8 +6,11 @@ import {
   InfoIcon,
   BrainIcon,
   PaletteIcon,
+  PlugZapIcon,
+  SparklesIcon,
   UsersRoundIcon,
   UserIcon,
+  WrenchIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -23,12 +26,17 @@ import { AboutSettingsPage } from "@/components/workspace/settings/about-setting
 import { AccountSettingsPage } from "@/components/workspace/settings/account-settings-page";
 import { AppearanceSettingsPage } from "@/components/workspace/settings/appearance-settings-page";
 import { ChannelsSettingsPage } from "@/components/workspace/settings/channels-settings-page";
+import { IntegrationsSettingsPage } from "@/components/workspace/settings/integrations-settings-page";
 import { MemorySettingsPage } from "@/components/workspace/settings/memory-settings-page";
 import { NotificationSettingsPage } from "@/components/workspace/settings/notification-settings-page";
 import { SubagentSettingsPage } from "@/components/workspace/settings/subagent-settings-page";
 import { useChannelProviders } from "@/core/channels/hooks";
 import { hasUsableChannelProvider } from "@/core/channels/provider-state";
 import { useI18n } from "@/core/i18n/hooks";
+import {
+  isLarkIntegrationUsable,
+  useLarkIntegrationStatus,
+} from "@/core/integrations/lark";
 import { cn } from "@/lib/utils";
 
 import { legacySettingsDestination } from "./legacy-settings-destination";
@@ -37,9 +45,12 @@ export type SettingsSection =
   | "account"
   | "appearance"
   | "channels"
+  | "integrations"
   | "memory"
   | "notification"
   | "subagents"
+  | "skills"
+  | "tools"
   | "about";
 
 type SettingsDialogProps = Omit<
@@ -74,6 +85,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
     !channelsError &&
     channelsEnabled &&
     hasUsableChannelProvider(providers);
+  const {
+    data: larkStatus,
+    isLoading: larkLoading,
+    error: larkError,
+  } = useLarkIntegrationStatus();
+  const integrationsAvailable =
+    !larkLoading && !larkError && isLarkIntegrationUsable(larkStatus);
 
   // One availability map serves both the nav list and the fallback below, so
   // a section can never be listed while its page is unreachable.
@@ -81,8 +99,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
     useMemo(
       () => ({
         channels: channelsAvailable,
+        integrations: integrationsAvailable,
       }),
-      [channelsAvailable],
+      [channelsAvailable, integrationsAvailable],
     );
 
   // A deep link (or stale trigger) onto a capability section that the
@@ -128,6 +147,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
         icon: CableIcon,
       },
       {
+        id: "integrations",
+        label: t.settings.sections.integrations,
+        icon: PlugZapIcon,
+      },
+      {
         id: "memory",
         label: t.settings.sections.memory,
         icon: BrainIcon,
@@ -137,15 +161,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
         label: t.settings.sections.subagents,
         icon: UsersRoundIcon,
       },
+      { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
+      { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
       { id: "about", label: t.settings.sections.about, icon: InfoIcon },
     ],
     [
       t.settings.sections.account,
       t.settings.sections.appearance,
       t.settings.sections.channels,
+      t.settings.sections.integrations,
       t.settings.sections.memory,
       t.settings.sections.subagents,
       t.settings.sections.notification,
+      t.settings.sections.skills,
+      t.settings.sections.tools,
       t.settings.sections.about,
     ],
   );
@@ -215,6 +244,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 <NotificationSettingsPage />
               )}
               {effectiveSection === "channels" && <ChannelsSettingsPage />}
+              {effectiveSection === "integrations" && (
+                <IntegrationsSettingsPage />
+              )}
               {effectiveSection === "about" && <AboutSettingsPage />}
             </div>
           </ScrollArea>
