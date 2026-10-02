@@ -60,7 +60,7 @@ export function pathOfThread(
       : agentNameOfThread(thread);
 
   return agentName
-    ? `/workspace/capabilities/experts/${encodeURIComponent(agentName)}/chats/${encodedThreadId}`
+    ? `/workspace/agents/${encodeURIComponent(agentName)}/chats/${encodedThreadId}`
     : `/workspace/chats/${encodedThreadId}`;
 }
 

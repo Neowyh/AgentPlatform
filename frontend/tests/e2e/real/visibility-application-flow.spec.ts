@@ -22,9 +22,7 @@ async function submitApplication(
   reason: string,
   targetVisibility: "department" | "public" = "department",
 ) {
-  await page.goto(
-    `/workspace/capabilities/experts/${encodeURIComponent(agentName)}`,
-  );
+  await page.goto(`/workspace/agents/${encodeURIComponent(agentName)}`);
   await page
     .getByRole("button", {
       name: /change.*visibility|apply.*visibility|更改可见性|申请.*可见性/i,

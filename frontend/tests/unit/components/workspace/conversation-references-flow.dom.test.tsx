@@ -109,7 +109,7 @@ describe("conversation reference picker-to-transcript flow", () => {
     expect(chip.getAttribute("href")).toBe(
       // Local path scheme: agent threads route through the capabilities
       // experts tab (upstream "/workspace/agents/..." redirects there).
-      "/workspace/capabilities/experts/writer/chats/source-1",
+      "/workspace/agents/writer/chats/source-1",
     );
   });
 

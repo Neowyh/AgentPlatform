@@ -135,7 +135,7 @@ export function WorkspaceChannelsList() {
                   provider={provider.provider}
                   className="size-5 shrink-0"
                 />
-                <span className="min-w-0 flex-1 truncate type-supporting font-medium">
+                <span className="type-supporting min-w-0 flex-1 truncate font-medium">
                   {provider.display_name}
                 </span>
                 <Button
@@ -143,7 +143,7 @@ export function WorkspaceChannelsList() {
                   size="sm"
                   variant={isConnected ? "outline" : "secondary"}
                   className={cn(
-                    "h-8 w-24 px-2 type-compact",
+                    "type-compact h-8 w-24 px-2",
                     isConnected && "gap-1",
                   )}
                   disabled={isPending}

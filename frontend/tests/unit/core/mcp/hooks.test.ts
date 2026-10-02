@@ -99,9 +99,8 @@ describe("useMCPConfig", () => {
   });
 
   test("returns undefined config on error", async () => {
-    const { loadMCPConfig, MCPConfigRequestError } = await import(
-      "@/core/mcp/api"
-    );
+    const { loadMCPConfig, MCPConfigRequestError } =
+      await import("@/core/mcp/api");
     // A typed MCPConfigRequestError skips the query's retry policy so the
     // error settles immediately.
     vi.mocked(loadMCPConfig).mockRejectedValue(
@@ -137,16 +136,12 @@ describe("useEnableMCPServer", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(updateMCPServerState).toHaveBeenCalledWith(
-      "another-server",
-      true,
-    );
+    expect(updateMCPServerState).toHaveBeenCalledWith("another-server", true);
   });
 
   test("surfaces an error when the state update fails", async () => {
-    const { updateMCPServerState, MCPConfigRequestError } = await import(
-      "@/core/mcp/api"
-    );
+    const { updateMCPServerState, MCPConfigRequestError } =
+      await import("@/core/mcp/api");
     vi.mocked(updateMCPServerState).mockRejectedValue(
       new MCPConfigRequestError(500, "Failed to update server state"),
     );
@@ -242,9 +237,8 @@ describe("MCP config mutations", () => {
   });
 
   test("surfaces an error when the mutation fails", async () => {
-    const { deleteMCPServer, MCPConfigRequestError } = await import(
-      "@/core/mcp/api"
-    );
+    const { deleteMCPServer, MCPConfigRequestError } =
+      await import("@/core/mcp/api");
     vi.mocked(deleteMCPServer).mockRejectedValue(
       new MCPConfigRequestError(500, "Failed to delete server"),
     );

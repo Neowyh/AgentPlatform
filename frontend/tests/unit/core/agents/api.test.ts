@@ -132,9 +132,7 @@ describe("listAgents", () => {
 
     const result = await listAgents();
     expect(result).toHaveLength(201);
-    expect(result.at(-1)).toEqual(
-      expect.objectContaining({ name: "second" }),
-    );
+    expect(result.at(-1)).toEqual(expect.objectContaining({ name: "second" }));
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
       "http://localhost:8000/api/resources?type=agent&limit=200&offset=200",

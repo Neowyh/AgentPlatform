@@ -161,7 +161,7 @@ export const ContextContentHeader = ({
     <div className={cn("w-full space-y-2 p-3", className)} {...props}>
       {children ?? (
         <>
-          <div className="flex items-center justify-between gap-3 type-compact">
+          <div className="type-compact flex items-center justify-between gap-3">
             <p>{displayPct}</p>
             <p className="text-muted-foreground font-mono">
               {used} / {total}
@@ -213,7 +213,7 @@ export const ContextContentFooter = ({
   return (
     <div
       className={cn(
-        "bg-secondary flex w-full items-center justify-between gap-3 p-3 type-compact",
+        "bg-secondary type-compact flex w-full items-center justify-between gap-3 p-3",
         className,
       )}
       {...props}
@@ -259,7 +259,10 @@ export const ContextInputUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between type-compact", className)}
+      className={cn(
+        "type-compact flex items-center justify-between",
+        className,
+      )}
       {...props}
     >
       <span className="text-muted-foreground">Input</span>
@@ -299,7 +302,10 @@ export const ContextOutputUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between type-compact", className)}
+      className={cn(
+        "type-compact flex items-center justify-between",
+        className,
+      )}
       {...props}
     >
       <span className="text-muted-foreground">Output</span>
@@ -339,7 +345,10 @@ export const ContextReasoningUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between type-compact", className)}
+      className={cn(
+        "type-compact flex items-center justify-between",
+        className,
+      )}
       {...props}
     >
       <span className="text-muted-foreground">Reasoning</span>
@@ -379,7 +388,10 @@ export const ContextCacheUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between type-compact", className)}
+      className={cn(
+        "type-compact flex items-center justify-between",
+        className,
+      )}
       {...props}
     >
       <span className="text-muted-foreground">Cache</span>

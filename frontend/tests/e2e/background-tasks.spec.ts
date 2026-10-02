@@ -251,9 +251,7 @@ test("shows, refreshes, and cancels current-chat background tasks", async ({
     .click();
   await expect(page.getByText("Remote cancellation timed out")).toBeVisible();
   await expect(
-    page.getByText(
-      "Cancellation attempt 4 failed; iDeer will keep retrying.",
-    ),
+    page.getByText("Cancellation attempt 4 failed; iDeer will keep retrying."),
   ).toBeVisible();
 
   await expect.poll(() => getCalls, { timeout: 5_000 }).toBeGreaterThan(1);

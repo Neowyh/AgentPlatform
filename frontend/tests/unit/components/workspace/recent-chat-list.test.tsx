@@ -317,12 +317,12 @@ vi.mock("@/core/threads/utils", () => ({
     if (typeof thread === "string") {
       const agentName = ctx?.agent_name;
       return agentName
-        ? `/workspace/capabilities/experts/${agentName}/chats/${thread}`
+        ? `/workspace/agents/${agentName}/chats/${thread}`
         : `/workspace/chats/${thread}`;
     }
     const agentName = thread.context?.agent_name;
     return agentName
-      ? `/workspace/capabilities/experts/${agentName}/chats/${thread.thread_id}`
+      ? `/workspace/agents/${agentName}/chats/${thread.thread_id}`
       : `/workspace/chats/${thread.thread_id}`;
   },
   isThreadPinned: () => false,
@@ -816,7 +816,7 @@ describe("RecentChatList", () => {
   test("uses agent_name in path when deleting and navigating to 'new'", async () => {
     const user = userEvent.setup();
     mockThreads = [{ thread_id: "t1", values: { title: "Chat" } }];
-    mockPathname = "/workspace/capabilities/experts/my-agent/chats/t1";
+    mockPathname = "/workspace/agents/my-agent/chats/t1";
     mockParams = { thread_id: "t1", agent_name: "my-agent" };
     renderList();
 
@@ -825,7 +825,7 @@ describe("RecentChatList", () => {
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(mockReplace).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/my-agent/chats/new",
+      "/workspace/agents/my-agent/chats/new",
     );
   });
 

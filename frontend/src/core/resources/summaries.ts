@@ -1,6 +1,6 @@
 /** Short, task-oriented copy for the bundled capability catalog. */
 export const RESOURCE_SUMMARIES: Record<string, string> = {
-  // Experts
+  // Agents
   abaqus: "从建模、材料、网格到结果导出，协助完成可追溯的 Abaqus 仿真任务。",
   "code-dev": "把需求拆成可执行的开发任务，协助编码、调试、评审、测试和交付。",
   "creative-play":

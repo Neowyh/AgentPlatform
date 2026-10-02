@@ -32,7 +32,7 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       sidebar: {
         chats: "Chats",
-        capabilities: "Experts · Skills · Connectors",
+        capabilities: "Agents · Skills · Connectors",
         library: "Library",
         scheduledTasks: "Scheduled tasks",
         workflows: "Workflows",
@@ -131,11 +131,11 @@ describe("WorkspaceNavChatList", () => {
     ]);
   });
 
-  test("does not render a second expert management entry next to the capability center", () => {
+  test("does not render a second agent management entry next to the capability center", () => {
     render(<WorkspaceNavChatList />);
-    // The merged DeerFlow Agents management must not appear as its own
-    // sidebar entry alongside the original Experts·Skills·Connectors page.
-    expect(screen.queryByText("Agents")).not.toBeInTheDocument();
+    // The capability-center link is the single agent management entry;
+    // ADR-0007 vocabulary shows Agents in the label, and no duplicate
+    // standalone Experts/Agents entry may appear next to it.
     expect(screen.queryByText("Experts")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Experts · Skills · Connectors"),
@@ -146,7 +146,7 @@ describe("WorkspaceNavChatList", () => {
     render(<WorkspaceNavChatList />);
     expect(renderedHrefs()).toEqual([
       "/workspace/chats",
-      "/workspace/capabilities/experts",
+      "/workspace/capabilities/agents",
       "/workspace/workflows",
       "/workspace/library",
       "/workspace/scheduled-tasks",
@@ -163,7 +163,8 @@ describe("WorkspaceNavChatList", () => {
 
   test("marks Capabilities active across its routes", () => {
     for (const path of [
-      "/workspace/capabilities/experts",
+      "/workspace/capabilities/agents",
+      "/workspace/agents/test-agent",
       "/workspace/resources",
     ]) {
       mockPathname = path;

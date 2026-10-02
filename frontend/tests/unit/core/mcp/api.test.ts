@@ -66,9 +66,8 @@ describe("mcp api", () => {
         }),
       );
 
-      const { loadMCPConfig, MCPConfigRequestError } = await import(
-        "@/core/mcp/api"
-      );
+      const { loadMCPConfig, MCPConfigRequestError } =
+        await import("@/core/mcp/api");
       const error = await loadMCPConfig().then(
         () => null,
         (e: unknown) => e,
@@ -111,9 +110,8 @@ describe("mcp api", () => {
         }),
       );
 
-      const { updateMCPConfig, MCPConfigRequestError } = await import(
-        "@/core/mcp/api"
-      );
+      const { updateMCPConfig, MCPConfigRequestError } =
+        await import("@/core/mcp/api");
       const error = await updateMCPConfig(MOCK_MCP_CONFIG).then(
         () => null,
         (e: unknown) => e,

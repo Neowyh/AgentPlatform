@@ -240,7 +240,7 @@ describe("AgentCard", () => {
     );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/my-agent/chats/new",
+      "/workspace/agents/my-agent/chats/new",
     );
   });
 
@@ -256,7 +256,7 @@ describe("AgentCard", () => {
     );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/Shared%20Agent/chats/new",
+      "/workspace/agents/Shared%20Agent/chats/new",
     );
     fireEvent.click(screen.getByTestId("agent-export-button"));
     await waitFor(() => {

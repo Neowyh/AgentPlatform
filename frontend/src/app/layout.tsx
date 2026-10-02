@@ -18,7 +18,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang={DEFAULT_LOCALE} suppressContentEditableWarning suppressHydrationWarning>
+    <html
+      lang={DEFAULT_LOCALE}
+      suppressContentEditableWarning
+      suppressHydrationWarning
+    >
       <body>
         <ThemeProvider attribute="class" enableSystem disableTransitionOnChange>
           {children}

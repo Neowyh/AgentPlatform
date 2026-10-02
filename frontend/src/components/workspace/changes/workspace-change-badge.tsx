@@ -59,7 +59,7 @@ export function WorkspaceChangeBadge({
               </div>
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground mt-0.5 inline-flex items-center gap-1 type-compact font-medium transition-colors"
+                className="text-muted-foreground hover:text-foreground type-compact mt-0.5 inline-flex items-center gap-1 font-medium transition-colors"
                 onClick={() => setOpen(true)}
               >
                 {t.workspaceChanges.viewChanges}
@@ -70,13 +70,13 @@ export function WorkspaceChangeBadge({
           <SummaryDelta
             additions={data.summary.additions}
             deletions={data.summary.deletions}
-            className="hidden type-compact font-semibold sm:inline-flex"
+            className="type-compact hidden font-semibold sm:inline-flex"
           />
         </div>
 
         <div className="py-1">
           {isLoading && (
-            <div className="text-muted-foreground px-3 py-2 type-compact">
+            <div className="text-muted-foreground type-compact px-3 py-2">
               {t.workspaceChanges.loading}
             </div>
           )}
@@ -104,7 +104,7 @@ function WorkspaceChangeSummaryRow({ file }: { file: WorkspaceFileChange }) {
 
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <div className="min-w-0 truncate type-supporting" title={file.path}>
+      <div className="type-supporting min-w-0 truncate" title={file.path}>
         {pathParts.dirname && (
           <span className="text-muted-foreground">{pathParts.dirname}/</span>
         )}

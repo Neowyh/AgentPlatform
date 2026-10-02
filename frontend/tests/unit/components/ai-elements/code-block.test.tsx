@@ -1,13 +1,6 @@
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   CodeBlock,
@@ -78,9 +71,7 @@ describe("highlightCode", () => {
   test("uses empty transformers when showLineNumbers is false", async () => {
     const { codeToHtml } = await import("shiki");
     await highlightCode("code", "javascript", false);
-    const call = vi
-      .mocked(codeToHtml)
-      .mock.calls.at(-1) as unknown as [
+    const call = vi.mocked(codeToHtml).mock.calls.at(-1) as unknown as [
       string,
       { transformers: unknown[] },
     ];

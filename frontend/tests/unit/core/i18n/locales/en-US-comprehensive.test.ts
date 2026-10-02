@@ -244,7 +244,7 @@ describe("enUS locale comprehensive", () => {
     const expected: Record<string, string> = {
       newChat: "New chat",
       chats: "Chats",
-      capabilities: "Experts · Skills · Connectors",
+      capabilities: "Agents · Skills · Connectors",
       recentChats: "Recent chats",
       demoChats: "Demo chats",
       scheduledTasks: "Scheduled tasks",
@@ -267,49 +267,49 @@ describe("enUS locale comprehensive", () => {
   // =======================================================================
   describe("agents", () => {
     const expected: Record<string, string> = {
-      title: "Experts",
+      title: "Agents",
       description:
-        "Create and manage your own Experts with dedicated responsibilities and capabilities.",
-      newAgent: "New Expert",
-      emptyTitle: "No custom Experts yet",
+        "Create and manage your own Agents with dedicated responsibilities and capabilities.",
+      newAgent: "New Agent",
+      emptyTitle: "No custom Agents yet",
       emptyDescription:
-        "Create your first custom Expert with a specialized system prompt.",
+        "Create your first custom Agent with a specialized system prompt.",
       chat: "Chat",
       delete: "Delete",
       deleteConfirm:
-        "Are you sure you want to archive this Expert? This action cannot be undone.",
-      deleteSuccess: "Expert archived",
+        "Are you sure you want to archive this Agent? This action cannot be undone.",
+      deleteSuccess: "Agent archived",
       template: "Template",
       newChat: "New chat",
-      createPageTitle: "Design your Expert",
+      createPageTitle: "Design your Agent",
       createPageSubtitle:
-        "Describe the Expert you want — I'll help you create it through conversation.",
-      nameStepTitle: "Name your new Expert",
+        "Describe the Agent you want — I'll help you create it through conversation.",
+      nameStepTitle: "Name your new Agent",
       nameStepHint:
         "Letters, digits, and hyphens only — stored lowercase (e.g. code-reviewer)",
       nameStepPlaceholder: "e.g. code-reviewer",
       nameStepContinue: "Continue",
       nameStepInvalidError:
         "Invalid name — use only letters, digits, and hyphens",
-      nameStepAlreadyExistsError: "An Expert with this name already exists",
+      nameStepAlreadyExistsError: "An Agent with this name already exists",
       nameStepNetworkError:
         "Network request failed — check your network or backend connection",
       nameStepCheckError:
         "Could not verify name availability — please try again",
       nameStepBootstrapMessage:
-        "The new custom Expert name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
-      save: "Save Expert",
-      saving: "Saving Expert...",
+        "The new custom Agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
+      save: "Save Agent",
+      saving: "Saving Agent...",
       saveRequested:
         "Save requested. iDeer is generating and saving an initial version now.",
       saveHint:
-        "You can save this Expert at any time from the top-right menu, even if this is only a first draft.",
+        "You can save this Agent at any time from the top-right menu, even if this is only a first draft.",
       saveCommandMessage:
-        "Please save this custom Expert now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
+        "Please save this custom Agent now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
       agentCreatedPendingRefresh:
-        "The Expert was created, but iDeer could not load it yet. Please refresh this page in a moment.",
+        "The Agent was created, but iDeer could not load it yet. Please refresh this page in a moment.",
       more: "More actions",
-      agentCreated: "Expert created!",
+      agentCreated: "Agent created!",
       startChatting: "Start chatting",
       backToGallery: "Back to Gallery",
       visibility: "Visibility",
@@ -320,11 +320,11 @@ describe("enUS locale comprehensive", () => {
         "Department and Public options are only available to admins",
       favoriteAdded: "Added to favorites",
       favoriteRemoved: "Removed from favorites",
-      exportSuccess: "Expert exported",
-      importSuccess: "Expert imported",
+      exportSuccess: "Agent exported",
+      importSuccess: "Agent imported",
       applyVisibility: "Apply Visibility Change",
       applyVisibilityDescription:
-        "Submit an application to change the visibility level of this Expert",
+        "Submit an application to change the visibility level of this Agent",
       currentVisibility: "Current Visibility",
       targetVisibility: "Target Visibility",
       reason: "Reason",
@@ -342,11 +342,11 @@ describe("enUS locale comprehensive", () => {
       downgradeConfirmDescription:
         "The downgrade takes effect immediately without approval. Continue?",
       confirm: "Confirm",
-      edit: "Edit Expert",
+      edit: "Edit Agent",
       export: "Export",
       detailChat: "Chat",
       changeVisibility: "Change visibility",
-      notFound: "Expert not found",
+      notFound: "Agent not found",
       configuration: "Configuration",
       model: "Model",
       defaultModel: "Default model",
@@ -356,7 +356,7 @@ describe("enUS locale comprehensive", () => {
       command: "Entry point",
       source: "Source definition",
       notSpecified: "Not specified",
-      exportFailed: "Failed to export Expert. Please try again.",
+      exportFailed: "Failed to export Agent. Please try again.",
     };
 
     for (const [key, value] of Object.entries(expected)) {

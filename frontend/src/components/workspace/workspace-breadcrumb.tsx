@@ -37,40 +37,29 @@ function getBreadcrumbSegments(
     segments.push({ label: t.breadcrumb.workspace, href: "/workspace" });
 
     // Handle different routes
-    if (parts[1] === "capabilities" && parts[2] === "experts") {
+    if (parts[1] === "agents") {
       segments.push({
         label: t.sidebar.capabilities,
-        href: "/workspace/capabilities/experts",
+        href: "/workspace/capabilities/agents",
+      });
+      segments.push({
+        label: t.resources.experts,
+        href: "/workspace/capabilities/agents",
       });
 
-      if (parts[2]) {
-        const agentName = parts[3];
-        if (agentName) {
-          segments.push({
-            label: t.resources.experts,
-            href: "/workspace/capabilities/experts",
-          });
-        }
-        const { label, href } = agentName
-          ? {
-              label: agentLabel ?? t.common.loading,
-              href: `/workspace/capabilities/experts/${agentName}`,
-            }
-          : {
-              label: t.resources.experts,
-              href: "/workspace/capabilities/experts",
-            };
+      const agentName = parts[2];
+      if (agentName) {
         segments.push({
-          label,
-          href,
+          label: agentLabel ?? t.common.loading,
+          href: `/workspace/agents/${agentName}`,
         });
 
-        if (parts[4] === "edit") {
+        if (parts[3] === "edit") {
           segments.push({ label: t.common.edit });
-        } else if (parts[4] === "chats") {
+        } else if (parts[3] === "chats") {
           segments.push({ label: t.breadcrumb.chats });
 
-          if (parts[5] && parts[5] !== "new") {
+          if (parts[4] && parts[4] !== "new") {
             segments.push({ label: t.pages.untitled });
           }
         }
@@ -114,15 +103,15 @@ function getBreadcrumbSegments(
         });
       }
     } else if (parts[1] === "capabilities") {
-      const tab = parts[2] ?? "experts";
+      const tab = parts[2] ?? "agents";
       const tabLabels: Record<string, string> = {
-        experts: t.resources.experts,
+        agents: t.resources.experts,
         skills: t.resources.skills,
         connectors: t.resources.connectors,
       };
       segments.push({
         label: t.sidebar.capabilities,
-        href: "/workspace/capabilities/experts",
+        href: "/workspace/capabilities/agents",
       });
       segments.push({
         label: tabLabels[tab] ?? tab,
@@ -186,10 +175,7 @@ export function WorkspaceBreadcrumb({
   const pathname = usePathname();
   const { t } = useI18n();
   const parts = pathname.split("/").filter(Boolean);
-  const agentId =
-    parts[1] === "capabilities" && parts[2] === "experts"
-      ? parts[3]
-      : undefined;
+  const agentId = parts[1] === "agents" ? parts[2] : undefined;
   const { agent: fetchedAgent } = useAgent(agent ? undefined : agentId);
   const segments = getBreadcrumbSegments(
     pathname,

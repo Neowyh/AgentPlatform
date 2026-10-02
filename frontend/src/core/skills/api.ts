@@ -99,7 +99,7 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     owner_id: resource.owner_id,
     department_id: resource.scope_department_id,
     read_only: !resource.can_modify,
-      editable: resource.can_modify,
+    editable: resource.can_modify,
     is_favorited: resource.is_favorited,
     latest_version: resource.latest_version,
     draft_revision: resource.draft_revision,

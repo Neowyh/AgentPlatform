@@ -21,7 +21,7 @@ export function GoalStatus({
   return (
     <div
       className={cn(
-        "bg-background/90 border-border flex min-h-10 w-full items-center gap-3 rounded-t-xl border border-b-0 px-4 py-2 type-supporting shadow-sm backdrop-blur-sm",
+        "bg-background/90 border-border type-supporting flex min-h-10 w-full items-center gap-3 rounded-t-xl border border-b-0 px-4 py-2 shadow-sm backdrop-blur-sm",
         className,
       )}
     >
@@ -38,7 +38,7 @@ export function GoalStatus({
             .replace("{count}", String(continuation.count))
             .replace("{max}", String(continuation.max))}
         >
-          <span className="text-muted-foreground flex shrink-0 items-center gap-1 type-compact tabular-nums">
+          <span className="text-muted-foreground type-compact flex shrink-0 items-center gap-1 tabular-nums">
             <RefreshCwIcon className="size-3" />
             {t.inputBox.goalContinuing
               .replace("{count}", String(continuation.count))

@@ -599,7 +599,7 @@ type HumanInputSendMessage = (
 
 /**
  * Build the `onSubmitHumanInput` handler shared by every chat surface that
- * renders answerable clarification cards (main chat, expert chat, expert
+ * renders answerable clarification cards (main chat, agent chat, expert
  * creation): the reply text is synthesized from the request, the raw response
  * rides along in hidden kwargs, and the promise resolves to whether the send
  * was actually dispatched.

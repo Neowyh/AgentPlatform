@@ -948,9 +948,7 @@ describe("Human message rendering paths", () => {
     // Post-merge, human (composer) content renders verbatim as plain text
     // instead of going through the markdown response renderer.
     expect(screen.getByText("Hello!")).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("markdown-content"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("markdown-content")).not.toBeInTheDocument();
   });
 
   test("does not render AIElementMessageResponse for human with empty content", () => {

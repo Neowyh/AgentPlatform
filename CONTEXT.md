@@ -99,7 +99,7 @@ Agent, Skill, and Connector are browsable and configurable from the persistent l
 _Avoid_: Capability cards as the home hero, configuration-only invocation
 
 **Workbench navigation**:
-The persistent workbench navigation keeps New conversation, Conversation history, Expert-Skill-Connector, Workflow, and Library in that order, then adds Scheduled Tasks as a separate destination. Expert-Skill-Connector groups the platform's reusable working capabilities rather than scattering them through Settings or duplicating Expert management elsewhere.
+The persistent workbench navigation keeps New conversation, Conversation history, Agent-Skill-Connector (the capability center), Workflow, and Library in that order, then adds Scheduled Tasks as a separate destination. The capability center groups the platform's reusable working capabilities rather than scattering them through Settings or duplicating Agent management elsewhere.
 _Avoid_: A flat resource catalogue, capability configuration hidden in Settings
 
 **Scheduled Task**:
@@ -110,20 +110,20 @@ _Avoid_: Treating a schedule as a Workflow definition
 A browser session operated by an Agent to visit and interact with websites during a task. Its live view is optional in the chat interface and is distinct from the user's browser displaying iDeer.
 _Avoid_: Calling the ordinary WebUI tab a live Agent browser
 
-**Expert-Skill-Connector**:
-The user-facing capability center grouping Expert, Skill, and Connector. Expert is the user-facing name for an Agent; Connector means MCP connection configuration, not a generic Tool.
-_Avoid_: Agent terminology in user-facing navigation, Tool as a synonym for Connector
+**Agent-Skill-Connector (capability center)**:
+The user-facing capability center grouping Agent, Skill, and Connector. ADR-0007 unifies the code-level and navigation vocabulary on Agent; zh-CN display copy keeps 专家 as the localized word. Connector means MCP connection configuration, not a generic Tool.
+_Avoid_: Expert in routes, component names, or en display copy; Tool as a synonym for Connector
 
 **Capability resource page**:
-Each Expert, Skill, or Connector page supports the resource lifecycle and task use from one place: create, browse, edit, delete, favorite, call in a conversation, import, export, and request a visibility change, subject to the user's authorization.
+Each Agent, Skill, or Connector page supports the resource lifecycle and task use from one place: create, browse, edit, delete, favorite, call in a conversation, import, export, and request a visibility change, subject to the user's authorization.
 _Avoid_: Read-only catalogues separated from management actions, actions that bypass authorization
 
 **Capability summary**:
-A concise, persisted user-facing explanation of an Expert or Skill's purpose and scope, derived from its published source when an explicit description is absent.
+A concise, persisted user-facing explanation of an Agent or Skill's purpose and scope, derived from its published source when an explicit description is absent.
 _Avoid_: Runtime model-generated copy, a full SOUL.md or SKILL.md transcript
 
 **Bundled resource seed**:
-The idempotent provisioning of manifest-declared public Skills, Experts, and Workflows into the canonical resource catalog for a local or deployed runtime.
+The idempotent provisioning of manifest-declared public Skills, Agents, and Workflows into the canonical resource catalog for a local or deployed runtime.
 _Avoid_: A frontend-only catalog, manually copied Agent directories, one-time private installer state
 
 **Scenario selection granularity**:
@@ -391,11 +391,11 @@ The fixed fault-zeroing input policy that expects both documentary evidence and 
 _Avoid_: Evidence Mode selection, document-only Run, code-only Run, silent mode downgrade
 
 **Fault-zeroing Execution Kernel**:
-The single Workflow-backed implementation used by Skill, Expert, and Workflow invocation adapters for an actual fault-zeroing analysis. Educational or editing conversations remain ordinary Agent interactions; starting an analysis routes all three forms through the same evidence, fault-tree, assessment, review, reporting, and validation stages.
+The single Workflow-backed implementation used by Skill, Agent, and Workflow invocation adapters for an actual fault-zeroing analysis. Educational or editing conversations remain ordinary Agent interactions; starting an analysis routes all three forms through the same evidence, fault-tree, assessment, review, reporting, and validation stages.
 _Avoid_: Three independent fault-zeroing implementations, prompt-only orchestration, starting a Run for conceptual questions
 
 **Invocation Adapter**:
-The Skill, Expert, or Workflow entry shell that calls and presents the one shared Fault-zeroing Execution Kernel for a real analysis without re-implementing its stages, evidence rules, or result validation, while conceptual explanations and limited editing stay ordinary conversation.
+The Skill, Agent, or Workflow entry shell that calls and presents the one shared Fault-zeroing Execution Kernel for a real analysis without re-implementing its stages, evidence rules, or result validation, while conceptual explanations and limited editing stay ordinary conversation.
 _Avoid_: Three independent fault-zeroing implementations, prompt-only orchestration, starting a Run for conceptual questions
 
 **Fault-zeroing Result Contract**:

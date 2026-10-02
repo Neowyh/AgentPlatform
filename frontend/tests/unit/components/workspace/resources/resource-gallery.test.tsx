@@ -89,8 +89,8 @@ vi.mock("@/components/ui/tabs", () => ({
   ),
 }));
 
-vi.mock("@/components/workspace/resources/expert-list", () => ({
-  ExpertList: () => <div data-testid="expert-list">Expert List</div>,
+vi.mock("@/components/workspace/resources/agent-list", () => ({
+  AgentList: () => <div data-testid="agent-list">Agent List</div>,
 }));
 
 vi.mock("@/components/workspace/resources/skill-list", () => ({
@@ -148,7 +148,7 @@ describe("ResourceGallery", () => {
 
   test("renders tab content sections", () => {
     render(<ResourceGallery />);
-    expect(screen.getByTestId("expert-list")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-list")).toBeInTheDocument();
     expect(screen.getByTestId("skill-list")).toBeInTheDocument();
     expect(screen.getByTestId("connector-list")).toBeInTheDocument();
   });
@@ -156,13 +156,13 @@ describe("ResourceGallery", () => {
   test("uses the tab encoded by the route", () => {
     render(<ResourceGallery />);
     const tabs = screen.getByTestId("tabs");
-    expect(tabs.getAttribute("data-value")).toBe("experts");
+    expect(tabs.getAttribute("data-value")).toBe("agents");
   });
 
   test("has correct tab trigger values", () => {
     render(<ResourceGallery />);
     const triggers = screen.getAllByTestId("tabs-trigger");
-    expect(triggers[0]?.getAttribute("data-value")).toBe("experts");
+    expect(triggers[0]?.getAttribute("data-value")).toBe("agents");
     expect(triggers[1]?.getAttribute("data-value")).toBe("skills");
     expect(triggers[2]?.getAttribute("data-value")).toBe("connectors");
   });

@@ -117,7 +117,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               <div className="min-w-0">
                 <CardTitle className="type-body truncate">
                   <Link
-                    href={`/workspace/capabilities/experts/${resourceIdentity}`}
+                    href={`/workspace/capabilities/agents/${resourceIdentity}`}
                     className="hover:underline"
                   >
                     {displayName}

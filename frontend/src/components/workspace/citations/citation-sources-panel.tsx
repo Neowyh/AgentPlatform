@@ -33,7 +33,7 @@ export function CitationSourcesPanel({
   return (
     <details
       className={cn(
-        "not-prose border-border/60 bg-muted/20 mt-2 rounded-md border type-compact",
+        "not-prose border-border/60 bg-muted/20 type-compact mt-2 rounded-md border",
         className,
       )}
     >

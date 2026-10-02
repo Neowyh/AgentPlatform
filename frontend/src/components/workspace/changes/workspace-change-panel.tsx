@@ -126,10 +126,10 @@ function WorkspaceChangeFile({
           <div className="flex min-w-0 items-start gap-2">
             <StatusIcon status={file.status} />
             <div className="min-w-0">
-              <div className="text-foreground truncate font-mono type-compact">
+              <div className="text-foreground type-compact truncate font-mono">
                 {file.path}
               </div>
-              <div className="text-muted-foreground mt-1 flex items-center gap-2 type-compact">
+              <div className="text-muted-foreground type-compact mt-1 flex items-center gap-2">
                 <span>{statusLabel(file.status, t)}</span>
                 {(file.additions > 0 || file.deletions > 0) && (
                   <span>
@@ -157,7 +157,7 @@ function WorkspaceChangeFile({
           {hasDiff ? (
             <WorkspaceDiff diff={file.diff} />
           ) : (
-            <div className="border-border/70 text-muted-foreground border-t px-3 py-3 type-compact">
+            <div className="border-border/70 text-muted-foreground type-compact border-t px-3 py-3">
               {unavailableLabel(file.diff_unavailable_reason, t)}
             </div>
           )}
@@ -169,7 +169,7 @@ function WorkspaceChangeFile({
 
 function WorkspaceDiff({ diff }: { diff: string }) {
   return (
-    <pre className="border-border/70 bg-muted/30 max-h-[520px] overflow-auto border-t p-0 font-mono type-compact leading-5">
+    <pre className="border-border/70 bg-muted/30 type-compact max-h-[520px] overflow-auto border-t p-0 font-mono leading-5">
       {diff.split("\n").map((line, index) => (
         <div
           key={`${index}:${line}`}

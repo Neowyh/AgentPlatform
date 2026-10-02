@@ -109,7 +109,7 @@ function FormFieldInput({
     return (
       <Textarea
         id={controlId}
-        className="min-h-20 resize-y type-supporting"
+        className="type-supporting min-h-20 resize-y"
         disabled={disabled}
         placeholder={field.placeholder}
         value={stringValue}
@@ -336,7 +336,11 @@ export function HumanInputCard({
   const submitFooter = (
     <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
       {error ? (
-        <p className="text-destructive type-supporting" id={formErrorId} role="alert">
+        <p
+          className="text-destructive type-supporting"
+          id={formErrorId}
+          role="alert"
+        >
           {error}
         </p>
       ) : answeredResponse ? (
@@ -371,7 +375,10 @@ export function HumanInputCard({
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
-              <h2 id={titleId} className="type-supporting leading-5 font-medium">
+              <h2
+                id={titleId}
+                className="type-supporting leading-5 font-medium"
+              >
                 {request.title ?? t.toolCalls.needYourHelp}
               </h2>
               {request.context ? (
@@ -428,7 +435,7 @@ export function HumanInputCard({
                   return (
                     <label
                       key={field.name}
-                      className="flex w-fit cursor-pointer items-center gap-2 type-supporting leading-5"
+                      className="type-supporting flex w-fit cursor-pointer items-center gap-2 leading-5"
                       htmlFor={controlId}
                     >
                       <input
@@ -529,7 +536,7 @@ export function HumanInputCard({
                 id={textInputId}
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? `${textInputId}-error` : undefined}
-                className="min-h-20 resize-y type-supporting"
+                className="type-supporting min-h-20 resize-y"
                 disabled={isDisabled}
                 placeholder={t.humanInput.otherPlaceholder}
                 value={text}
@@ -577,7 +584,10 @@ export function HumanInputCard({
           ) : null}
 
           {!allowText && !isForm && answeredResponse ? (
-            <p className="text-muted-foreground type-supporting" aria-live="polite">
+            <p
+              className="text-muted-foreground type-supporting"
+              aria-live="polite"
+            >
               {t.humanInput.answeredValue(answeredResponse.value)}
             </p>
           ) : null}

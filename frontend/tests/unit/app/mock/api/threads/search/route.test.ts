@@ -82,7 +82,10 @@ describe("mock search route", () => {
     mockFetchResponses({
       "thread-1": {
         ok: true,
-        body: threadJson({ updated_at: null, created_at: "2025-02-02T00:00:00Z" }),
+        body: threadJson({
+          updated_at: null,
+          created_at: "2025-02-02T00:00:00Z",
+        }),
       },
       "thread-2": { ok: true, body: threadJson() },
       "thread-3": { ok: false },
@@ -132,10 +135,7 @@ describe("mock search route", () => {
     const data = await response.json();
 
     expect(data.length).toBe(2);
-    expect(data.map((t: any) => t.thread_id)).toEqual([
-      "thread-2",
-      "thread-3",
-    ]);
+    expect(data.map((t: any) => t.thread_id)).toEqual(["thread-2", "thread-3"]);
   });
 
   test("sorts by updated_at desc by default", async () => {
@@ -171,9 +171,7 @@ describe("mock search route", () => {
       "thread-3": { ok: false },
     });
 
-    const response = await POST(
-      await makeRequest({ sortOrder: "asc" }),
-    );
+    const response = await POST(await makeRequest({ sortOrder: "asc" }));
     const data = await response.json();
 
     expect(data[0].thread_id).toBe("thread-2");

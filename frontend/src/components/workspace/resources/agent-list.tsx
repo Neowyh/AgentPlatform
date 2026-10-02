@@ -18,7 +18,7 @@ import { useAgents } from "@/core/agents";
 import { importAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
 
-export function ExpertList() {
+export function AgentList() {
   const { t } = useI18n();
   const { agents, isLoading, refetch } = useAgents();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,7 +90,7 @@ export function ExpertList() {
           {t.common.import}
         </Button>
         <Button asChild>
-          <Link href="/workspace/capabilities/experts/new">
+          <Link href="/workspace/capabilities/agents/new">
             <PlusIcon className="mr-1.5 h-4 w-4" />
             {t.agents.newAgent}
           </Link>
@@ -115,7 +115,7 @@ export function ExpertList() {
             {t.agents.emptyDescription}
           </p>
           <Button asChild variant="outline">
-            <Link href="/workspace/capabilities/experts/new">
+            <Link href="/workspace/capabilities/agents/new">
               <PlusIcon className="mr-1.5 h-4 w-4" />
               {t.agents.newAgent}
             </Link>

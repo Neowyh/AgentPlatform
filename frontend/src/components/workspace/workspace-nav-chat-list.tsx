@@ -36,11 +36,12 @@ export function WorkspaceNavChatList() {
           <SidebarMenuButton
             isActive={
               pathname.startsWith("/workspace/capabilities") ||
+              pathname.startsWith("/workspace/agents") ||
               pathname.startsWith("/workspace/resources")
             }
             asChild
           >
-            <Link href="/workspace/capabilities/experts">
+            <Link href="/workspace/capabilities/agents">
               <BlocksIcon />
               <span>{t.capabilities.title}</span>
             </Link>

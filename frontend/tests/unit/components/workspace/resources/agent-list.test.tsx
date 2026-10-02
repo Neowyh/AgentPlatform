@@ -46,13 +46,13 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
-let ExpertList: typeof import("@/components/workspace/resources/expert-list").ExpertList;
+let AgentList: typeof import("@/components/workspace/resources/agent-list").AgentList;
 
 beforeEach(async () => {
   vi.clearAllMocks();
   mockAgents = defaultAgents;
-  const mod = await import("@/components/workspace/resources/expert-list");
-  ExpertList = mod.ExpertList;
+  const mod = await import("@/components/workspace/resources/agent-list");
+  AgentList = mod.AgentList;
 });
 
 afterEach(() => {
@@ -61,15 +61,15 @@ afterEach(() => {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe("ExpertList", () => {
+describe("AgentList", () => {
   test("displays list of experts (agents)", () => {
-    render(<ExpertList />);
+    render(<AgentList />);
     expect(screen.getByText("agent-1")).toBeInTheDocument();
     expect(screen.getByText("agent-2")).toBeInTheDocument();
   });
 
   test("renders agent cards", () => {
-    render(<ExpertList />);
+    render(<AgentList />);
     const cards = screen.getAllByTestId("agent-card");
     expect(cards).toHaveLength(2);
   });
@@ -77,7 +77,7 @@ describe("ExpertList", () => {
   test("keeps the new-agent action available for an empty catalog", () => {
     mockAgents = [];
 
-    render(<ExpertList />);
+    render(<AgentList />);
 
     expect(
       screen.getAllByRole("link", { name: "New Agent" })[0],

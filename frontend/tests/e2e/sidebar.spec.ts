@@ -2,11 +2,11 @@ import { expect, test } from "@playwright/test";
 
 import { mockLangGraphAPI } from "./utils/mock-api";
 
-// The pre-merge workbench order: Chats → Experts·Skills·Connectors →
+// The workbench order: Chats → capability center (Agents tab) →
 // Workflows → Library, followed by the standalone Scheduled tasks entry.
 const WORKBENCH_NAV_HREFS = [
   "/workspace/chats",
-  "/workspace/capabilities/experts",
+  "/workspace/capabilities/agents",
   "/workspace/workflows",
   "/workspace/library",
   "/workspace/scheduled-tasks",
@@ -27,8 +27,8 @@ test.describe("Sidebar navigation", () => {
         timeout: 15_000,
       });
     }
-    // The merged Agents management has no sidebar entry of its own next to
-    // the original capability center.
+    // ADR-0007: the capability-center link is the single agent entry; the
+    // bare /workspace/agents URL is a redirect and never a sidebar link.
     await expect(sidebar.locator("a[href='/workspace/agents']")).toHaveCount(0);
   });
 
@@ -161,6 +161,6 @@ test.describe("Sidebar navigation", () => {
     }
     await expect(
       desktopSidebar.locator("a[href='/workspace/agents']"),
-    ).toHaveCount(0);
+    ).toHaveCount(0); // redirect target, never rendered as a sidebar link
   });
 });

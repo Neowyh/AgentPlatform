@@ -75,7 +75,7 @@ vi.mock("@/core/i18n/hooks", () => ({
   }),
 }));
 
-import AgentDetailPage from "@/app/workspace/capabilities/experts/[agent_name]/page";
+import AgentDetailPage from "@/app/workspace/agents/[agent_name]/page";
 
 const agent = {
   resource_id: "agent-1",
@@ -103,7 +103,7 @@ describe("AgentDetailPage unified resource detail", () => {
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
       "href",
-      "/workspace/capabilities/experts/fault-zeroing/chats/new",
+      "/workspace/agents/fault-zeroing/chats/new",
     );
     expect(screen.getByRole("link", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();

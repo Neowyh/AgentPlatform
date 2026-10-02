@@ -29,7 +29,7 @@ export function RunActivity({ startTime }: { startTime: number | null }) {
 
   return (
     <div
-      className="text-muted-foreground flex items-center gap-2 type-supporting"
+      className="text-muted-foreground type-supporting flex items-center gap-2"
       data-testid="run-activity"
     >
       <Clock3Icon className="size-4" />
@@ -48,7 +48,7 @@ export function RunDuration({ durationSeconds }: { durationSeconds: number }) {
 
   return (
     <div
-      className="text-muted-foreground flex items-center gap-2 type-supporting"
+      className="text-muted-foreground type-supporting flex items-center gap-2"
       data-testid="run-duration"
       title={t.runDuration.description}
     >

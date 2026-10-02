@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ResourceGallery } from "@/components/workspace/resources/resource-gallery";
 
-const TABS = ["experts", "skills", "connectors"] as const;
+const TABS = ["agents", "skills", "connectors"] as const;
 
 export default async function CapabilityTabPage({
   params,

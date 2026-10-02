@@ -136,7 +136,7 @@ describe("DepartmentsPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
-applyUser: vi.fn(),
+      applyUser: vi.fn(),
     });
     mockListDepartments.mockResolvedValue({
       departments: mockDepartments,
@@ -1632,7 +1632,7 @@ applyUser: vi.fn(),
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
-applyUser: vi.fn(),
+      applyUser: vi.fn(),
     });
 
     render(<DepartmentsPage />);
@@ -1653,7 +1653,7 @@ applyUser: vi.fn(),
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
-applyUser: vi.fn(),
+      applyUser: vi.fn(),
     });
 
     render(<DepartmentsPage />);

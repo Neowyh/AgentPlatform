@@ -10,7 +10,10 @@ vi.mock("@/core/threads/static-demo", () => ({
       if (segments[0] !== "mnt") return null;
       const artifactPath = segments.slice(1).join("/");
       // Allowlist: only file.txt / video.mp4 exist for thread-1, readme.md for t.
-      if (threadId === "thread-1" && ["file.txt", "video.mp4"].includes(artifactPath)) {
+      if (
+        threadId === "thread-1" &&
+        ["file.txt", "video.mp4"].includes(artifactPath)
+      ) {
         return `/demo/threads/${threadId}/${artifactPath}`;
       }
       if (threadId === "t" && artifactPath === "readme.md") {
@@ -108,14 +111,14 @@ describe("mock artifacts route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toContain(
-      "attachment",
-    );
+    expect(response.headers.get("Content-Disposition")).toContain("attachment");
     expect(response.headers.get("Content-Disposition")).toContain("file.txt");
   });
 
   test("GET returns video/mp4 content type for .mp4 files", async () => {
-    mockUpstreamFile("video data", { headers: { "Content-Type": "video/mp4" } });
+    mockUpstreamFile("video data", {
+      headers: { "Content-Type": "video/mp4" },
+    });
 
     const request = makeRequest("http://localhost/api/artifacts/video");
     const response = await GET(

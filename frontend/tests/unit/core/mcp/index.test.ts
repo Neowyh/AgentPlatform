@@ -114,9 +114,8 @@ describe("mcp index", () => {
         }),
       );
 
-      const { loadMCPConfig, MCPConfigRequestError } = await import(
-        "@/core/mcp/index"
-      );
+      const { loadMCPConfig, MCPConfigRequestError } =
+        await import("@/core/mcp/index");
       const error = await loadMCPConfig().then(
         () => null,
         (e: unknown) => e,
@@ -136,9 +135,8 @@ describe("mcp index", () => {
         }),
       );
 
-      const { loadMCPConfig, MCPConfigRequestError } = await import(
-        "@/core/mcp/index"
-      );
+      const { loadMCPConfig, MCPConfigRequestError } =
+        await import("@/core/mcp/index");
       const error = await loadMCPConfig().then(
         () => null,
         (e: unknown) => e,
@@ -254,9 +252,8 @@ describe("mcp index", () => {
         }),
       );
 
-      const { updateMCPConfig, MCPConfigRequestError } = await import(
-        "@/core/mcp/index"
-      );
+      const { updateMCPConfig, MCPConfigRequestError } =
+        await import("@/core/mcp/index");
       const error = await updateMCPConfig(MOCK_MCP_CONFIG).then(
         () => null,
         (e: unknown) => e,

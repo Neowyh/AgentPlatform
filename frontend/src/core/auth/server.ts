@@ -60,7 +60,7 @@ export async function getServerSideUser(): Promise<AuthResult> {
         email: "e2e@test.local",
         system_role: "super_admin",
         needs_setup: false,
-      oauth_provider: null,
+        oauth_provider: null,
       },
     };
   }

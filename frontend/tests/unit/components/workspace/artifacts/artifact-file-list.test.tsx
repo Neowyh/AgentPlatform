@@ -136,25 +136,33 @@ describe("ArtifactFileList", () => {
   });
 
   test("clicking a file card calls select and setOpen", () => {
-    renderWithProviders(<ArtifactFileList files={["file.txt"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["file.txt"]} threadId="t-1" />,
+    );
     fireEvent.click(screen.getByText("file.txt"));
     expect(mockSelect).toHaveBeenCalledWith("file.txt");
     expect(mockSetOpen).toHaveBeenCalledWith(true);
   });
 
   test("renders download links for each file", () => {
-    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["doc.pdf"]} threadId="t-1" />,
+    );
     const downloadLinks = screen.getAllByText("Download");
     expect(downloadLinks.length).toBeGreaterThan(0);
   });
 
   test("does not render install button for non-.skill files", () => {
-    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["doc.pdf"]} threadId="t-1" />,
+    );
     expect(screen.queryByText("Install")).not.toBeInTheDocument();
   });
 
   test("renders install button for .skill files", () => {
-    renderWithProviders(<ArtifactFileList files={["my-skill.skill"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["my-skill.skill"]} threadId="t-1" />,
+    );
     expect(screen.getByText("Install")).toBeInTheDocument();
   });
 
@@ -164,7 +172,9 @@ describe("ArtifactFileList", () => {
       message: "Installed!",
     });
 
-    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["test.skill"]} threadId="t-1" />,
+    );
 
     fireEvent.click(screen.getByText("Install"));
 
@@ -182,7 +192,9 @@ describe("ArtifactFileList", () => {
       message: "Skill installed",
     });
 
-    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["test.skill"]} threadId="t-1" />,
+    );
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -196,7 +208,9 @@ describe("ArtifactFileList", () => {
       message: "Install failed",
     });
 
-    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["test.skill"]} threadId="t-1" />,
+    );
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -207,7 +221,9 @@ describe("ArtifactFileList", () => {
   test("install API error shows error toast", async () => {
     mockInstallSkill.mockRejectedValue(new Error("Network error"));
 
-    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["test.skill"]} threadId="t-1" />,
+    );
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -236,7 +252,9 @@ describe("ArtifactFileList", () => {
   });
 
   test("download link has correct href", () => {
-    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["doc.pdf"]} threadId="t-1" />,
+    );
     const link = screen.getByText("Download").closest("a");
     expect(link).toHaveAttribute(
       "href",
@@ -245,18 +263,24 @@ describe("ArtifactFileList", () => {
   });
 
   test("renders file extension badge", () => {
-    renderWithProviders(<ArtifactFileList files={["report.pdf"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["report.pdf"]} threadId="t-1" />,
+    );
     expect(screen.getByText("PDF file")).toBeInTheDocument();
   });
 
   test("renders file icon for each file", () => {
-    renderWithProviders(<ArtifactFileList files={["a.txt", "b.csv"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["a.txt", "b.csv"]} threadId="t-1" />,
+    );
     const icons = screen.getAllByTestId("file-icon");
     expect(icons.length).toBe(2);
   });
 
   test("download link click stops propagation to prevent card selection", () => {
-    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(
+      <ArtifactFileList files={["doc.pdf"]} threadId="t-1" />,
+    );
 
     const downloadLink = screen.getByText("Download").closest("a")!;
     const clickEvent = new MouseEvent("click", {

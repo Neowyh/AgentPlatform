@@ -50,7 +50,7 @@ describe("loadArtifactContent", () => {
   test("fetches artifact content and returns text with url", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("<html>hello</html>"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("<html>hello</html>"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/report.html",
@@ -67,7 +67,7 @@ mockFetch.mockResolvedValueOnce(mockArtifactResponse("<html>hello</html>"));
   test("appends /SKILL.md to .skill file paths", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("# Skill content"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("# Skill content"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/my-tool.skill",
@@ -81,7 +81,7 @@ mockFetch.mockResolvedValueOnce(mockArtifactResponse("# Skill content"));
   test("does not modify non-.skill file paths", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("file content"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("file content"));
 
     await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/data.json",
@@ -96,7 +96,7 @@ mockFetch.mockResolvedValueOnce(mockArtifactResponse("file content"));
   test("passes isMock flag through to URL generation", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("mock content"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("mock content"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/report.html",
@@ -139,7 +139,7 @@ mockFetch.mockResolvedValueOnce(mockArtifactResponse("mock content"));
   test("normalizes paths without leading slash", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("data"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("data"));
 
     await loadArtifactContent({
       filepath: "mnt/user-data/outputs/file.txt",
@@ -155,7 +155,7 @@ mockFetch.mockResolvedValueOnce(mockArtifactResponse("data"));
   test("handles .skill file with nested path correctly", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-mockFetch.mockResolvedValueOnce(mockArtifactResponse("skill md content"));
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("skill md content"));
 
     const result = await loadArtifactContent({
       filepath: "/user-data/skills/analysis.skill",

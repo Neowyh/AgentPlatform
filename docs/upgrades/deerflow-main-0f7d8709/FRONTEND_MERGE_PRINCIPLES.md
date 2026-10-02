@@ -69,3 +69,19 @@ channels/integrations/skills/tools，无丢失）。逐项表格见会话记录�
 - 静态检查不覆盖「页面渲染是否报错」——由 mock-e2e 套件覆盖（356 文件）；
 - 动态拼接的 API 路径（模板字符串）按静态前缀近似匹配，特殊路径需人工复核；
 - 建议将本脚本纳入 `pr-standard` lane 的前端阶段（工作待排）。
+
+## 五、术语映射附表（ADR-0007，2026-10-02 收编）
+
+上游 agent 词族与本地 expert 词族在每次收敛中的对照。v2.1.0 合入后
+ADR-0007 已把代码与路由层统一到 agent；专家仅在 zh-CN 显示文案保留。
+
+| 上游 | 本地旧词（已废弃） | 统一后 |
+| --- | --- | --- |
+| `/workspace/agents` | `/workspace/capabilities/experts` | `/workspace/agents`（canonical；experts 全路径永久 redirect） |
+| agent gallery | capability center `experts` tab | capability center `agents` tab（URL `/workspace/capabilities/agents`） |
+| agent-card / agent settings | ExpertList / expert edit | AgentList / `/workspace/agents/[name]/edit` |
+| `agent-chat.spec.ts` 直用 agents 路径 | 改写 `capabilities/experts` 路径 | 无需改写（上游测试即用 canonical 路径） |
+| en 显示 Agent | en 显示 Expert | Agent（zh-CN 保持 专家） |
+
+合并守则：收敛时上游 agents 词族文件可直接对位落位，不再逐条改写；
+`pathOfThread`（`src/core/threads/utils.ts`）是线程 URL 的单点构造器。

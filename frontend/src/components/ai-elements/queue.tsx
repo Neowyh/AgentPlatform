@@ -36,7 +36,7 @@ export type QueueItemProps = ComponentProps<"li">;
 export const QueueItem = ({ className, ...props }: QueueItemProps) => (
   <li
     className={cn(
-      "group hover:bg-muted flex flex-col gap-1 rounded-md px-3 py-1 type-supporting transition-colors",
+      "group hover:bg-muted type-supporting flex flex-col gap-1 rounded-md px-3 py-1 transition-colors",
       className,
     )}
     {...props}
@@ -96,7 +96,7 @@ export const QueueItemDescription = ({
 }: QueueItemDescriptionProps) => (
   <div
     className={cn(
-      "ml-6 type-compact",
+      "type-compact ml-6",
       completed
         ? "text-muted-foreground/40 line-through"
         : "text-muted-foreground",
@@ -169,7 +169,7 @@ export const QueueItemFile = ({
 }: QueueItemFileProps) => (
   <span
     className={cn(
-      "bg-muted flex items-center gap-1 rounded border px-2 py-1 type-compact",
+      "bg-muted type-compact flex items-center gap-1 rounded border px-2 py-1",
       className,
     )}
     {...props}
@@ -215,7 +215,7 @@ export const QueueSectionTrigger = ({
   <CollapsibleTrigger asChild>
     <button
       className={cn(
-        "group bg-muted/40 text-muted-foreground hover:bg-muted flex w-full items-center justify-between rounded-md px-3 py-2 text-left type-supporting font-medium transition-colors",
+        "group bg-muted/40 text-muted-foreground hover:bg-muted type-supporting flex w-full items-center justify-between rounded-md px-3 py-2 text-left font-medium transition-colors",
         className,
       )}
       type="button"

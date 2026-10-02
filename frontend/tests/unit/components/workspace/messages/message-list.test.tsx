@@ -202,12 +202,10 @@ vi.mock("lucide-react", () => ({
 // Mutable function mocks
 // ---------------------------------------------------------------------------
 vi.mock("@/core/messages/derived-state", () => ({
-  deriveStableMessageGroups:
-    (...args: any[]) =>
-    mockGetMessageGroups(...args),
-  deriveAssistantTurnUsageState:
-    (...args: any[]) =>
-    ({ byGroupIndex: mockGetAssistantTurnUsageMessages(...args) }),
+  deriveStableMessageGroups: (...args: any[]) => mockGetMessageGroups(...args),
+  deriveAssistantTurnUsageState: (...args: any[]) => ({
+    byGroupIndex: mockGetAssistantTurnUsageMessages(...args),
+  }),
 }));
 
 vi.mock("@/core/messages/usage-model", () => ({
@@ -563,9 +561,7 @@ describe("MessageList", () => {
           thread={createThread({ isLoading: false })}
         />,
       );
-      expect(
-        screen.queryByTestId("run-activity"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("run-activity")).not.toBeInTheDocument();
     });
   });
 
@@ -649,7 +645,9 @@ describe("MessageList", () => {
         />,
       );
       expect(
-        screen.getByTestId("message-list-item").closest("[data-assistant-turn]"),
+        screen
+          .getByTestId("message-list-item")
+          .closest("[data-assistant-turn]"),
       ).toBeNull();
     });
 
@@ -977,7 +975,9 @@ describe("MessageList", () => {
           thread={createThread({ messages: [aiMsg] })}
         />,
       );
-      expect(screen.getByText("Executing 2 subtasks in parallel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Executing 2 subtasks in parallel"),
+      ).toBeInTheDocument();
     });
 
     test("renders SubtaskCard for each task tool call", () => {

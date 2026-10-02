@@ -39,7 +39,6 @@ afterEach(() => {
   cleanup();
 });
 
-
 describe("RootLayout", () => {
   test("renders children", async () => {
     render(await RootLayout({ children: <div>Page content</div> }));

@@ -159,7 +159,9 @@ export function SubagentSettingsPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-muted-foreground type-supporting">{t.common.loading}</p>
+          <p className="text-muted-foreground type-supporting">
+            {t.common.loading}
+          </p>
         ) : error ? (
           <p className="text-destructive type-supporting">{error.message}</p>
         ) : subagents.length === 0 ? (

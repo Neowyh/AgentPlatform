@@ -26,11 +26,9 @@ vi.mock("@/core/i18n/server", () => ({
 }));
 
 vi.mock("@/core/i18n/context", () => ({
-  I18nProvider: ({
-    children,
-  }: {
-    children: React.ReactNode;
-  }) => <div data-testid="i18n-provider">{children}</div>,
+  I18nProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="i18n-provider">{children}</div>
+  ),
 }));
 
 vi.mock("@/core/auth/types", () => ({
@@ -219,9 +217,7 @@ describe("WorkspaceLayout", () => {
       // shell stays mounted (with the offline banner inside WorkspaceContent)
       // so the UI keeps its usual recovery affordances.
       expect(screen.getByText("content")).toBeInTheDocument();
-      expect(
-        screen.getByTestId("workspace-content"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("workspace-content")).toBeInTheDocument();
     });
 
     test("wraps the shell in an AuthProvider so the offline banner can recover", async () => {

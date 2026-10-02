@@ -72,7 +72,7 @@ export function ThreadSubagentBatches({ threadId }: { threadId: string }) {
           <Layers3Icon />
           <span className="hidden xl:inline">{t.subagentBatches.label}</span>
           {activeCount > 0 && (
-            <span className="bg-primary text-primary-foreground grid size-4 place-items-center rounded-full type-compact font-semibold">
+            <span className="bg-primary text-primary-foreground type-compact grid size-4 place-items-center rounded-full font-semibold">
               {activeCount > 9 ? "9+" : activeCount}
             </span>
           )}
@@ -90,22 +90,22 @@ export function ThreadSubagentBatches({ threadId }: { threadId: string }) {
           {!workerRunning && (
             <div
               role="status"
-              className="border-border bg-muted/50 text-muted-foreground mb-4 rounded-xl border p-3 type-compact"
+              className="border-border bg-muted/50 text-muted-foreground type-compact mb-4 rounded-xl border p-3"
             >
               {t.subagentBatches.workerUnavailable}
             </div>
           )}
           {batchesQuery.isLoading ? (
-            <div className="text-muted-foreground flex justify-center gap-2 py-12 type-supporting">
+            <div className="text-muted-foreground type-supporting flex justify-center gap-2 py-12">
               <LoaderCircleIcon className="size-4 animate-spin" />
               {t.common.loading}
             </div>
           ) : batchesQuery.isError ? (
-            <div className="border-destructive/30 bg-destructive/5 rounded-xl border p-4 type-supporting">
+            <div className="border-destructive/30 bg-destructive/5 type-supporting rounded-xl border p-4">
               <p className="text-destructive font-medium">
                 {t.subagentBatches.loadFailed}
               </p>
-              <p className="text-muted-foreground mt-1 type-compact">
+              <p className="text-muted-foreground type-compact mt-1">
                 {batchesQuery.error.message}
               </p>
             </div>
@@ -115,7 +115,7 @@ export function ThreadSubagentBatches({ threadId }: { threadId: string }) {
               <p className="text-foreground type-supporting font-medium">
                 {t.subagentBatches.empty}
               </p>
-              <p className="mt-1 type-compact">{t.subagentBatches.emptyHint}</p>
+              <p className="type-compact mt-1">{t.subagentBatches.emptyHint}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -167,10 +167,13 @@ function BatchCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate type-supporting font-medium" title={batch.title}>
+          <p
+            className="type-supporting truncate font-medium"
+            title={batch.title}
+          >
             {batch.title}
           </p>
-          <p className="text-muted-foreground mt-1 type-compact">
+          <p className="text-muted-foreground type-compact mt-1">
             {batch.subagent_type} ·{" "}
             {t.subagentBatches.limits(
               batch.max_live_items,
@@ -181,7 +184,7 @@ function BatchCard({
         <Badge variant="outline">{labels[batch.status]}</Badge>
       </div>
       <Progress className="mt-3 h-1.5" value={subagentBatchProgress(batch)} />
-      <div className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-3 type-compact">
+      <div className="text-muted-foreground type-compact mt-1.5 flex flex-wrap gap-x-3">
         <span>{t.subagentBatches.progress(completed, batch.total_items)}</span>
         <span>
           {batch.counts.running} {labels.running.toLowerCase()}
@@ -266,14 +269,14 @@ function BatchItems({
   const retry = useRetrySubagentBatchItem(threadId, batch.id);
   if (query.isLoading) {
     return (
-      <div className="text-muted-foreground mt-3 border-t pt-3 type-compact">
+      <div className="text-muted-foreground type-compact mt-3 border-t pt-3">
         {t.common.loading}
       </div>
     );
   }
   if (query.isError) {
     return (
-      <div className="text-destructive mt-3 border-t pt-3 type-compact">
+      <div className="text-destructive type-compact mt-3 border-t pt-3">
         {t.subagentBatches.itemsFailed}: {query.error.message}
       </div>
     );
@@ -321,7 +324,7 @@ function BatchItemRow({
 }) {
   const { t } = useI18n();
   return (
-    <div className="bg-muted/40 rounded-lg p-2 type-compact">
+    <div className="bg-muted/40 type-compact rounded-lg p-2">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate font-medium" title={item.item_key}>
           {item.item_key}

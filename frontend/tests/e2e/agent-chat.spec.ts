@@ -26,7 +26,7 @@ test.describe("Agent chat", () => {
   }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/capabilities/experts");
+    await page.goto("/workspace/agents");
 
     // The agent card links to the agent chat; scope to the link so the card
     // description (which also carries the agent name) cannot trip strict mode.
@@ -40,7 +40,7 @@ test.describe("Agent chat", () => {
   }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
 
     // The prompt input textarea should be visible
     const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -65,7 +65,7 @@ test.describe("Agent chat", () => {
       ],
     });
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
     await page.evaluate(() => {
       document.cookie = "locale=zh-CN; path=/; SameSite=Lax";
     });
@@ -101,17 +101,17 @@ test.describe("Agent chat", () => {
   test("keeps new-chat drafts isolated between agents", async ({ page }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
     const firstAgentInput = page.getByPlaceholder(/how can i assist you/i);
     await expect(firstAgentInput).toBeVisible({ timeout: 15_000 });
     await firstAgentInput.fill("Draft for the first agent");
 
-    await page.goto("/workspace/capabilities/experts/second-agent/chats/new");
+    await page.goto("/workspace/agents/second-agent/chats/new");
     const secondAgentInput = page.getByPlaceholder(/how can i assist you/i);
     await expect(secondAgentInput).toHaveValue("");
     await secondAgentInput.fill("Draft for the second agent");
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
     await expect(page.getByPlaceholder(/how can i assist you/i)).toHaveValue(
       "Draft for the first agent",
     );
@@ -120,7 +120,7 @@ test.describe("Agent chat", () => {
   test("agent chat page shows agent badge", async ({ page }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
 
     // The agent badge should display in the header (scoped to header to avoid
     // matching the welcome area which also shows the agent name)
@@ -199,7 +199,7 @@ test.describe("Agent chat", () => {
           response.status() === 200,
       );
       await page.goto(
-        `/workspace/capabilities/experts/${agent.name}/chats/${MOCK_THREAD_ID}${mock ? "?mock=true" : ""}`,
+        `/workspace/agents/${agent.name}/chats/${MOCK_THREAD_ID}${mock ? "?mock=true" : ""}`,
       );
       await featuresLoaded;
       if (mock) {
@@ -239,7 +239,7 @@ test.describe("Agent chat", () => {
       features: { browserControlEnabled: true },
     });
 
-    await page.goto("/workspace/capabilities/experts/browser-agent/chats/new");
+    await page.goto("/workspace/agents/browser-agent/chats/new");
     await expect(page.getByPlaceholder(/how can i assist you/i)).toBeVisible({
       timeout: 15_000,
     });
@@ -305,9 +305,7 @@ test.describe("Agent chat", () => {
       },
     );
 
-    await page.goto(
-      `/workspace/capabilities/experts/test-agent/chats/${MOCK_THREAD_ID}`,
-    );
+    await page.goto(`/workspace/agents/test-agent/chats/${MOCK_THREAD_ID}`);
     await expect(page.getByText(aiMessage.content)).toBeVisible({
       timeout: 15_000,
     });
@@ -465,9 +463,7 @@ test.describe("Agent chat", () => {
       },
     );
 
-    await page.goto(
-      `/workspace/capabilities/experts/test-agent/chats/${MOCK_THREAD_ID}`,
-    );
+    await page.goto(`/workspace/agents/test-agent/chats/${MOCK_THREAD_ID}`);
     await expect(page.getByText("Original agent question")).toBeVisible({
       timeout: 15_000,
     });
@@ -538,7 +534,7 @@ test.describe("Agent chat", () => {
       },
     );
 
-    await page.goto("/workspace/capabilities/experts/test-agent/edit");
+    await page.goto("/workspace/agents/test-agent/edit");
     const input = page.getByLabel("Display name", { exact: true });
     await input.fill("🦌".repeat(101));
     await page
@@ -586,7 +582,7 @@ test.describe("Agent chat", () => {
       },
     );
 
-    await page.goto("/workspace/capabilities/experts/test-agent/edit");
+    await page.goto("/workspace/agents/test-agent/edit");
     await page.getByLabel("Display name", { exact: true }).fill("代码审查助手");
     await page.screenshot({
       path: testInfo.outputPath("display-name-settings.png"),
@@ -596,7 +592,7 @@ test.describe("Agent chat", () => {
       .click();
     await expect.poll(() => agent.display_name).toBe("代码审查助手");
 
-    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await page.goto("/workspace/agents/test-agent/chats/new");
     await expect(
       page.getByText("代码审查助手", { exact: true }).first(),
     ).toBeVisible({ timeout: 15_000 });
@@ -627,7 +623,7 @@ test.describe("Agent chat", () => {
         ],
       });
 
-      await page.goto("/workspace/capabilities/experts");
+      await page.goto("/workspace/agents");
 
       const card = page.locator('[data-slot="card"]').filter({
         has: page.getByText("test-agent", { exact: true }),
@@ -646,7 +642,7 @@ test.describe("Agent chat", () => {
       agents: [{ ...MOCK_AGENTS[0]!, tool_groups: [], skills: [] }],
     });
 
-    await page.goto("/workspace/capabilities/experts");
+    await page.goto("/workspace/agents");
 
     const card = page.locator('[data-slot="card"]').filter({
       has: page.getByText("test-agent", { exact: true }),
@@ -687,14 +683,10 @@ test.describe("Agent chat", () => {
     await page.goto("/workspace/chats/new");
     const threadLink = page
       .locator("[data-sidebar='sidebar']")
-      .locator(
-        `a[href='/workspace/capabilities/experts/researcher/chats/${threadId}']`,
-      );
+      .locator(`a[href='/workspace/agents/researcher/chats/${threadId}']`);
     await expect(threadLink).toBeVisible({ timeout: 15_000 });
     await threadLink.click();
-    await page.waitForURL(
-      `**/workspace/capabilities/experts/researcher/chats/${threadId}`,
-    );
+    await page.waitForURL(`**/workspace/agents/researcher/chats/${threadId}`);
 
     const textarea = page.getByPlaceholder(/how can i assist you/i);
     await expect(textarea).toBeVisible({ timeout: 15_000 });

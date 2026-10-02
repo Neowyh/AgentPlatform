@@ -196,7 +196,7 @@ describe("DocLayout", () => {
     const pageMap = buildLocalizedDocsPageMap("/en/docs", [
       { route: "/application", name: "application" },
       {
-        route: "/workspace/capabilities/experts/[agent_name]/edit",
+        route: "/workspace/agents/[agent_name]/edit",
         name: "edit",
       },
       { name: "separator", separator: true },

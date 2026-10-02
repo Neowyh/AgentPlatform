@@ -378,7 +378,7 @@ export function InputBox({
   allowedSkillNames?: readonly string[];
   /**
    * Whether the composer offers skill invocation at all (the "/" picker and
-   * the Skill trigger). On by default: expert (Agent-scoped) sessions keep the
+   * the Skill trigger). On by default: agent (Agent-scoped) sessions keep the
    * entry available and limit what it offers through `allowedSkillNames`, so
    * this only remains as an explicit opt-out for callers that must hide the
    * entry entirely.

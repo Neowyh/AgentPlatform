@@ -502,8 +502,6 @@ describe("ChatBox", () => {
       </ChatBox>,
     );
     // Null artifacts must not crash: the panel degrades to the empty state.
-    expect(
-      await screen.findByText("No artifact selected"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No artifact selected")).toBeInTheDocument();
   });
 });

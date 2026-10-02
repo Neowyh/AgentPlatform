@@ -260,7 +260,7 @@ export const enUS: Translations = {
     recentChats: "Recent chats",
     demoChats: "Demo chats",
     scheduledTasks: "Scheduled tasks",
-    capabilities: "Experts · Skills · Connectors",
+    capabilities: "Agents · Skills · Connectors",
     resources: "Resources",
     automations: "Automations",
     library: "Library",
@@ -502,48 +502,48 @@ export const enUS: Translations = {
   },
   // Agents
   agents: {
-    title: "Experts",
+    title: "Agents",
     description:
-      "Create and manage your own Experts with dedicated responsibilities and capabilities.",
-    newAgent: "New Expert",
-    emptyTitle: "No custom Experts yet",
+      "Create and manage your own Agents with dedicated responsibilities and capabilities.",
+    newAgent: "New Agent",
+    emptyTitle: "No custom Agents yet",
     emptyDescription:
-      "Create your first custom Expert with a specialized system prompt.",
+      "Create your first custom Agent with a specialized system prompt.",
     chat: "Chat",
     delete: "Delete",
     deleteConfirm:
-      "Are you sure you want to archive this Expert? This action cannot be undone.",
-    deleteSuccess: "Expert archived",
+      "Are you sure you want to archive this Agent? This action cannot be undone.",
+    deleteSuccess: "Agent archived",
     newChat: "New chat",
-    createPageTitle: "Design your Expert",
+    createPageTitle: "Design your Agent",
     createPageSubtitle:
-      "Describe the Expert you want — I'll help you create it through conversation.",
-    nameStepTitle: "Name your new Expert",
+      "Describe the Agent you want — I'll help you create it through conversation.",
+    nameStepTitle: "Name your new Agent",
     nameStepHint:
       "Letters, digits, and hyphens only — stored lowercase (e.g. code-reviewer)",
     nameStepPlaceholder: "e.g. code-reviewer",
     nameStepContinue: "Continue",
     nameStepInvalidError:
       "Invalid name — use only letters, digits, and hyphens",
-    nameStepAlreadyExistsError: "An Expert with this name already exists",
+    nameStepAlreadyExistsError: "An Agent with this name already exists",
     nameStepNetworkError:
       "Network request failed — check your network or backend connection",
     nameStepCheckError: "Could not verify name availability — please try again",
     nameStepCheckErrorWithDetail: "Name check failed: {detail}",
     nameStepBootstrapMessage:
-      "The new custom Expert name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
-    save: "Save Expert",
-    saving: "Saving Expert...",
+      "The new custom Agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
+    save: "Save Agent",
+    saving: "Saving Agent...",
     saveRequested:
       "Save requested. iDeer is generating and saving an initial version now.",
     saveHint:
-      "You can save this Expert at any time from the top-right menu, even if this is only a first draft.",
+      "You can save this Agent at any time from the top-right menu, even if this is only a first draft.",
     saveCommandMessage:
-      "Please save this custom Expert now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
+      "Please save this custom Agent now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
     agentCreatedPendingRefresh:
-      "The Expert was created, but iDeer could not load it yet. Please refresh this page in a moment.",
+      "The Agent was created, but iDeer could not load it yet. Please refresh this page in a moment.",
     more: "More actions",
-    agentCreated: "Expert created!",
+    agentCreated: "Agent created!",
     startChatting: "Start chatting",
     backToGallery: "Back to Gallery",
     settings: "Agent settings",
@@ -581,7 +581,7 @@ export const enUS: Translations = {
     applyVisibility: "Apply Visibility Change",
     changeVisibility: "Change visibility",
     applyVisibilityDescription:
-      "Submit an application to change the visibility level of this Expert",
+      "Submit an application to change the visibility level of this Agent",
     currentVisibility: "Current Visibility",
     targetVisibility: "Target Visibility",
     reason: "Reason",
@@ -601,11 +601,11 @@ export const enUS: Translations = {
     confirm: "Confirm",
     favoriteAdded: "Added to favorites",
     favoriteRemoved: "Removed from favorites",
-    exportSuccess: "Expert exported",
-    importSuccess: "Expert imported",
-    edit: "Edit Expert",
+    exportSuccess: "Agent exported",
+    importSuccess: "Agent imported",
+    edit: "Edit Agent",
     export: "Export",
-    notFound: "Expert not found",
+    notFound: "Agent not found",
     configuration: "Configuration",
     model: "Model",
     defaultModel: "Default model",
@@ -615,7 +615,7 @@ export const enUS: Translations = {
     command: "Entry point",
     source: "Source definition",
     notSpecified: "Not specified",
-    exportFailed: "Failed to export Expert. Please try again.",
+    exportFailed: "Failed to export Agent. Please try again.",
   },
   // Breadcrumb
   breadcrumb: {
@@ -1942,8 +1942,8 @@ export const enUS: Translations = {
   },
   resources: {
     title: "Resources",
-    description: "Manage your experts, skills, and connectors",
-    experts: "Experts",
+    description: "Manage your agents, skills, and connectors",
+    experts: "Agents",
     skills: "Skills",
     connectors: "Connectors",
     impactTitle: "Downgrade impact",
@@ -1954,7 +1954,7 @@ export const enUS: Translations = {
     impactCascadeLabel:
       "Also downgrade repairable affected resources to private",
     impactLoadError: "Failed to load impact analysis. Please retry.",
-    resourceTypeAgent: "Expert",
+    resourceTypeAgent: "Agent",
     resourceTypeSkill: "Skill",
     resourceTypeWorkflow: "Workflow",
     resourceTypeTool: "Tool",

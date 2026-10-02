@@ -123,7 +123,7 @@ describe("ToolsPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
-applyUser: vi.fn(),
+      applyUser: vi.fn(),
     });
     mockListTools.mockResolvedValue({
       tools: mockTools,
@@ -327,7 +327,7 @@ applyUser: vi.fn(),
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
-applyUser: vi.fn(),
+      applyUser: vi.fn(),
     });
 
     render(<ToolsPage />);

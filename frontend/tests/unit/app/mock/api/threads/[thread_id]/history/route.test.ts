@@ -32,10 +32,9 @@ function mockFetchResponses(byId: Record<string, object | null>) {
 }
 
 function makeRequest(threadId: string) {
-  return new NextRequest(
-    `http://localhost/api/threads/${threadId}/history`,
-    { method: "POST" },
-  );
+  return new NextRequest(`http://localhost/api/threads/${threadId}/history`, {
+    method: "POST",
+  });
 }
 
 describe("mock history route", () => {
@@ -48,7 +47,10 @@ describe("mock history route", () => {
       "test-123": { thread_id: "test-123", title: "Test Thread" },
     });
 
-    const response = await POST(makeRequest("test-123"), makeParams("test-123"));
+    const response = await POST(
+      makeRequest("test-123"),
+      makeParams("test-123"),
+    );
     const data = await response.json();
 
     expect(Array.isArray(data)).toBe(true);
@@ -65,7 +67,10 @@ describe("mock history route", () => {
       "test-456": { thread_id: "test-456", history },
     });
 
-    const response = await POST(makeRequest("test-456"), makeParams("test-456"));
+    const response = await POST(
+      makeRequest("test-456"),
+      makeParams("test-456"),
+    );
     const data = await response.json();
 
     // When history is an array, the route returns the full json object
@@ -78,7 +83,10 @@ describe("mock history route", () => {
       "test-789": { thread_id: "test-789", history: [] },
     });
 
-    const response = await POST(makeRequest("test-789"), makeParams("test-789"));
+    const response = await POST(
+      makeRequest("test-789"),
+      makeParams("test-789"),
+    );
     const data = await response.json();
 
     // history: [] is an array, so the route returns the full json object
@@ -117,7 +125,10 @@ describe("mock history route", () => {
   test("returns 404 when the manifest cannot be loaded", async () => {
     mockFetchResponses({ "test-123": null });
 
-    const response = await POST(makeRequest("test-123"), makeParams("test-123"));
+    const response = await POST(
+      makeRequest("test-123"),
+      makeParams("test-123"),
+    );
 
     expect(response.status).toBe(404);
   });
@@ -125,7 +136,10 @@ describe("mock history route", () => {
   test("returns Response with JSON content type", async () => {
     mockFetchResponses({ "test-123": { thread_id: "test-123" } });
 
-    const response = await POST(makeRequest("test-123"), makeParams("test-123"));
+    const response = await POST(
+      makeRequest("test-123"),
+      makeParams("test-123"),
+    );
 
     expect(response.headers.get("content-type")).toContain("application/json");
   });

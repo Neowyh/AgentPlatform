@@ -11,14 +11,14 @@ import { useI18n } from "@/core/i18n/hooks";
 import { PluginGallery } from "../capabilities/plugin-gallery";
 import { SkillGallery } from "../capabilities/skill-gallery";
 
+import { AgentList } from "./agent-list";
 import { ConnectorList } from "./connector-list";
-import { ExpertList } from "./expert-list";
 import { SkillList } from "./skill-list";
 
-type ResourceTab = "experts" | "skills" | "connectors";
+type ResourceTab = "agents" | "skills" | "connectors";
 
 export function ResourceGallery({
-  defaultTab = "experts",
+  defaultTab = "agents",
 }: {
   defaultTab?: ResourceTab;
 }) {
@@ -27,7 +27,7 @@ export function ResourceGallery({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const pathTab = pathname.split("/").at(-1) as ResourceTab;
-  const activeTab = ["experts", "skills", "connectors"].includes(pathTab)
+  const activeTab = ["agents", "skills", "connectors"].includes(pathTab)
     ? pathTab
     : defaultTab;
 
@@ -66,13 +66,13 @@ export function ResourceGallery({
         className="flex-1"
       >
         <TabsList>
-          <TabsTrigger value="experts">{t.resources.experts}</TabsTrigger>
+          <TabsTrigger value="agents">{t.resources.experts}</TabsTrigger>
           <TabsTrigger value="skills">{t.resources.skills}</TabsTrigger>
           <TabsTrigger value="connectors">{t.resources.connectors}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="experts" className="flex-1">
-          <ExpertList />
+        <TabsContent value="agents" className="flex-1">
+          <AgentList />
         </TabsContent>
 
         <TabsContent value="skills" className="flex-1">

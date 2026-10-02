@@ -44,11 +44,19 @@ nav_href() {
 baseline_nav=$(nav_href "$BASE_REF")
 head_nav=$(nav_href "$HEAD_REF")
 lost_nav=$(comm -23 <(printf '%s\n' "$baseline_nav") <(printf '%s\n' "$head_nav") || true)
+# Baseline nav links explicitly retired by product decision; each entry cites
+# its decision record. Callers may extend the list via BASELINE_NAV_REMOVALS.
+DEFAULT_NAV_REMOVALS='
+# ADR-0007 (2026-10-02): the capability-center nav entry is
+# /workspace/capabilities/agents; experts URLs stay reachable through the
+# permanent redirect shims (route parity holds in layer 1).
+/workspace/capabilities/experts
+'
 if [ -n "$lost_nav" ]; then
     real_lost=""
     while IFS= read -r href; do
         [ -z "$href" ] && continue
-        if printf '%s' "${BASELINE_NAV_REMOVALS:-}" | grep -qxF "$href"; then
+        if printf '%s' "${BASELINE_NAV_REMOVALS:-$DEFAULT_NAV_REMOVALS}" | grep -qxF "$href"; then
             echo "  allowed removal: $href"
         else
             real_lost="${real_lost}${href}\n"

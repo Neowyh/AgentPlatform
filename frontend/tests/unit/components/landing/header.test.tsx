@@ -28,7 +28,10 @@ describe("Header", () => {
   test("renders docs link pointing to /docs/manual", async () => {
     render(await Header({}));
     const link = screen.getByText("文档").closest("a");
-    expect(link).toHaveAttribute("href", expect.stringContaining("/docs/manual"));
+    expect(link).toHaveAttribute(
+      "href",
+      expect.stringContaining("/docs/manual"),
+    );
   });
 
   test("does not render blog link", async () => {

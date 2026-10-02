@@ -62,7 +62,7 @@ test.describe("Workflow management", () => {
       await page.route(/\/api\/resources\?type=knowledge_base/, (route) =>
         route.fulfill({ json: { items: [], total: 0 } }),
       );
-      await page.goto("/workspace/capabilities/experts");
+      await page.goto("/workspace/agents");
       await page.waitForLoadState("networkidle");
       await page.getByRole("link", { name: "Workflows" }).click();
       await expect(page).toHaveURL(/\/workspace\/workflows$/);

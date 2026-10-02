@@ -6,11 +6,15 @@ vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => mockRedirect(...args),
 }));
 
-// Server components are async; render() handles promise-returning children.
-import AgentChatRedirectPage from "@/app/workspace/agents/[agent_name]/chats/[thread_id]/page";
+// ADR-0007 direction: /workspace/agents/* is canonical; the pre-unification
+// /workspace/capabilities/experts/* URLs redirect permanently into it.
 import { legacyRedirectTarget } from "@/app/workspace/agents/legacy-redirect";
-import NewAgentPage from "@/app/workspace/agents/new/page";
-import AgentsPage from "@/app/workspace/agents/page";
+import AgentsGalleryRedirectPage from "@/app/workspace/agents/page";
+import ExpertChatRedirectPage from "@/app/workspace/capabilities/experts/[agent_name]/chats/[thread_id]/page";
+import ExpertEditRedirectPage from "@/app/workspace/capabilities/experts/[agent_name]/edit/page";
+import ExpertDetailRedirectPage from "@/app/workspace/capabilities/experts/[agent_name]/page";
+import NewExpertRedirectPage from "@/app/workspace/capabilities/experts/new/page";
+import ExpertGalleryRedirectPage from "@/app/workspace/capabilities/experts/page";
 
 beforeEach(() => {
   mockRedirect.mockClear();
@@ -46,64 +50,73 @@ describe("legacyRedirectTarget", () => {
   });
 });
 
-describe("legacy /workspace/agents redirects", () => {
-  test("gallery URL redirects preserving path and query", async () => {
-    await AgentsPage({
+describe("bare /workspace/agents gallery redirect", () => {
+  test("routes to the capability-center agents tab preserving query", async () => {
+    await AgentsGalleryRedirectPage({
       searchParams: Promise.resolve({ mock: "true" }),
     } as never);
     expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts?mock=true",
+      "/workspace/capabilities/agents?mock=true",
     );
   });
+});
 
-  test("legacy creation URL redirects preserving path and query", async () => {
-    await NewAgentPage({
-      searchParams: Promise.resolve({ mock: "true" }),
+describe("experts-to-agents permanent redirects", () => {
+  test("experts gallery URL routes to the agents tab", async () => {
+    await ExpertGalleryRedirectPage();
+    expect(mockRedirect).toHaveBeenCalledWith("/workspace/capabilities/agents");
+  });
+
+  test("experts creation URL redirects preserving the path", async () => {
+    await NewExpertRedirectPage();
+    expect(mockRedirect).toHaveBeenCalledWith("/workspace/agents/new");
+  });
+
+  test("expert detail URL redirects to the agent detail", async () => {
+    await ExpertDetailRedirectPage({
+      params: Promise.resolve({ agent_name: "test-agent" }),
+    } as never);
+    expect(mockRedirect).toHaveBeenCalledWith("/workspace/agents/test-agent");
+  });
+
+  test("expert edit URL redirects to the agent edit", async () => {
+    await ExpertEditRedirectPage({
+      params: Promise.resolve({ agent_name: "test-agent" }),
     } as never);
     expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/new?mock=true",
+      "/workspace/agents/test-agent/edit",
     );
   });
 
-  test("legacy expert chat URL redirects preserving path and query", async () => {
+  test("expert chat URL redirects preserving path and query", async () => {
     const params = Promise.resolve({
       agent_name: "test-agent",
       thread_id: "abc123",
     });
-    const searchParams = Promise.resolve({ mock: "true" });
 
-    await AgentChatRedirectPage({ params, searchParams } as never);
+    await ExpertChatRedirectPage({
+      params,
+      searchParams: Promise.resolve({ mock: "true" }),
+    } as never);
 
     expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/test-agent/chats/abc123?mock=true",
+      "/workspace/agents/test-agent/chats/abc123?mock=true",
     );
   });
 
-  test("legacy expert chat URL without query has no search suffix", async () => {
+  test("expert chat URL without query has no search suffix", async () => {
     const params = Promise.resolve({
       agent_name: "test-agent",
       thread_id: "abc123",
     });
-    const searchParams = Promise.resolve({});
 
-    await AgentChatRedirectPage({ params, searchParams } as never);
-
-    expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/test-agent/chats/abc123",
-    );
-  });
-
-  test("repeated query keys are preserved as repeated parameters", async () => {
-    const params = Promise.resolve({
-      agent_name: "test-agent",
-      thread_id: "abc123",
-    });
-    const searchParams = Promise.resolve({ tag: ["a", "b"] });
-
-    await AgentChatRedirectPage({ params, searchParams } as never);
+    await ExpertChatRedirectPage({
+      params,
+      searchParams: Promise.resolve({}),
+    } as never);
 
     expect(mockRedirect).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/test-agent/chats/abc123?tag=a&tag=b",
+      "/workspace/agents/test-agent/chats/abc123",
     );
   });
 });

@@ -227,7 +227,7 @@ test("shared showcase composer remains readable", async ({ page }) => {
 test("Custom Agent composer remains readable", async ({ page }) => {
   await setupComposerMocks(page);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/workspace/capabilities/experts/test-agent/chats/new", {
+  await page.goto("/workspace/agents/test-agent/chats/new", {
     waitUntil: "commit",
   });
   await expectComposerReadable(page);
