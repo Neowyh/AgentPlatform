@@ -42,6 +42,9 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent }: AgentCardProps) {
+  const displayName = agent.display_name?.length
+    ? agent.display_name
+    : agent.name;
   const { t } = useI18n();
   const router = useRouter();
   const deleteAgent = useDeleteAgent();
@@ -117,7 +120,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     href={`/workspace/capabilities/experts/${resourceIdentity}`}
                     className="hover:underline"
                   >
-                    {agent.name}
+                    {displayName}
                   </Link>
                   {agent.read_only && (
                     <Badge variant="outline" className="type-body ml-1.5">
@@ -154,7 +157,8 @@ export function AgentCard({ agent }: AgentCardProps) {
           )}
         </CardHeader>
 
-        {(agent.tool_groups?.length ?? agent.skills?.length ?? 0) > 0 && (
+        {((agent.tool_groups?.length ?? 0) > 0 ||
+          (agent.skills?.length ?? 0) > 0) && (
           <CardContent className="pt-0 pb-3">
             <div className="flex flex-wrap gap-1">
               {agent.tool_groups?.map((group) => (

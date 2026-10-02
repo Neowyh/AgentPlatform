@@ -112,6 +112,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         exportSuccess: "Exported",
         lastUpdated: "Last Updated",
         edit: "Edit",
+        // 合并后加载失败态改用 common.error 前缀（与 en-US locale 对齐）。
+        error: "Error:",
       },
     },
     changeLocale: vi.fn(),

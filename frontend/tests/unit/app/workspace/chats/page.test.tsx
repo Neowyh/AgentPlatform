@@ -40,6 +40,15 @@ vi.mock("@/core/threads/hooks", () => ({
   }),
 }));
 
+// 合并后 ChatsPage 接入上游归档功能（归档 tabs + 归档/恢复操作），
+// 归档 action 依赖 react-query 的 QueryClient；本测试只关注渲染结构，直接 mock。
+vi.mock("@/components/workspace/use-thread-archive-action", () => ({
+  useThreadArchiveAction: () => ({
+    setArchived: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 vi.mock("@/core/threads/utils", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   pathOfThread: (thread: any) =>

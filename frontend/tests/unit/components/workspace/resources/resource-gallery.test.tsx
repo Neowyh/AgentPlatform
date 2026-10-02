@@ -35,6 +35,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         skills: "Skills",
         connectors: "Connectors",
       },
+      // 工作树为能力中心接入搜索框，占位符复用 capabilities 键。
+      capabilities: {
+        searchSkills: "Search skills by name or purpose",
+        searchPlugins: "Search plugins by name or purpose",
+      },
     },
   }),
 }));
@@ -94,6 +99,17 @@ vi.mock("@/components/workspace/resources/skill-list", () => ({
 
 vi.mock("@/components/workspace/resources/connector-list", () => ({
   ConnectorList: () => <div data-testid="connector-list">Connector List</div>,
+}));
+
+// 合并后 skills/connectors tab 真实挂载上游 PluginGallery/SkillGallery
+//（台账裁决：上游组件必须挂进本地 [tab] 页）；二者内部走 react-query，
+// 本测试只覆盖本页结构与本地列表，mock 之。
+vi.mock("@/components/workspace/capabilities/skill-gallery", () => ({
+  SkillGallery: () => <div data-testid="skill-gallery">Skill Gallery</div>,
+}));
+
+vi.mock("@/components/workspace/capabilities/plugin-gallery", () => ({
+  PluginGallery: () => <div data-testid="plugin-gallery">Plugin Gallery</div>,
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────

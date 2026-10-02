@@ -17,16 +17,27 @@ def _mock_deps(release: asyncio.Event, get_side_effect=None):
     run_mgr.create_or_reject = AsyncMock()
     run_mgr.cancel = AsyncMock()
 
-    async def _blocked_get(thread_id, **_kwargs):
+    async def _blocked_create(*args, **_kwargs):
+        await release.wait()
+        return None
+
+    get_calls = {"n": 0}
+
+    async def _get(thread_id, **_kwargs):
+        get_calls["n"] += 1
         if get_side_effect is not None:
             raise get_side_effect
-        await release.wait()
+        if get_calls["n"] > 1:
+            # First get is start_run's inline project-context read; the
+            # background metadata upsert's own read stays blocked across the
+            # start_run return (the T2 seam under the merged flow).
+            await release.wait()
         return None
 
     run_ctx = MagicMock()
     run_ctx.thread_store = MagicMock()
-    run_ctx.thread_store.get = AsyncMock(side_effect=_blocked_get)
-    run_ctx.thread_store.create = AsyncMock()
+    run_ctx.thread_store.get = AsyncMock(side_effect=_get)
+    run_ctx.thread_store.create = AsyncMock(side_effect=_blocked_create)
     run_ctx.thread_store.update_status = AsyncMock()
 
     request = MagicMock()
@@ -70,6 +81,10 @@ async def test_start_run_returns_before_upsert_completes():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    # v2.1.0 start_run consults idempotency-reuse metadata on every record;
+    # bare MagicMocks would read as "reused with a mismatch".
+    record.idempotency_reused = False
+    record.kwargs = None
     record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     patches = _patches(bridge, run_mgr, run_ctx)
@@ -104,6 +119,10 @@ async def test_upsert_failure_does_not_fail_start_run():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    # v2.1.0 start_run consults idempotency-reuse metadata on every record;
+    # bare MagicMocks would read as "reused with a mismatch".
+    record.idempotency_reused = False
+    record.kwargs = None
     record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     patches = _patches(bridge, run_mgr, run_ctx)

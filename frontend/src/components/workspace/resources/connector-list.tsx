@@ -5,22 +5,19 @@ import Link from "next/link";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useMCPConfig } from "@/core/mcp/hooks";
 
-import { ToolSettingsPage } from "../settings/tool-settings-page";
-
 export function ConnectorList() {
   const { config, isLoading } = useMCPConfig();
   const { user } = useAuth();
   const isAdmin = user?.system_role === "super_admin";
 
   if (isLoading) {
-    return <div className="text-muted-foreground">Loading...</div>;
+    return <div className="text-muted-foreground type-body">Loading...</div>;
   }
 
   const servers = Object.entries(config?.mcp_servers ?? {});
 
   return (
     <div className="space-y-6">
-      {isAdmin && <ToolSettingsPage />}
       {servers.length === 0 ? (
         !isAdmin && (
           <div className="text-muted-foreground">No connectors found</div>

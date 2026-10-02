@@ -341,7 +341,12 @@ test.describe("@smoke WorkBuddy cascade bar", () => {
       ? "Model Bravo"
       : "Model Alpha";
     await modelTrigger.click();
-    await page.getByRole("option", { name: new RegExp(nextModel) }).click();
+    // The merged upstream picker renders models as buttons inside the
+    // "Choose a model" dialog (with a separate "Favorite <model>" button),
+    // so anchor on the entry itself, not its favorite toggle.
+    await page
+      .getByRole("button", { name: new RegExp(`^${nextModel} \\(`) })
+      .click();
     await expect(modelTrigger).toContainText(nextModel);
     await expectWelcomeLayoutUnchanged(page, initialLayout, "model selection");
 

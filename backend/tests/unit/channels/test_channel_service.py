@@ -454,7 +454,7 @@ class TestRestartChannel:
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
     async def test_restart_existing_channel_stop_error(self, mock_bus_cls, mock_store_cls, mock_mgr_cls):
-        """Stopping the old channel can fail; restart should still proceed."""
+        """A failed stop retains the instance; the restart is deferred this round."""
         from app.channels.service import ChannelService
 
         svc = ChannelService(channels_config={"slack": {"enabled": True}})
@@ -465,8 +465,11 @@ class TestRestartChannel:
 
         result = await svc.restart_channel("slack")
         old_ch.stop.assert_awaited_once()
-        svc._start_channel.assert_awaited_once()
-        assert result is True
+        # The failed stop keeps the channel tracked; starting a replacement
+        # over a still-listening instance would orphan it.
+        assert svc._channels.get("slack") is old_ch
+        svc._start_channel.assert_not_awaited()
+        assert result is False
 
     @pytest.mark.asyncio
     @patch("app.channels.service.ChannelManager")
@@ -1017,11 +1020,13 @@ class TestCoverageCompleteness:
         ch = MagicMock()
         ch.is_running = False
         ch.start = AsyncMock()
+        ch.stop = AsyncMock()
         mock_resolve.return_value = MagicMock(return_value=ch)
         svc = ChannelService()
 
         result = await svc._start_channel("wechat", {"enabled": True, "bot_token": "tok"})
         assert result is False
+        ch.stop.assert_awaited_once()
         assert "wechat" not in svc._channels
 
     @pytest.mark.asyncio
@@ -1074,11 +1079,13 @@ class TestCoverageCompleteness:
         ch = MagicMock()
         ch.is_running = True
         ch.start = AsyncMock(side_effect=ConnectionError("network down"))
+        ch.stop = AsyncMock()
         mock_resolve.return_value = MagicMock(return_value=ch)
         svc = ChannelService()
 
         result = await svc._start_channel("feishu", {"enabled": True, "app_id": "aid", "app_secret": "asec"})
         assert result is False
+        ch.stop.assert_awaited_once()
         assert "feishu" not in svc._channels
 
     @patch("app.channels.service.ChannelManager")

@@ -20,6 +20,7 @@ from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 
 EXPECTED_COMMANDS: frozenset[str] = frozenset(
     {
+        "/agent",
         "/bootstrap",
         "/goal",
         "/new",
@@ -42,8 +43,8 @@ class TestTypeAndStructure:
     def test_is_frozenset(self):
         assert isinstance(KNOWN_CHANNEL_COMMANDS, frozenset)
 
-    def test_contains_exactly_seven_commands(self):
-        assert len(KNOWN_CHANNEL_COMMANDS) == 7
+    def test_contains_exactly_eight_commands(self):
+        assert len(KNOWN_CHANNEL_COMMANDS) == 8
 
     def test_all_elements_are_strings(self):
         for cmd in KNOWN_CHANNEL_COMMANDS:
@@ -165,13 +166,13 @@ class TestImmutability:
     def test_intersection_returns_new_set(self):
         result = KNOWN_CHANNEL_COMMANDS & {"/help", "/new"}
         assert result == {"/help", "/new"}
-        assert len(KNOWN_CHANNEL_COMMANDS) == 7
+        assert len(KNOWN_CHANNEL_COMMANDS) == 8
 
     def test_symmetric_difference_returns_new_set(self):
         result = KNOWN_CHANNEL_COMMANDS ^ {"/help", "/extra"}
         assert "/help" not in result
         assert "/extra" in result
-        assert len(KNOWN_CHANNEL_COMMANDS) == 7
+        assert len(KNOWN_CHANNEL_COMMANDS) == 8
 
 
 # ---------------------------------------------------------------------------

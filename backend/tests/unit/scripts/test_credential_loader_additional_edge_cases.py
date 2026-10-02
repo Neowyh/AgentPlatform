@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from deerflow.models.credential_loader import (
     ClaudeCodeCredential,
     _credential_from_direct_token,
@@ -23,6 +25,17 @@ from deerflow.models.credential_loader import (
     load_claude_code_credential,
     load_codex_cli_credential,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_file_descriptor_secret_cache(monkeypatch):
+    # Descriptor numbers are recycled across tests (and across the root
+    # test_credential_loader.py file in the same session), so a shared
+    # module-global cache would leak a token from one pipe into another.
+    import deerflow.models.credential_loader as credential_loader
+
+    monkeypatch.setattr(credential_loader, "_fd_secret_cache", {})
+
 
 # --- Line 31: is_oauth_token with non-string ---
 

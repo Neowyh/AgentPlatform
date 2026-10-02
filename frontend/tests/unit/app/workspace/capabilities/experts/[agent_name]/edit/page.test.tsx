@@ -998,6 +998,9 @@ describe("AgentEditPage", () => {
         name: "test-agent",
         request: {
           description: "A test agent",
+          // display_name 编辑视口自上游 agent settings dialog 移植（DU 裁决）。
+          display_name: null,
+          draft_revision: undefined,
           model: "gpt-4",
           tool_groups: ["bash", "web"],
           skills: ["web-search", "code-review"],
@@ -1385,6 +1388,8 @@ describe("AgentEditPage", () => {
           name: "test-agent",
           request: {
             description: "",
+            display_name: null,
+            draft_revision: undefined,
             model: null,
             tool_groups: [],
             skills: [],

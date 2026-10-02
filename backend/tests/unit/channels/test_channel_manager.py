@@ -482,10 +482,20 @@ class TestFormatUploadedFilesBlock:
 class TestReadHttpInboundFile:
     @pytest.mark.asyncio
     async def test_success(self):
-        mock_client = MagicMock()
+        async def _aiter_raw():
+            yield b"file_data"
+
         mock_response = MagicMock()
-        mock_response.content = b"file_data"
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_raw = MagicMock(return_value=_aiter_raw())
+
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=stream_cm)
 
         result = await _read_http_inbound_file({"url": "http://example.com/file.txt"}, mock_client)
         assert result == b"file_data"
@@ -515,14 +525,10 @@ class TestReadWechatInboundFile:
         assert result == b"local_data"
 
     @pytest.mark.asyncio
-    async def test_with_full_url(self):
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.content = b"url_data"
-        mock_client.get = AsyncMock(return_value=mock_response)
-
-        result = await _read_wechat_inbound_file({"full_url": "http://example.com/file.txt"}, mock_client)
-        assert result == b"url_data"
+    async def test_without_local_path_returns_none(self):
+        """No re-fetch fallback: a file dict without a staged local path has no fetch source."""
+        result = await _read_wechat_inbound_file({"full_url": "http://example.com/file.txt"}, MagicMock())
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_no_info(self):
@@ -997,6 +1003,7 @@ class TestHandleChat:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "existing_thread"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(
             return_value={
                 "messages": [
@@ -1021,6 +1028,7 @@ class TestHandleChat:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "existing_thread"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
 
         mock_response = MagicMock()
         mock_response.status_code = 409
@@ -1042,6 +1050,7 @@ class TestHandleChat:
         mgr = _make_manager()
         mgr.store.get_thread_id.return_value = "t"
         mock_client = MagicMock()
+        mock_client.threads.get = AsyncMock(return_value={"metadata": {}})
         mock_client.runs.wait = AsyncMock(return_value={})
         mgr._client = mock_client
 

@@ -14,6 +14,50 @@ iDeer supports configurable MCP servers and skills to extend its capabilities, w
 3. Configure each server’s command, arguments, and environment variables as needed.
 4. Restart the application to load and register MCP tools.
 
+## Parallel Search (optional)
+
+The `parallel-search` entry in `extensions_config.example.json` is disabled by
+default. To opt in, copy that entry into `mcpServers` in your root
+`extensions_config.json`, set `"enabled": true`, and restart iDeer. It connects
+to `https://search.parallel.ai/mcp` over HTTP and adds Parallel's search and fetch
+tools. With iDeer's default tool-name prefix, the agent sees
+`parallel-search_web_search` and `parallel-search_web_fetch`. Existing search
+providers and defaults stay unchanged.
+
+This is a third-party service operated by Parallel.ai. Search calls send
+objectives and queries to Parallel; fetch calls send requested page URLs and
+any extraction objective. These inputs can contain information from your
+conversation, so enable it only if you are comfortable sending that data to
+Parallel.
+
+Access is anonymous by default: no API key or authentication headers are needed.
+Keep `"User-Agent": "deer-flow"` in the entry's `headers`. This stable,
+project-wide identity lets Parallel measure aggregate usage from this
+integration to understand adoption and support it; it does not identify an
+individual user or installation. Preserve it on search and fetch HTTP requests
+if the transport changes. Existing configurations can add the same header.
+
+For higher rate limits, optionally add authorization to the `headers` field of the
+`parallel-search` entry in your local `extensions_config.json`:
+
+```json
+{
+  "headers": {
+    "User-Agent": "deer-flow",
+    "Authorization": "$PARALLEL_AUTHORIZATION"
+  }
+}
+```
+
+Set `PARALLEL_AUTHORIZATION` in the iDeer backend's environment to the full
+value `Bearer <your-parallel-api-key>`, then restart iDeer. Include `Bearer `
+in the environment variable because iDeer expands only whole-string
+`$ENV_VAR` references, not `Bearer $ENV_VAR`. Keep the actual key out of committed
+files. Remove only `Authorization` and restart iDeer to return to anonymous
+access. See the
+[Parallel Search MCP documentation](https://docs.parallel.ai/integrations/mcp/search-mcp)
+for details.
+
 ## Filesystem MCP Servers
 
 iDeer already provides built-in file tools for thread-scoped workspace access.

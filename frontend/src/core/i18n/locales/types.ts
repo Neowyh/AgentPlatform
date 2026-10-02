@@ -3,7 +3,6 @@ export interface Translations {
   locale: {
     localName: string;
   };
-
   // Common
   common: {
     home: string;
@@ -47,13 +46,14 @@ export interface Translations {
     showArtifacts: string;
     browser: string;
     showBrowser: string;
+    showingOf: (loaded: number, total: number) => string;
+    error: string;
     deleteTitle: string;
     deleteThreadConfirm: (title: string) => string;
     deleteFailed: string;
     showAll: string;
     favoritesOnly: string;
   };
-
   runDuration: {
     reasoning: string;
     working: string;
@@ -65,19 +65,16 @@ export interface Translations {
     seconds: (value: number) => string;
     separator: string;
   };
-
   home: {
     docs: string;
     blog: string;
   };
-
   // Welcome
   welcome: {
     greeting: string;
     createYourOwnSkill: string;
     createYourOwnSkillDescription: string;
   };
-
   // Clipboard
   clipboard: {
     copyToClipboard: string;
@@ -85,7 +82,6 @@ export interface Translations {
     failedToCopyToClipboard: string;
     linkCopied: string;
   };
-
   artifactEditing: {
     unsaved: string;
     saving: string;
@@ -98,7 +94,6 @@ export interface Translations {
     runInProgress: string;
     saveFailed: string;
   };
-
   artifactPreview: {
     limited: (previewSize: string, totalSize?: string) => string;
     loadFullFile: string;
@@ -107,16 +102,14 @@ export interface Translations {
     viewSource: string;
     missingTarget: string;
   };
-
   artifactArchive: {
+    currentVersionNotice: string;
+    downloadFailed: string;
     downloadSelected: (count: number) => string;
     selectFile: (fileName: string) => string;
     selectionNotice: string;
     selectionLimit: (count: number) => string;
-    currentVersionNotice: string;
-    downloadFailed: string;
   };
-
   // Citations
   citations: {
     sourcesSummary: (count: number) => string;
@@ -124,7 +117,6 @@ export interface Translations {
     copyReference: (title: string) => string;
     copiedReference: (title: string) => string;
   };
-
   // Workspace Changes
   workspaceChanges: {
     title: string;
@@ -145,7 +137,6 @@ export interface Translations {
     symlinkUnavailable: string;
     truncatedSummary: string;
   };
-
   // Input Box
   inputBox: {
     placeholder: string;
@@ -211,12 +202,19 @@ export interface Translations {
     compactSkipped: string;
     compactFailed: string;
     pleaseWaitStreaming: string;
+    referenceConversations: string;
+    referenceConversationsSearch: string;
+    referenceConversationsEmpty: string;
+    referenceConversationsLimit: (max: number) => string;
+    referenceConversationsRemove: (title: string) => string;
+    referencedConversations: string;
+    removeProjectAttachment: string;
+    stopStreamingUnavailable: string;
     selectModel: string;
     invokeSkill: string;
     skill: string;
     skillDialogDescription: string;
   };
-
   // Sidebar
   sidebar: {
     recentChats: string;
@@ -231,7 +229,6 @@ export interface Translations {
     library: string;
     workflows: string;
   };
-
   // Thread-scoped MCP background tasks
   backgroundTasks: {
     label: string;
@@ -269,7 +266,6 @@ export interface Translations {
       cancelled: string;
     };
   };
-
   subagentBatches: {
     label: string;
     title: string;
@@ -299,10 +295,13 @@ export interface Translations {
       cancelled: string;
     };
   };
-
   // Scheduled tasks
   scheduledTasks: {
-    scheduleType: { cron: string; once: string };
+    scheduleType: {
+      cron: string;
+      once: string;
+      interval: string;
+    };
     preset: {
       label: string;
       hourly: string;
@@ -320,6 +319,11 @@ export interface Translations {
       cronPlaceholder: string;
       runAt: string;
       timezone: string;
+      intervalAmount: string;
+      intervalUnitSeconds: string;
+      intervalUnitMinutes: string;
+      intervalUnitHours: string;
+      intervalMinHint: string;
     };
     weekdays: {
       mon: string;
@@ -338,6 +342,8 @@ export interface Translations {
       prompt: string;
       submit: string;
       fillRequired: string;
+      agent: string;
+      leadAgent: string;
     };
     context: {
       fresh: string;
@@ -355,6 +361,7 @@ export interface Translations {
       allTypes: string;
       cron: string;
       once: string;
+      interval: string;
     };
     detail: {
       contextMode: string;
@@ -371,6 +378,7 @@ export interface Translations {
       noSelection: string;
       filteredByThread: string;
       loadFailed: string;
+      agent: string;
     };
     actions: {
       edit: string;
@@ -404,7 +412,10 @@ export interface Translations {
       failed: string;
       cancelled: string;
     };
-    runTrigger: { scheduled: string; manual: string };
+    runTrigger: {
+      scheduled: string;
+      manual: string;
+    };
     runStatus: {
       queued: string;
       launching: string;
@@ -416,13 +427,35 @@ export interface Translations {
     };
     recipes: {
       label: string;
-      trending: { title: string; desc: string };
-      news: { title: string; desc: string };
-      issues: { title: string; desc: string };
-      weekly: { title: string; desc: string };
+      trending: {
+        title: string;
+        desc: string;
+      };
+      news: {
+        title: string;
+        desc: string;
+      };
+      issues: {
+        title: string;
+        desc: string;
+      };
+      weekly: {
+        title: string;
+        desc: string;
+      };
+    };
+    history: {
+      navigation: string;
+      newer: string;
+      older: string;
+      latest: string;
+      page: string;
+      paused: string;
+      loading: string;
+      loadFailed: string;
+      retry: string;
     };
   };
-
   // Agents
   agents: {
     title: string;
@@ -474,6 +507,9 @@ export interface Translations {
     settingsSaved: string;
     settingsInvalidTemperature: string;
     settingsInvalidMaxTokens: string;
+    settingsDisplayName: string;
+    settingsDisplayNameTooLong: string;
+    settingsDisplayNameHint: string;
     template: string;
     detailChat: string;
     visibility: string;
@@ -516,7 +552,6 @@ export interface Translations {
     notSpecified: string;
     exportFailed: string;
   };
-
   // Breadcrumb
   breadcrumb: {
     workspace: string;
@@ -525,7 +560,6 @@ export interface Translations {
     edit: string;
     runs: string;
   };
-
   // Workspace
   workspace: {
     officialWebsite: string;
@@ -549,7 +583,6 @@ export interface Translations {
     applicationManagement: string;
     auditLogManagement: string;
   };
-
   // Conversation
   conversation: {
     noMessages: string;
@@ -560,7 +593,6 @@ export interface Translations {
     outlineLabel: string;
     outlineAttachmentFallback: string;
   };
-
   // Chats
   chats: {
     searchChats: string;
@@ -571,8 +603,24 @@ export interface Translations {
     pinChat: string;
     unpinChat: string;
     pinChatFailed: string;
+    deleteChat: string;
+    deleteConfirm: (title: string) => string;
+    deleteFailed: string;
+    noActiveChats: string;
+    activeChats: string;
+    archivedChats: string;
+    archiveChat: string;
+    restoreChat: string;
+    archiveSuccess: string;
+    restoreSuccess: string;
+    archiveFailed: string;
+    archiveDescription: string;
+    undoArchive: string;
+    noArchivedChats: string;
+    noMatchingChats: string;
+    loadChatsFailed: string;
+    retryLoadChats: string;
   };
-
   // Sidecar
   sidecar: {
     title: string;
@@ -597,7 +645,6 @@ export interface Translations {
     continuing: string;
     selectionCrossesMessages: string;
   };
-
   // Channels
   channels: {
     title: string;
@@ -621,7 +668,6 @@ export interface Translations {
     descriptions: Record<string, string>;
     connectedAs: (name: string) => string;
   };
-
   // Page titles (document title)
   pages: {
     appName: string;
@@ -629,7 +675,6 @@ export interface Translations {
     newChat: string;
     untitled: string;
   };
-
   // Tool calls
   toolCalls: {
     moreSteps: (count: number) => string;
@@ -659,8 +704,16 @@ export interface Translations {
     browserBack: string;
     browserScreenshot: string;
     browserClose: string;
+    details: string;
+    toolName: string;
+    callId: string;
+    input: string;
+    result: string;
+    error: string;
+    noResult: string;
+    emptyResult: string;
+    truncated: string;
   };
-
   humanInput: {
     answered: string;
     pending: string;
@@ -674,7 +727,6 @@ export interface Translations {
     selectPlaceholder: string;
     answeredValue: (value: string) => string;
   };
-
   // Uploads
   uploads: {
     uploading: string;
@@ -688,7 +740,6 @@ export interface Translations {
     tooManyFiles: (count: number, maxFiles: number) => string;
     totalSizeTooLarge: (count: number, maxTotalSize: string) => string;
   };
-
   // Subtasks
   subtasks: {
     subtask: string;
@@ -697,7 +748,6 @@ export interface Translations {
     completed: string;
     failed: string;
   };
-
   // Token Usage
   tokenUsage: {
     title: string;
@@ -731,13 +781,11 @@ export interface Translations {
     updateTodo: (content: string) => string;
     removeTodo: (content: string) => string;
   };
-
   contextUsage: {
     label: string;
     title: string;
     badgeAriaLabel: (percentage: string) => string;
   };
-
   // Shortcuts
   shortcuts: {
     searchActions: string;
@@ -748,7 +796,6 @@ export interface Translations {
     openCommandPalette: string;
     toggleSidebar: string;
   };
-
   // Settings
   settings: {
     title: string;
@@ -1058,6 +1105,38 @@ export interface Translations {
       invalidArchive: string;
       archiveTooLarge: string;
       installFailed: string;
+      exportPrevious: string;
+      exportNotices: Record<string, string>;
+      exportSkill: string;
+      exportTitle: string;
+      exportDescription: string;
+      exportLoading: string;
+      exportFiles: string;
+      exportDirectories: string;
+      exportSize: string;
+      exportContents: string;
+      exportMore: string;
+      exportRequirements: string;
+      exportCompatibility: string;
+      exportTools: string;
+      exportSecrets: string;
+      exportOptional: string;
+      exportRequired: string;
+      exportUndeclared: string;
+      exportScope: string;
+      exportWarnings: string;
+      exportWarningDescription: string;
+      exportBlocked: string;
+      exportDownload: string;
+      exportDownloading: string;
+      exportHandedOff: string;
+      exportChanged: string;
+      exportRefresh: string;
+      exportFailed: string;
+      exportBusy: string;
+      exportTimeout: string;
+      exportLimit: string;
+      exportNotFound: string;
       applyVisibility: string;
       applyVisibilityDescription: string;
       locked: string;
@@ -1105,7 +1184,6 @@ export interface Translations {
       readOnly: string;
       saved: string;
       saveFailed: string;
-      exportFailed: string;
       category: string;
       command: string;
       usage: string;
@@ -1150,7 +1228,6 @@ export interface Translations {
       emptyDescription: string;
     };
   };
-
   // Login / Auth
   login: {
     signInTitle: string;
@@ -1185,8 +1262,171 @@ export interface Translations {
       sso_not_allowed: string;
     };
   };
-
-  // Scenario cascade bar
+  capabilities: {
+    integrationSkills: string;
+    sharedSkills: string;
+    title: string;
+    description: string;
+    plugins: string;
+    skills: string;
+    searchPlugins: string;
+    searchSkills: string;
+    allPlugins: string;
+    installed: string;
+    enabled: string;
+    disabled: string;
+    configure: string;
+    details: string;
+    addPlugin: string;
+    builtin: string;
+    community: string;
+    custom: string;
+    allSkills: string;
+    availablePlugins: string;
+    availableSkills: string;
+    pluginHint: string;
+    skillHint: string;
+    noResults: string;
+    larkName: string;
+    larkDescription: string;
+    larkTag: string;
+    connect: string;
+    notInstalled: string;
+    mcpDescription: string;
+    mcpLabel: string;
+    pluginSettings: string;
+    communityTitle: string;
+    communityDescription: string;
+    skillEnabled: string;
+    manage: string;
+  };
+  artifactTable: {
+    title: string;
+    header: string;
+    column: (index: number) => string;
+    total: (count: number) => string;
+    sample: (count: number) => string;
+    range: (start: number, end: number, limited: boolean) => string;
+    columnsLimited: string;
+    uneven: string;
+    empty: string;
+    incomplete: string;
+    failed: string;
+    retry: string;
+    previous: string;
+    next: string;
+    cell: (row: number, column: number) => string;
+    cellValue: string;
+    missing: string;
+    savedVersion: string;
+  };
+  modelPicker: {
+    title: string;
+    favorites: string;
+    otherModels: string;
+    noModels: string;
+    favoriteModel: (displayName: string, name: string) => string;
+    sessionOnly: string;
+  };
+  projects: {
+    title: string;
+    newProject: string;
+    namePlaceholder: string;
+    moveToProject: string;
+    moveToProjectHint: string;
+    removeFromProject: string;
+    archive: string;
+    restore: string;
+    deleteProject: string;
+    deleteProjectConfirm: string;
+    archived: string;
+    empty: string;
+    newChat: string;
+    // Runtime states and actions
+    create: string;
+    createFailed: string;
+    moveFailed: string;
+    archiveFailed: string;
+    restoreFailed: string;
+    deleteFailed: string;
+    switchToGrouped: string;
+    switchToFlat: string;
+    // Project page
+    threads: string;
+    threadsLoadFailed: string;
+    untitled: string;
+    settings: string;
+    notFound: string;
+    projectUnavailable: string;
+    // Project page — Documents / Instructions tabs (Phase 2)
+    documents: string;
+    documentsEmptyTitle: string;
+    documentsEmptyHint: string;
+    instructions: string;
+    instructionsPlaceholder: string;
+    instructionsByteCount: (used: number, max: number) => string;
+    instructionsTooLong: (max: number) => string;
+    instructionsSaved: string;
+    instructionsSaveFailed: string;
+    // Project page — Documents tab shelf (Phase 2 Slice E)
+    documentsShelf: string;
+    documentsShelfHint: string;
+    uploadDocuments: string;
+    uploadingDocuments: string;
+    uploadDocumentFailed: string;
+    documentFromThread: (threadName: string, kind: string) => string;
+    documentKindUpload: string;
+    documentKindOutput: string;
+    attachToThread: string;
+    attachDialogTitle: string;
+    attachDialogHint: string;
+    attachNoThreads: string;
+    attachFailed: string;
+    attachedToThread: (name: string) => string;
+    moveDocumentToTrash: string;
+    moveDocumentToTrashTitle: string;
+    moveDocumentToTrashConfirm: (name: string, days: number) => string;
+    deleteDocumentFailed: string;
+    contentMissing: string;
+    previewUnsupported: string;
+    archivedDocumentsBanner: string;
+    conversationFiles: string;
+    conversationFilesEmpty: string;
+    threadFilesTruncated: (count: number) => string;
+    threadFilesBrowseInThread: string;
+    saveToProject: string;
+    saveToProjectFailed: string;
+    savedToProject: (name: string) => string;
+    shelfNameLabel: string;
+    viewTrash: string;
+    documentsLoadFailed: string;
+    threadFilesLoadFailed: string;
+    interimMemoryNotice: string;
+  };
+  trash: {
+    title: string;
+    empty: string;
+    loadFailed: string;
+    retry: string;
+    originProject: (projectName: string) => string;
+    unknownProject: string;
+    retentionLeft: (days: number) => string;
+    restore: string;
+    restoreFailed: string;
+    restoredToast: (name: string) => string;
+    restoreMergedToast: (name: string) => string;
+    restoreConflict: string;
+    restorePickProjectTitle: string;
+    restorePickProjectHint: string;
+    deletePermanently: string;
+    deletePermanentlyTitle: string;
+    deletePermanentlyConfirm: (name: string) => string;
+    purgeFailed: string;
+    emptyTrash: string;
+    emptyTrashTitle: string;
+    emptyTrashConfirm: (count: number) => string;
+    emptyTrashFailed: string;
+  };
   scenarios: {
     daily: string;
     creative: string;
@@ -1196,8 +1436,6 @@ export interface Translations {
     // Chips
     chips: Record<string, string>;
   };
-
-  // Clipboard
   auth: {
     signInTitle: string;
     createAccountTitle: string;
@@ -1223,8 +1461,6 @@ export interface Translations {
       sso_not_allowed: string;
     };
   };
-
-  // Workflows
   workflows: {
     knowledgeSnapshot: {
       title: string;
@@ -1338,8 +1574,6 @@ export interface Translations {
     favoriteAdded: string;
     favoriteRemoved: string;
   };
-
-  // Breadcrumb
   resources: {
     title: string;
     description: string;
@@ -1372,8 +1606,6 @@ export interface Translations {
     notificationsUnknownEvent: string;
     notificationsLoadFailed: string;
   };
-
-  // Automations
   automations: {
     title: string;
     description: string;
@@ -1381,8 +1613,6 @@ export interface Translations {
     templates: string;
     myAutomations: string;
   };
-
-  // Library
   library: {
     title: string;
     description: string;
@@ -1499,15 +1729,12 @@ export interface Translations {
       revisionAria: (slug: string) => string;
     };
   };
-
-  // Settings
   landing: {
     heroTitlePrefix: string;
     heroWords: string[];
     heroTagline: string;
     heroCta: string;
   };
-
   admin: {
     knowledgeReconciliation: {
       title: string;

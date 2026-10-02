@@ -45,6 +45,8 @@ describe("exported constants", () => {
         mode: undefined,
         reasoning_effort: undefined,
       },
+      // 合并新增：最近会话列表 flat/grouped 偏好，默认 flat。
+      projectsDisplayMode: "flat",
     });
   });
 
@@ -89,6 +91,7 @@ describe("getLocalSettings", () => {
   test("returns settings from localStorage when valid JSON exists", () => {
     const custom: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "off" },
       context: {
         model_name: "gpt-4",
@@ -149,6 +152,7 @@ describe("getLocalSettings", () => {
   test("migrates from legacy key when new key is empty", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "off" },
       context: { model_name: "claude-3", mode: "pro", reasoning_effort: "low" },
     };
@@ -222,6 +226,7 @@ describe("getLocalSettings", () => {
   test("handles settings with all context fields populated", () => {
     const settings: LocalSettings = {
       notification: { enabled: true },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: true, inlineMode: "step_debug" },
       context: {
         model_name: "deepseek-r1",
@@ -297,6 +302,7 @@ describe("saveLocalSettings", () => {
   test("persists settings to localStorage", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "step_debug" },
       context: {
         model_name: "gpt-4o",
@@ -331,6 +337,7 @@ describe("saveLocalSettings", () => {
   test("saves settings with all fields", () => {
     const settings: LocalSettings = {
       notification: { enabled: true },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: true, inlineMode: "off" },
       context: { model_name: "claude-3", mode: "pro", reasoning_effort: "low" },
     };
@@ -344,6 +351,7 @@ describe("saveLocalSettings", () => {
   test("round-trips through getLocalSettings", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "off" },
       context: {
         model_name: "deepseek-r1",
@@ -558,6 +566,7 @@ describe("applyThreadModelOverride", () => {
   test("overrides model_name while preserving other context fields", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: true, inlineMode: "off" },
       context: {
         model_name: "gpt-4",
@@ -590,6 +599,7 @@ describe("applyThreadModelOverride", () => {
   test("preserves notification and tokenUsage sections", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "step_debug" },
       context: { model_name: "gpt-4", mode: "pro", reasoning_effort: "low" },
     };
@@ -666,6 +676,7 @@ describe("round-trip integration", () => {
   test("saveLocalSettings -> getLocalSettings preserves all fields", () => {
     const settings: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "off" },
       context: {
         model_name: "deepseek-r1",
@@ -705,6 +716,7 @@ describe("round-trip integration", () => {
   test("applyThreadModelOverride -> saveLocalSettings -> getLocalSettings round-trip", () => {
     const base: LocalSettings = {
       notification: { enabled: true },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: true, inlineMode: "per_turn" },
       context: {
         model_name: undefined,
@@ -811,6 +823,7 @@ describe("edge cases", () => {
   test("saveLocalSettings then getLocalSettings with minimal valid settings", () => {
     const minimal: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "off" },
       context: {
         model_name: undefined,
@@ -837,6 +850,7 @@ describe("edge cases", () => {
   test("getLocalSettings handles deeply nested legacy settings", () => {
     const legacy: LocalSettings = {
       notification: { enabled: false },
+      projectsDisplayMode: "flat",
       tokenUsage: { headerTotal: false, inlineMode: "step_debug" },
       context: { model_name: "model-1", mode: "pro", reasoning_effort: "high" },
     };

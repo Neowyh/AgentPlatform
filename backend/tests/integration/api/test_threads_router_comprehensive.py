@@ -516,7 +516,8 @@ class TestDeleteThread:
         client = TestClient(app)
         resp = client.delete("/api/threads/t1")
         assert resp.status_code == 200
-        ts.delete.assert_called_once_with("t1")
+        # Thread-meta deletion is owner-scoped in the unified chain.
+        ts.delete.assert_called_once_with("t1", user_id="test-user")
 
     @patch("app.gateway.routers.threads.get_effective_user_id", return_value="test-user")
     @patch("app.gateway.routers.threads._delete_thread_data")
@@ -565,6 +566,7 @@ class TestCreateThread:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1", "metadata": {}})
@@ -579,6 +581,7 @@ class TestCreateThread:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={})
@@ -633,6 +636,7 @@ class TestCreateThread:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {"key": "val"}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1", "metadata": {"key": "val"}})
@@ -645,6 +649,7 @@ class TestCreateThread:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {"ok": "v"}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1", "metadata": {"owner_id": "bad", "ok": "v"}})
@@ -658,6 +663,7 @@ class TestCreateThread:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1", "assistant_id": "asst-1"})
@@ -1592,6 +1598,7 @@ class TestEdgeCases:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1"})
@@ -1661,6 +1668,7 @@ class TestEdgeCases:
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         ts.create = AsyncMock()
+        ts.create = AsyncMock(return_value={"thread_id": "t1", "status": "idle", "created_at": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "metadata": {"k": "v"}})  # response reads back the persisted record
         cp.aput = AsyncMock()
         client = TestClient(app)
         resp = client.post("/api/threads", json={"thread_id": "t1", "assistant_id": "asst-1", "metadata": {"k": "v"}})

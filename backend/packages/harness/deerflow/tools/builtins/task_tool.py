@@ -10,7 +10,7 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 from langchain.tools import InjectedToolCallId, tool
 from langchain_core.callbacks import BaseCallbackManager
@@ -28,6 +28,7 @@ from deerflow.subagents import SubagentExecutor, get_available_subagent_names, g
 from deerflow.subagents.acceptance_checks import check_acceptance_criteria, render_acceptance_section
 from deerflow.subagents.capacity import SubagentExecutionCapacity
 from deerflow.subagents.config import resolve_subagent_model_name
+from deerflow.subagents.context_snapshot import ParentContextSnapshot
 from deerflow.subagents.executor import (
     SubagentStatus,
     cleanup_background_task,
@@ -44,6 +45,7 @@ from deerflow.subagents.status_contract import (
 )
 from deerflow.tools.types import Runtime
 from deerflow.trace_context import DEERFLOW_TRACE_METADATA_KEY, resolve_trace_id
+from deerflow.utils.assembly_io import run_assembly
 from deerflow.utils.custom_events import aemit_custom_event
 
 if TYPE_CHECKING:
@@ -87,7 +89,7 @@ def _record_middleware_on_parent_loop(journal: Any, kwargs: dict[str, Any]) -> N
 
 
 class _ParentLoopMiddlewareRecorderProxy:
-    """Forward subagent loop-detection events to the parent run's event loop.
+    """Forward narrowly scoped subagent middleware events to the parent loop.
 
     ``RunJournal`` owns parent-loop tasks and may wrap an event store backed by
     a loop-bound SQL pool. Subagents execute on a persistent isolated loop, so
@@ -95,10 +97,24 @@ class _ParentLoopMiddlewareRecorderProxy:
     """
 
     def __init__(self, journal: Any, loop: asyncio.AbstractEventLoop) -> None:
+        journal_owner_loop = getattr(journal, "_owner_loop", None)
+        if isinstance(journal_owner_loop, asyncio.AbstractEventLoop) and journal_owner_loop is not loop:
+            raise ValueError("subagent middleware recorder loop must match the RunJournal owner loop")
         self._journal = journal
         self._loop = loop
         self._state_lock = threading.Lock()
         self._closed = False
+        self._claimed_tool_promotions: set[str] = set()
+
+    def claim_tool_promotions(self, tool_names: list[str]) -> list[str]:
+        """Atomically deduplicate promotions within this one child execution."""
+        candidates = sorted(set(tool_names))
+        with self._state_lock:
+            if self._closed:
+                return []
+            claimed = [name for name in candidates if name not in self._claimed_tool_promotions]
+            self._claimed_tool_promotions.update(claimed)
+        return claimed
 
     def record_middleware(self, **kwargs: Any) -> None:
         with self._state_lock:
@@ -676,6 +692,7 @@ async def task_tool(
     *,
     acceptance_criteria: list[str] | None = None,
     description: str = "",
+    context_mode: Literal["isolated", "snapshot"] = "isolated",
 ) -> str | Command:
     """Delegate a bounded task to a specialized subagent in its own context.
 
@@ -738,6 +755,18 @@ async def task_tool(
       every criterion that cannot be checked deterministically is marked
       UNVERIFIED — never silently passed. A `holds` leaf is execution evidence,
       not a guarantee that the deliverable is correct.
+    - `completed` means execution ended, not task acceptance. Read each criterion
+      and retain useful work. For `does not hold`, inspect the reason and repair
+      or recheck only the unmet condition, reusing unaffected outputs.
+      `UNVERIFIED` is missing evidence, not a failed condition: verify load-bearing
+      criteria against actual artifacts or primary evidence; when confirmation
+      is unavailable, preserve uncertainty. Handle both kinds in mixed results.
+    - Reuse outputs with `holds` checks while spot-checking load-bearing claims
+      beyond their scope. Without a checklist, inspect the self-report's handles.
+      Any further delegation must name the missing condition and cover only
+      remaining work. Do not repeat an unchanged attempt or restart the whole
+      task. Stay within the remaining delegation and execution budget; when
+      exhausted, deliver confirmed results with explicit gaps and uncertainty.
 
     Args:
         prompt: The task description for the subagent. Be specific and clear about what needs to be done.
@@ -755,7 +784,15 @@ async def task_tool(
             ["file:../outputs/report.md non-empty"]. Omit for open-ended
             exploration where no crisp acceptance condition exists.
         description: Optional short (3-5 word) description of the task for logging/display.
+        context_mode: Defaults to isolated (only the delegated prompt). Choose
+            snapshot when relevant requirements or failed approaches are spread
+            across the parent conversation: it adds retained history and its
+            summary as background at dispatch time, increasing input tokens.
+            The child keeps its own role/tools; later parent turns are not synced.
+            Historical tool actions are not evidence of child completion.
     """
+    if context_mode not in {"isolated", "snapshot"}:
+        return _task_result_command(tool_call_id=tool_call_id, status="failed", error=f"Unknown context_mode '{context_mode}'. Use isolated or snapshot.")
     runtime_app_config = _get_runtime_app_config(runtime)
     metadata: dict = runtime.config.get("metadata", {}) if runtime is not None else {}
     allowed_subagents = metadata.get("allowed_subagents")
@@ -790,6 +827,10 @@ async def task_tool(
             status="failed",
             error=error,
         )
+    # Rejected delegations must not serialize the retained history. Capture
+    # after delegation validation, before child setup (including tool loading).
+    context_snapshot = ParentContextSnapshot.from_state(runtime.state) if context_mode == "snapshot" and runtime is not None else None
+
     # Build config overrides
     overrides: dict = {}
 
@@ -894,7 +935,9 @@ async def task_tool(
     }
     if resolved_app_config is not None:
         available_tools_kwargs["app_config"] = resolved_app_config
-    tools = get_available_tools(**available_tools_kwargs)
+    # Assemble off-loop: tool assembly may block on MCP cache initialization,
+    # which must not stall the calling event loop (issue #5172).
+    tools = await run_assembly(get_available_tools, **available_tools_kwargs)
 
     # Create executor
     executor_kwargs = {
@@ -923,17 +966,21 @@ async def task_tool(
         # system-channel authority over framework instructions.
         "acceptance_criteria": acceptance_criteria,
     }
-    loop_detection_recorder = None
+    if context_snapshot is not None:
+        executor_kwargs["context_snapshot"] = context_snapshot
+    middleware_recorder = None
     parent_journal = parent_context.get("__run_journal")
     if parent_journal is not None:
         # The task tool runs on the parent run's loop. Pass only a proxy across
         # the isolated-subagent boundary so middleware persistence is delivered
         # on the loop that owns the RunJournal and its event store.
-        loop_detection_recorder = _ParentLoopMiddlewareRecorderProxy(
+        middleware_recorder = _ParentLoopMiddlewareRecorderProxy(
             parent_journal,
             asyncio.get_running_loop(),
         )
-        executor_kwargs["loop_detection_recorder"] = loop_detection_recorder
+        executor_kwargs["loop_detection_recorder"] = middleware_recorder
+        executor_kwargs["tool_promotion_recorder"] = middleware_recorder
+        executor_kwargs["tool_progress_recorder"] = middleware_recorder
     if resolved_app_config is not None:
         executor_kwargs["app_config"] = resolved_app_config
     if run_extensions is not None:
@@ -1241,5 +1288,5 @@ async def task_tool(
             raise asyncio.CancelledError
         raise
     finally:
-        if loop_detection_recorder is not None:
-            await loop_detection_recorder.aclose()
+        if middleware_recorder is not None:
+            await middleware_recorder.aclose()

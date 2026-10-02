@@ -1,10 +1,10 @@
 "use client";
 
 import {
+  BlocksIcon,
   BookOpenIcon,
   CalendarClock,
   MessagesSquare,
-  NetworkIcon,
   WorkflowIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -41,8 +41,8 @@ export function WorkspaceNavChatList() {
             asChild
           >
             <Link href="/workspace/capabilities/experts">
-              <NetworkIcon />
-              <span>{t.sidebar.capabilities}</span>
+              <BlocksIcon />
+              <span>{t.capabilities.title}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

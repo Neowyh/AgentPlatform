@@ -80,7 +80,7 @@ def test_get_shell_uses_cmd_as_last_windows_fallback(monkeypatch):
 def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
     captured: dict = {}
 
-    def fake_run_windows(args, timeout, env=None):
+    def fake_run_windows(args, timeout, env=None, encoding=None):
         captured["args"] = args
         captured["env"] = env
         return ("ok", "", 0, False)
@@ -92,11 +92,14 @@ def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
     output = LocalSandbox("t").execute_command("Write-Output hello")
 
     assert output == "ok"
+    # Upstream pairs PowerShell's console/output encoding with the pipe
+    # decoder by prepending a guarded UTF-8 preamble to the command.
+    utf8_preamble = "try{[Console]::InputEncoding=[System.Text.Encoding]::UTF8}catch{};try{[Console]::OutputEncoding=[System.Text.Encoding]::UTF8}catch{};$OutputEncoding=[System.Text.Encoding]::UTF8;"
     assert captured["args"] == [
         r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
         "-NoProfile",
         "-Command",
-        "Write-Output hello",
+        utf8_preamble + "Write-Output hello",
     ]
     # The environment is always built (inherits os.environ minus secrets).
     assert isinstance(captured["env"], dict)

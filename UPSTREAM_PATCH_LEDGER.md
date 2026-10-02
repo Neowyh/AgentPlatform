@@ -17,6 +17,7 @@
 | 2026-09-08 | m0 票 03（deerflow-main-0f7d8709 全量巡检） | 对照 `0f7d8709` 实测 20 个差异文件，全部归属 PATCH-002..015，无未登记差异；上游锁定 `0f7d8709`，各 open 行移除条件均未因上游变化满足，逐项复评结论均为 keep（见下表）。 |
 | 2026-09-13 | feature/m4-knowledge-revisions（M4 票 06 Gate 5/6 巡检） | 本轮涉及 `community/ragflow/client.py`（PATCH-001）；未发现未登记的上游修改。GitNexus 在本工作区不可用（无索引、npx 无法引导，见 dev-log），以人工调用方分析替代。 |
 | 2026-10-01 | v2.1.0 合并前置（票 01） | 发现 4 个未登记 sandbox 补丁文件并补登记（见 PATCH-016..019）；PATCH-016/017 与上游 v2.1.0 变更重叠。全面对账 44 个 harness 文件（43 个代码文件 + 1 个文档）后另发现 15 个未登记文件，补登记为 PATCH-020..032（其中 `config/app_config.py`、`runtime/runs/manager.py` 与既有行共享文件），44 个原始 harness 文件全部归属、未登记清零；本候选新增 17 个 CLAUDE.md 文档，预算据此从 44（43 代码 + 1 文档）修订为 61（43 代码 + 18 文档），代码预算仍为 43（见"2026-10-01 全量对账"）。 |
+| 2026-10-01 | v2.1.0 收敛票 10（合并后复评） | 对照 `git diff v2.1.0 --name-only -- backend/packages/harness/deerflow` 实测 44 个差异文件全部映射到 PATCH 行、未映射 0（PATCH-030 的 `skills/storage/user_scoped_skill_storage.py` 因被上游 v2.1.0 等价实现吸收而退出差异集；票 06 的 `versions/20261001_rejoin_upstream_line.py` 新进入差异集，归 PATCH-015）。逐行复评 PATCH-001..032：31 行 keep、PATCH-006 维持 closed、1 项 absorbed（P030 的 user_scoped 条款，其余 5 条款仍为本地差异，行保持 open）。另在 canonical 对照命令路径之外发现 `backend/packages/harness/pyproject.toml` 携带未登记本地差异（`python-docx>=1.1.2`，引入提交 `7ae6b5907`，与 PATCH-032 同提交），不在本轮登记范围，移交后续票补登记或明确豁免。 |
 
 ### 2026-09-08 巡检逐项结论（2026-10-01 自历史档案迁入，内容保持原文）
 
@@ -39,7 +40,7 @@
 ### 2026-10-01 全量对账（票 01）
 
 `git diff 0f7d8709d3bbf0be26460b6277fbad9329302243 --name-only -- backend/packages/harness/deerflow`
-上游基线实测 44 个文件（36 修改 + 8 新增；43 个代码文件 + 1 个文档），逐个归属如下（路径省略
+实测 44 个文件（36 修改 + 8 新增），逐个归属如下（路径省略
 `backend/packages/harness/deerflow/` 前缀；带 `*` 的文件承载两个登记项的改动）：
 
 | 登记项 | 文件（44） |
@@ -87,7 +88,6 @@
   `get_document_status` 改经列表端点解析单文档状态（单文档 GET 返回非 JSON）；
   `delete_document` 改为 JSON body `{"ids": [...]}`（旧 query 参数形式被拒绝）；
   新增 `create_dataset`、`list_dataset_documents`（M4 发布/对账所需）。
-- **上游替代方案**: 上游 RAGFlow 社区 client 提供批量解析、状态查询、删除和建库等价能力后采用上游实现。
 - **原因**: 真实 RAGFlow v0.27.1 隔离栈验收（M4 票 06）发现单文档 parse 404、
   单文档 GET 非 JSON、DELETE query 形式被拒——既有单元测试的假 client 无法暴露。
 - **测试**: `tests/test_ragflow_client.py`（批量 parse、列表化状态、JSON body 删除、
@@ -98,22 +98,22 @@
 
 ### PATCH-002..015（2026-10-01 自 docs/upgrades/deerflow-main-0f7d8709/UPSTREAM_PATCH_LEDGER.md 整体迁入，行内容保持原文）
 
-| ID | Path / symbol (impact scope) | Reason local behavior is required | Upstream alternative considered | Removal trigger | Verification | Owner | Status |
+| ID | Path / symbol | Reason local behavior is required | Upstream alternative considered | Removal trigger | Verification | Status |
 |---|---|---|---|---|---|---|
-| PATCH-002 | `deerflow/extensions/notify.py` (`notify_task_start/stop`) | Initialize and finalize the shared Run Evidence Envelope at the runtime task lifecycle boundary | Upstream task lifecycle hooks do not own AgentPlatform's cross-cutting evidence envelope | Remove when the AgentPlatform extension owns this lifecycle binding without a harness patch | `tests/test_extension_task_lifecycle.py`, extension API contract tests | runtime evidence maintainers | open |
-| PATCH-003 | `deerflow/config/AGENTS.md` (memory schema guidance) | Document the merged host-shared/pluggable Memory schema and migration boundary | Upstream documentation does not describe AgentPlatform's legacy profile migration | Remove when equivalent guidance is supplied by the extension/config package | `tests/test_memory_manager_pluggable.py` | memory configuration maintainers | open |
-| PATCH-004 | `deerflow/config/workflow_runtime_config.py`, `deerflow/config/app_config.py` (`WorkflowRuntimeConfig`) | Move durable workflow admission/lease limits into the DeerFlow-owned configuration schema while preserving AgentPlatform compatibility imports | No upstream workflow-v2 config model covers the AgentPlatform durable workflow limits | Remove compatibility import after all AgentPlatform callers use the DeerFlow symbol directly; retain schema until upstream provides equivalent limits | `tests/unit/workflows/test_v2_runtime_config.py` (3 passed), Ruff check/format | workflow runtime maintainers | open — compatibility-import clause verified satisfied 2026-09-08 (zero AgentPlatform-side compat imports remain; all consumers import the DeerFlow symbol directly), only the schema clause still blocks |
-| PATCH-005 | `deerflow/agents/middlewares/tool_receipt_middleware.py` (`ToolReceiptMiddleware._stamp_message`), `deerflow/tools/builtins/task_tool.py` (`_record_run_evidence_verification`) | Forward runtime-owned tool receipts and sub-agent verification verdicts into the AgentPlatform Run Evidence Envelope when the optional extension is active | Upstream receipt middleware/task tool have no enterprise Run Evidence sink; message-carried receipts remain unchanged without the extension | Remove once the runtime exposes equivalent extension callbacks for receipt contribution | `tests/test_tool_receipt_middleware.py`, extension boundary tests (44 combined), receipt projection tests | runtime evidence maintainers | open |
-| PATCH-006 | `deerflow/persistence/bootstrap.py`, `deerflow/persistence/migrations/env.py` (`deerflow_alembic_version`) | Isolate DeerFlow migration state from AgentPlatform's control-plane Alembic head during dual runtime | A shared `alembic_version` table cannot represent two independent histories | Remove only after a verified single forward-only migration chain replaces both histories | `tests/unit/persistence/test_unified_chain_adoption.py` (8 passed), Ruff | persistence maintainers | **closed 2026-09-08** — chains unified by merge revision `20260908_unify_migration_chains` (single `alembic_version`, `alembic heads` single-head verified); dedicated table bridged and dropped via `_chain_meta.adopt_unified_version_state`; control-plane `alembic.ini`/`env.py` retired; fresh/existing/dual-recorded/control-plane-only/pre-alembic DB shapes verified |
-| PATCH-007 | `deerflow/uploads/code_evidence.py` (`package_root`) | Expose only the caller-scoped frozen package path to runtime tools after Code Evidence acceptance moved to AgentPlatform | No upstream Code Evidence contract exists; runtime tools need a neutral path projection | Remove when the runtime provides an equivalent package-root capability through the extension API | `tests/unit/gateway/test_code_evidence_package.py` (13 passed), Ruff | code evidence maintainers | open |
-| PATCH-008 | `deerflow/uploads/code_analysis.py` (scanner inventory/normalization/report contract) | Keep deterministic, shell-free C analysis available to the DeerFlow built-in tool while removing the product implementation from `ideer` | No upstream scanner implementation provides AgentPlatform's fixed command and finding contract | Remove when the extension/runtime API supplies the same fixed scanner contract | `tests/unit/gateway/test_code_analysis.py` (5 passed), Ruff | code analysis maintainers | open |
-| PATCH-009 | `deerflow/persistence/models/workflow_v2.py` | Provide a DeerFlow-owned Workflow V2 model namespace for Gateway/runtime callers while keeping the enterprise table family out of standalone DeerFlow's generic model registry | Upstream runtime has no AgentPlatform Workflow V2 tables or Run Evidence fields | Remove only after Workflow V2 tables and Run Evidence are represented by an upstream/extension persistence contract | Gateway, Worker, Store, RunRecord and resource-governance service now import the DeerFlow namespace; six-table Alembic/ORM contract plus standalone/combined metadata checks passed; duplicate `ideer` Workflow mapping deleted; full DB execution verified on both backends (`tests/integration/workflows/test_v2_db_execution.py`: unified-chain `upgrade head` over an empty SQLite and PostgreSQL database and over a 20260715-shaped legacy database, driving the six-table family through Store/RunRepository and the Gateway canonical-run + Worker lease-takeover path) | workflow persistence maintainers | open |
-| PATCH-010 | `deerflow/agents/lead_agent/agent.py` (`FrozenAgentInputs`, `assemble_lead_agent(frozen=...)`, `_intersect_tool_groups`, read-only update_agent withholding, skill tool-policy application), `deerflow/agents/lead_agent/prompt.py` (`soul_override`, `requested_skill_name`) | Canonical resource runs must assemble from the server-frozen UUID/version/hash closure instead of the mutable on-disk agent store, with caller tool-group intersection and read-only semantics; the per-Run frozen carrier cannot be expressed through the process-global agent store or client-injectable configurable keys | Upstream extension API offers assembly observers (post-assembly) but no pre-assembly input override; the agent store is process-global and cannot represent per-Run isolation | Remove when upstream exposes a pre-assembly frozen-input parameter or an equivalent extension seam | `tests/unit/agentplatform/test_frozen_agent_inputs.py` (5 passed, incl. the escaped `<soul>` block regression), `tests/unit/agentplatform/test_runtime_adapter.py` (2 passed), lead-agent model resolution + assembly descriptor + prompt suites (110 passed combined) | agent runtime maintainers | open |
-| PATCH-011 | `deerflow/persistence/engine.py` (`init_engine` SQLite connect hook) | Upstream executes synchronous `PRAGMA journal_mode=WAL/...` on the DB-API cursor inside SQLAlchemy's connect event; with aiosqlite that adapted connection cannot run sync cursor calls, so the hook is bridged through `dbapi_conn.run_async` to keep WAL/foreign-key/busy-timeout semantics on the async engine | Upstream connect hook assumes a sync driver; no extension point exists for driver-specific connect configuration | Remove when upstream's SQLite connect hook supports async drivers (or upstream adopts the same bridge) | Gateway/persistence suites on the SQLite backend (WAL asserted in integration persistence tests) | persistence maintainers | open |
-| PATCH-012 | `deerflow/sandbox/local/local_sandbox_provider.py` (`RUN_SKILL_VIEW_RESOLVER` hook, `_build_thread_path_mappings` forced-view branch) | Canonical runs key their sandbox on a run-scoped identity and must serve the run's frozen, hash-verified skill closure read-only at `/mnt/skills` — fail-closed when the view is missing — instead of the mutable per-thread projection; the run-snapshot concept does not exist upstream, and the hook keeps the dependency direction (the runtime never imports `app.agentplatform`) | Upstream projection config cannot express per-run frozen closures; the enterprise layer installs the resolver at startup (`app.agentplatform.resources.canonical_sandbox.install_run_skill_view_resolver`) | Remove when upstream exposes an equivalent pre-acquire mapping override or a run-snapshot projection contract | `tests/unit/resources/test_canonical_sandbox.py` (6 passed, incl. fail-closed case) | sandbox maintainers | open |
-| PATCH-013 | `deerflow/runtime/runs/manager.py` (`create_or_reject(..., run_id=...)`, `_admit_thread_operation(..., run_id=...)`) | Canonical resource runs must admit the Run under the server-frozen run id: `prepare_run` freezes the dependency closure and run-skill view under `canonical_run_id` before `start_run` admits the record, so the Run row, `run_resource_snapshots`, and evidence binding must share one identity. Upstream's admission mints a fresh uuid unconditionally and offers no id override | No upstream extension seam or admission parameter carries a caller-supplied run id | Remove when upstream admission accepts a caller-supplied id (or an equivalent identity-binding hook) | `tests/test_run_repository.py`, `tests/test_run_manager.py` (129 passed); exercised end-to-end by `tests/integration/api/test_shared_resource_run_e2e.py` | runtime maintainers | open |
-| PATCH-014 | `deerflow/persistence/migrations/versions/0001_baseline.py`, `app/agentplatform/persistence/migrations/versions/16147afec43b_add_departments_and_users_ext_tables.py`, `app/agentplatform/persistence/migrations/versions/c4d5e6f7a8b9_add_missing_core_tables.py`, `app/agentplatform/persistence/migrations/versions/f3a2b1c4d5e6_add_disabled_column_and_indexes.py` (inspector-guarded `create_table` / `add_column` / `create_index` blocks) | The unified migration chain (`20260908_unify_migration_chains`) can replay these revisions against databases where the tables already exist via `Base.metadata.create_all` (runtime-only Gateway DBs recorded at the runtime head) or via the other chain (control-plane-only DBs recorded at the control-plane head); `op.create_table` would crash with `table already exists`, and SQLite batch `add_column` on an already-present column builds a contradictory column-order dependency (`CircularDependencyError`) | Restamping such databases below the affected revisions is impossible (single version row) and replaying history is forbidden; guarding mirrors `create_all`'s `checkfirst` semantics | Remove when no deployed database predates `20260908_unify_migration_chains` (the guards are permanent no-ops for fresh databases, so removal is hygiene, not correctness) | `tests/unit/persistence/test_unified_chain_adoption.py`, `tests/integration/persistence/test_migration_schema.py` (unified-chain suites incl. the create_all-current stamp and pre-alembic enterprise pins), fresh/existing/dual-recorded/control-plane-only/pre-alembic SQLite upgrade matrix, Ruff | persistence migration maintainers | open |
-| PATCH-015 | `deerflow/persistence/migrations/_chain_meta.py`, `deerflow/persistence/migrations/alembic.ini`, `deerflow/persistence/migrations/versions/20260908_unify_migration_chains.py` (unified-chain entry machinery, registered 2026-09-08 after being found unlisted by the ledger inspection) | One forward-only chain must serve both historical migration trees: the merge revision joins them under a single `alembic_version`; `_chain_meta` is the chain-identity single source and the adoption state machine that restamps legacy databases (dedicated-table, hybrid, create_all-current, pre-alembic shapes); the ini plus `version_locations` pair exposes both version directories to every `command.upgrade` | Upstream keeps two independent trees with no merge revision and no adoption machinery | Remove only when upstream represents both historical chains natively or no deployed database needs the adoption restamp paths; the merge revision itself is permanent chain history | `tests/unit/persistence/test_unified_chain_adoption.py`, `tests/integration/persistence/test_migration_schema.py` (unified-chain suites), fresh/existing/dual-recorded/control-plane-only/pre-alembic SQLite upgrade matrix, dual-backend `tests/integration/workflows/test_v2_db_execution.py` | persistence migration maintainers | open |
+| PATCH-002 | `deerflow/extensions/notify.py` (`notify_task_start/stop`) | Initialize and finalize the shared Run Evidence Envelope at the runtime task lifecycle boundary | Upstream task lifecycle hooks do not own AgentPlatform's cross-cutting evidence envelope | Remove when the AgentPlatform extension owns this lifecycle binding without a harness patch | `tests/test_extension_task_lifecycle.py`, extension API contract tests | runtime evidence maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream task lifecycle hooks still have no evidence-envelope ownership; local notify.py adds the `RunEvidenceEnvelope` stamping) |
+| PATCH-003 | `deerflow/config/AGENTS.md` (memory schema guidance) | Document the merged host-shared/pluggable Memory schema and migration boundary | Upstream documentation does not describe AgentPlatform's legacy profile migration | Remove when equivalent guidance is supplied by the extension/config package | `tests/test_memory_manager_pluggable.py` | memory configuration maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `config/AGENTS.md` still documents the legacy flat memory schema line; no equivalent host-shared/pluggable guidance exists) |
+| PATCH-004 | `deerflow/config/workflow_runtime_config.py`, `deerflow/config/app_config.py` (`WorkflowRuntimeConfig`) | Move durable workflow admission/lease limits into the DeerFlow-owned configuration schema while preserving AgentPlatform compatibility imports | No upstream workflow-v2 config model covers the AgentPlatform durable workflow limits | Remove compatibility import after all AgentPlatform callers use the DeerFlow symbol directly; retain schema until upstream provides equivalent limits | `tests/unit/workflows/test_v2_runtime_config.py` (3 passed), Ruff check/format | workflow runtime maintainers | open — compatibility-import clause verified satisfied 2026-09-08 (zero AgentPlatform-side compat imports remain; all consumers import the DeerFlow symbol directly), only the schema clause still blocks — reassessed 2026-10-01 vs v2.1.0: keep (upstream has no `workflow_runtime_config.py`/`WorkflowRuntimeConfig`; `subagent_runtime`/`run_ownership` cover different concerns) |
+| PATCH-005 | `deerflow/agents/middlewares/tool_receipt_middleware.py` (`ToolReceiptMiddleware._stamp_message`), `deerflow/tools/builtins/task_tool.py` (`_record_run_evidence_verification`) | Forward runtime-owned tool receipts and sub-agent verification verdicts into the AgentPlatform Run Evidence Envelope when the optional extension is active | Upstream receipt middleware/task tool have no enterprise Run Evidence sink; message-carried receipts remain unchanged without the extension | Remove once the runtime exposes equivalent extension callbacks for receipt contribution | `tests/test_tool_receipt_middleware.py`, extension boundary tests (44 combined), receipt projection tests | runtime evidence maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `extensions/run_evidence.py` is a read-only projection reader with no receipt/evidence write seam) |
+| PATCH-006 | `deerflow/persistence/bootstrap.py`, `deerflow/persistence/migrations/env.py` (`deerflow_alembic_version`) | Isolate DeerFlow migration state from AgentPlatform's control-plane Alembic head during dual runtime | A shared `alembic_version` table cannot represent two independent histories | Remove only after a verified single forward-only migration chain replaces both histories | `tests/unit/persistence/test_unified_chain_adoption.py` (8 passed), Ruff | persistence maintainers | **closed 2026-09-08** — chains unified by merge revision `20260908_unify_migration_chains` (single `alembic_version`, `alembic heads` single-head verified); dedicated table bridged and dropped via `_chain_meta.adopt_unified_version_state`; control-plane `alembic.ini`/`env.py` retired; fresh/existing/dual-recorded/control-plane-only/pre-alembic DB shapes verified — reassessed 2026-10-01 vs v2.1.0: closed unchanged (residual `bootstrap.py`/`env.py` diffs are the P015/P031 unified-chain machinery, not a revival of the dedicated-table bridge) |
+| PATCH-007 | `deerflow/uploads/code_evidence.py` (`package_root`) | Expose only the caller-scoped frozen package path to runtime tools after Code Evidence acceptance moved to AgentPlatform | No upstream Code Evidence contract exists; runtime tools need a neutral path projection | Remove when the runtime provides an equivalent package-root capability through the extension API | `tests/unit/gateway/test_code_evidence_package.py` (13 passed), Ruff | code evidence maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `uploads/` ships only `manager.py`; no Code Evidence contract exists) |
+| PATCH-008 | `deerflow/uploads/code_analysis.py` (scanner inventory/normalization/report contract) | Keep deterministic, shell-free C analysis available to the DeerFlow built-in tool while removing the product implementation from `ideer` | No upstream scanner implementation provides AgentPlatform's fixed command and finding contract | Remove when the extension/runtime API supplies the same fixed scanner contract | `tests/unit/gateway/test_code_analysis.py` (5 passed), Ruff | code analysis maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `uploads/` has no scanner implementation matching the fixed contract) |
+| PATCH-009 | `deerflow/persistence/models/workflow_v2.py` | Provide a DeerFlow-owned Workflow V2 model namespace for Gateway/runtime callers while keeping the enterprise table family out of standalone DeerFlow's generic model registry | Upstream runtime has no AgentPlatform Workflow V2 tables or Run Evidence fields | Remove only after Workflow V2 tables and Run Evidence are represented by an upstream/extension persistence contract | Gateway, Worker, Store, RunRecord and resource-governance service now import the DeerFlow namespace; six-table Alembic/ORM contract plus standalone/combined metadata checks passed; duplicate `ideer` Workflow mapping deleted; full DB execution verified on both backends (`tests/integration/workflows/test_v2_db_execution.py`: unified-chain `upgrade head` over an empty SQLite and PostgreSQL database and over a 20260715-shaped legacy database, driving the six-table family through Store/RunRepository and the Gateway canonical-run + Worker lease-takeover path) | workflow persistence maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `persistence/models/` has no Workflow V2 namespace, only `run_event.py`) |
+| PATCH-010 | `deerflow/agents/lead_agent/agent.py` (`FrozenAgentInputs`, `assemble_lead_agent(frozen=...)`, `_intersect_tool_groups`, read-only update_agent withholding, skill tool-policy application), `deerflow/agents/lead_agent/prompt.py` (`soul_override`, `requested_skill_name`) | Canonical resource runs must assemble from the server-frozen UUID/version/hash closure instead of the mutable on-disk agent store, with caller tool-group intersection and read-only semantics; the per-Run frozen carrier cannot be expressed through the process-global agent store or client-injectable configurable keys | Upstream extension API offers assembly observers (post-assembly) but no pre-assembly input override; the agent store is process-global and cannot represent per-Run isolation | Remove when upstream exposes a pre-assembly frozen-input parameter or an equivalent extension seam | `tests/unit/agentplatform/test_frozen_agent_inputs.py` (5 passed, incl. the escaped `<soul>` block regression), `tests/unit/agentplatform/test_runtime_adapter.py` (2 passed), lead-agent model resolution + assembly descriptor + prompt suites (110 passed combined) | agent runtime maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `assemble_lead_agent(config, *, app_config)` still has no `frozen=` pre-assembly seam; upstream `prompt.py` has no `soul_override`/`requested_skill_name`) |
+| PATCH-011 | `deerflow/persistence/engine.py` (`init_engine` SQLite connect hook) | Upstream executes synchronous `PRAGMA journal_mode=WAL/...` on the DB-API cursor inside SQLAlchemy's connect event; with aiosqlite that adapted connection cannot run sync cursor calls, so the hook is bridged through `dbapi_conn.run_async` to keep WAL/foreign-key/busy-timeout semantics on the async engine | Upstream connect hook assumes a sync driver; no extension point exists for driver-specific connect configuration | Remove when upstream's SQLite connect hook supports async drivers (or upstream adopts the same bridge) | Gateway/persistence suites on the SQLite backend (WAL asserted in integration persistence tests) | persistence maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `_enable_sqlite_wal` still drives the DB-API cursor synchronously with no `run_async` bridge) |
+| PATCH-012 | `deerflow/sandbox/local/local_sandbox_provider.py` (`RUN_SKILL_VIEW_RESOLVER` hook, `_build_thread_path_mappings` forced-view branch) | Canonical runs key their sandbox on a run-scoped identity and must serve the run's frozen, hash-verified skill closure read-only at `/mnt/skills` — fail-closed when the view is missing — instead of the mutable per-thread projection; the run-snapshot concept does not exist upstream, and the hook keeps the dependency direction (the runtime never imports `app.agentplatform`) | Upstream projection config cannot express per-run frozen closures; the enterprise layer installs the resolver at startup (`app.agentplatform.resources.canonical_sandbox.install_run_skill_view_resolver`) | Remove when upstream exposes an equivalent pre-acquire mapping override or a run-snapshot projection contract | `tests/unit/resources/test_canonical_sandbox.py` (6 passed, incl. fail-closed case) | sandbox maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream sandbox projection has no run-snapshot concept and no resolver hook; applies to PATCH-021 equally) |
+| PATCH-013 | `deerflow/runtime/runs/manager.py` (`create_or_reject(..., run_id=...)`, `_admit_thread_operation(..., run_id=...)`) | Canonical resource runs must admit the Run under the server-frozen run id: `prepare_run` freezes the dependency closure and run-skill view under `canonical_run_id` before `start_run` admits the record, so the Run row, `run_resource_snapshots`, and evidence binding must share one identity. Upstream's admission mints a fresh uuid unconditionally and offers no id override | No upstream extension seam or admission parameter carries a caller-supplied run id | Remove when upstream admission accepts a caller-supplied id (or an equivalent identity-binding hook) | `tests/test_run_repository.py`, `tests/test_run_manager.py` (129 passed); exercised end-to-end by `tests/integration/api/test_shared_resource_run_e2e.py` | runtime maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream `create_or_reject` still mints its run id unconditionally; local `run_id` parameter survives the merge) |
+| PATCH-014 | `deerflow/persistence/migrations/versions/0001_baseline.py`, `app/agentplatform/persistence/migrations/versions/16147afec43b_add_departments_and_users_ext_tables.py`, `app/agentplatform/persistence/migrations/versions/c4d5e6f7a8b9_add_missing_core_tables.py`, `app/agentplatform/persistence/migrations/versions/f3a2b1c4d5e6_add_disabled_column_and_indexes.py` (inspector-guarded `create_table` / `add_column` / `create_index` blocks) | The unified migration chain (`20260908_unify_migration_chains`) can replay these revisions against databases where the tables already exist via `Base.metadata.create_all` (runtime-only Gateway DBs recorded at the runtime head) or via the other chain (control-plane-only DBs recorded at the control-plane head); `op.create_table` would crash with `table already exists`, and SQLite batch `add_column` on an already-present column builds a contradictory column-order dependency (`CircularDependencyError`) | Restamping such databases below the affected revisions is impossible (single version row) and replaying history is forbidden; guarding mirrors `create_all`'s `checkfirst` semantics | Remove when no deployed database predates `20260908_unify_migration_chains` (the guards are permanent no-ops for fresh databases, so removal is hygiene, not correctness) | `tests/unit/persistence/test_unified_chain_adoption.py`, `tests/integration/persistence/test_migration_schema.py` (unified-chain suites incl. the create_all-current stamp and pre-alembic enterprise pins), fresh/existing/dual-recorded/control-plane-only/pre-alembic SQLite upgrade matrix, Ruff | persistence migration maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (guards remain permanent no-ops on fresh databases; deployed pre-unification databases still exist) |
+| PATCH-015 | `deerflow/persistence/migrations/_chain_meta.py`, `deerflow/persistence/migrations/alembic.ini`, `deerflow/persistence/migrations/versions/20260908_unify_migration_chains.py` (unified-chain entry machinery, registered 2026-09-08 after being found unlisted by the ledger inspection) | One forward-only chain must serve both historical migration trees: the merge revision joins them under a single `alembic_version`; `_chain_meta` is the chain-identity single source and the adoption state machine that restamps legacy databases (dedicated-table, hybrid, create_all-current, pre-alembic shapes); the ini plus `version_locations` pair exposes both version directories to every `command.upgrade`. 2026-10-01 (deer-flow v2.1.0 sync, ticket 06): the second chain divergence — upstream extended the runtime line linearly past the branch point `0018` to `0025_repair_run_change_seq` — is re-joined by the no-op merge revision `versions/20261001_rejoin_upstream_line.py` with `down_revision = ("20260918_knowledge_publish_eval_gate", "0025_repair_run_change_seq")`; `alembic heads` verified single-head (`20261001_rejoin_upstream_line`), no existing database restamped (forward-only discipline) | Upstream keeps two independent trees with no merge revision and no adoption machinery | Remove only when upstream represents both historical chains natively or no deployed database needs the adoption restamp paths; the merge revision itself is permanent chain history | `tests/unit/persistence/test_unified_chain_adoption.py`, `tests/integration/persistence/test_migration_schema.py` (unified-chain suites), fresh/existing/dual-recorded/control-plane-only/pre-alembic SQLite upgrade matrix, dual-backend `tests/integration/workflows/test_v2_db_execution.py` | persistence migration maintainers | open — reassessed 2026-10-01 vs v2.1.0: keep (upstream version line stays linear through `0025_repair_run_change_seq` with no adoption machinery; `20261001_rejoin_upstream_line` is permanent chain history) |
 
 ### PATCH-016: LocalSandbox.read_file 编码嗅探（GB18030）
 
@@ -368,6 +368,14 @@
 - **Owner**: 平台工程（lane 加固）域维护者
 - **移除条件**: 逐项评估——各修复被上游等价实现并采纳后按文件移除，
   本捆绑行不整体移除。
+- **Reassess 2026-10-01（vs v2.1.0，票 10）**: `skills/storage/user_scoped_skill_storage.py`
+  条款 **retired / absorbed by upstream v2.1.0**——上游已带等价的投影锁内原子
+  临时文件写入，合并取上游版，本地文件与上游逐字节一致（blob `e7a652039`），
+  该文件退出 v2.1.0 差异集；其余 5 文件条款（input_sanitization `requested_skill`
+  denylist、`client.py` `copy_context` 关闭桥、gateway `/api/webhooks/github`
+  CSRF 豁免、frontmatter `description_zh`/`requires-internet`、projection 重试
+  2→5）经逐项核对仍为本地差异（上游 projection 为 `_MAX_REBUILD_ATTEMPTS = 2`），
+  行保持 open。
 
 ### PATCH-031: legacy 表 ORM 对齐 create_all
 
@@ -393,359 +401,13 @@
   （IndexError/TypeError/ValueError）时记告警并回退空文章，不再让整页抓取崩溃。
 - **原因**: 引入提交 `7ae6b5907`（fix(testing): make backend and smoke lanes
   hermetic）——hermetic lane 中纯 Python readability 路径崩溃。
-- **测试**: `backend/tests/test_readability.py::test_extract_article_falls_back_when_readability_js_fails`、
+- **测试**: `backend/tests/unit/tools/test_readability.py::test_extract_article_falls_back_when_readability_js_fails`、
   `::test_extract_article_re_raises_unexpected_exception`。
 - **Owner**: tools 域维护者
 - **移除条件**: 上游 readability 封装提供等价回退并被采纳时。
-
-### PATCH-033: DeerFlow CLAUDE.md guidance mirrors
-
-- **文件**: 17 个 `backend/packages/harness/deerflow/**/CLAUDE.md` 文件；完整路径见下方结构化登记。
-- **修改**: 每个 CLAUDE.md 都是同目录 AGENTS.md 的 UTF-8 字节副本，为读取 CLAUDE.md 的代理工具提供相同的作用域规则；AGENTS.md 是唯一编辑源。
-- **原因**: 团队要求所有规则目录同时支持读取 AGENTS.md 与 CLAUDE.md，且两者内容保持一致。
-- **上游替代方案**: 当前没有扩展或运行时接口适用于代理指导文件；若所有受支持工具直接读取 AGENTS.md，可移除这些副本。
-- **测试**: `python scripts/sync_agent_guidance.py --check`（检查 24 组指导文件配对）。
-- **Owner**: Agent tooling maintainers
-- **移除条件**: 所有受支持代理工具直接读取 AGENTS.md，或仓库改用统一的新指导文件格式时移除。
 
 ## Enforcement
 
 每次收敛提交前重跑对照命令并更新本台账；存在未登记差异即门禁失败。
 属于 AgentPlatform 的运行时行为必须实现在 `backend/app/agentplatform/` 或
 `backend/packages/agentplatform-extension/`，不得靠扩张本 fork 解决。
-
-## Machine-readable registration
-
-The registry below is part of this root ledger. Historical evidence remains visible
-in the entries above. Any harness file changed in a new candidate requires a
-`current` verification entry with the command and result for that candidate.
-The checker reads rationale, alternative, impact scope, owner, removal trigger, and test references from the patch entries above (an omitted alternative is derived from the stated upstream removal condition); the registry below stores only paths and gate state. PATCH-033 explicitly adds 17 generated CLAUDE.md documents: the prior budget was 44 (43 code + 1 document), and the amended budget is 61 (43 code + 18 documents). The code-file budget remains 43. The checker reports code and documentation separately and enforces the total budget.
-
-<!-- upstream-registry:start -->
-```json
-{
-  "schema_version": 1,
-  "upstream_baseline": "0f7d8709d3bbf0be26460b6277fbad9329302243",
-  "file_budget": 61,
-  "budget_basis": {
-    "code_files": 43,
-    "document_files": 18,
-    "previous_code_files": 43,
-    "previous_document_files": 1,
-    "amendment": "The prior budget of 44 comprised 43 code files and config/AGENTS.md; PATCH-033 adds 17 generated CLAUDE.md documents. The code-file budget remains 43."
-  },
-  "patches": [
-    {
-      "id": "PATCH-001",
-      "paths": [
-        "backend/packages/harness/deerflow/community/ragflow/client.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-002",
-      "paths": [
-        "backend/packages/harness/deerflow/extensions/notify.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "current",
-      "current_verification": {
-        "command": "cd backend && UV_CACHE_DIR=/tmp/deer-flow-uv-cache PYTHONPATH=.:tests uv run --locked pytest -q tests/blocking_io/test_uploads_router.py tests/integration/api/test_devices_router.py tests/test_run_journal.py tests/unit/agentplatform/test_runtime_adapter.py tests/unit/device_control/test_broker.py tests/unit/device_control/test_secrets_gate.py tests/unit/gateway/test_local_runtime_context.py tests/unit/gateway/test_run_evidence.py tests/test_extension_task_lifecycle.py tests/test_tool_receipt_middleware.py tests/test_harness_boundary.py",
-        "result": "passed; 173 tests, 4 warnings; format-only cleanup with identical Python ASTs; 2026-10-01"
-      }
-    },
-    {
-      "id": "PATCH-003",
-      "paths": [
-        "backend/packages/harness/deerflow/config/AGENTS.md"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-004",
-      "paths": [
-        "backend/packages/harness/deerflow/config/workflow_runtime_config.py",
-        "backend/packages/harness/deerflow/config/app_config.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-005",
-      "paths": [
-        "backend/packages/harness/deerflow/agents/middlewares/tool_receipt_middleware.py",
-        "backend/packages/harness/deerflow/tools/builtins/task_tool.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "current",
-      "current_verification": {
-        "command": "cd backend && UV_CACHE_DIR=/tmp/deer-flow-uv-cache PYTHONPATH=.:tests uv run --locked pytest -q tests/blocking_io/test_uploads_router.py tests/integration/api/test_devices_router.py tests/test_run_journal.py tests/unit/agentplatform/test_runtime_adapter.py tests/unit/device_control/test_broker.py tests/unit/device_control/test_secrets_gate.py tests/unit/gateway/test_local_runtime_context.py tests/unit/gateway/test_run_evidence.py tests/test_extension_task_lifecycle.py tests/test_tool_receipt_middleware.py tests/test_harness_boundary.py",
-        "result": "passed; 173 tests, 4 warnings; format-only cleanup with identical Python ASTs; 2026-10-01"
-      }
-    },
-    {
-      "id": "PATCH-006",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/bootstrap.py",
-        "backend/packages/harness/deerflow/persistence/migrations/env.py"
-      ],
-      "lifecycle_status": "closed",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-007",
-      "paths": [
-        "backend/packages/harness/deerflow/uploads/code_evidence.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-008",
-      "paths": [
-        "backend/packages/harness/deerflow/uploads/code_analysis.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-009",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/models/workflow_v2.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-010",
-      "paths": [
-        "backend/packages/harness/deerflow/agents/lead_agent/agent.py",
-        "backend/packages/harness/deerflow/agents/lead_agent/prompt.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-011",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/engine.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-012",
-      "paths": [
-        "backend/packages/harness/deerflow/sandbox/local/local_sandbox_provider.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-013",
-      "paths": [
-        "backend/packages/harness/deerflow/runtime/runs/manager.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-014",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/migrations/versions/0001_baseline.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-015",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/migrations/_chain_meta.py",
-        "backend/packages/harness/deerflow/persistence/migrations/alembic.ini",
-        "backend/packages/harness/deerflow/persistence/migrations/versions/20260908_unify_migration_chains.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-016",
-      "paths": [
-        "backend/packages/harness/deerflow/sandbox/local/local_sandbox.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-017",
-      "paths": [
-        "backend/packages/harness/deerflow/sandbox/tools.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-018",
-      "paths": [
-        "backend/packages/harness/deerflow/sandbox/encoding.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-019",
-      "paths": [
-        "backend/packages/harness/deerflow/sandbox/search.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-020",
-      "paths": [
-        "backend/packages/harness/deerflow/agents/middlewares/tool_error_handling_middleware.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-021",
-      "paths": [
-        "backend/packages/harness/deerflow/community/aio_sandbox/aio_sandbox_provider.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-022",
-      "paths": [
-        "backend/packages/harness/deerflow/community/ragflow/tools.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-023",
-      "paths": [
-        "backend/packages/harness/deerflow/config/app_config.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-024",
-      "paths": [
-        "backend/packages/harness/deerflow/extensions/__init__.py",
-        "backend/packages/harness/deerflow/extensions/registry.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-025",
-      "paths": [
-        "backend/packages/harness/deerflow/models/openai_codex_provider.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-026",
-      "paths": [
-        "backend/packages/harness/deerflow/runtime/journal.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "current",
-      "current_verification": {
-        "command": "cd backend && UV_CACHE_DIR=/tmp/deer-flow-uv-cache PYTHONPATH=.:tests uv run --locked pytest -q tests/blocking_io/test_uploads_router.py tests/integration/api/test_devices_router.py tests/test_run_journal.py tests/unit/agentplatform/test_runtime_adapter.py tests/unit/device_control/test_broker.py tests/unit/device_control/test_secrets_gate.py tests/unit/gateway/test_local_runtime_context.py tests/unit/gateway/test_run_evidence.py tests/test_extension_task_lifecycle.py tests/test_tool_receipt_middleware.py tests/test_harness_boundary.py",
-        "result": "passed; 173 tests, 4 warnings; format-only cleanup with identical Python ASTs; 2026-10-01"
-      }
-    },
-    {
-      "id": "PATCH-027",
-      "paths": [
-        "backend/packages/harness/deerflow/runtime/runs/worker.py",
-        "backend/packages/harness/deerflow/runtime/runs/manager.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-028",
-      "paths": [
-        "backend/packages/harness/deerflow/subagents/executor.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-029",
-      "paths": [
-        "backend/packages/harness/deerflow/subagents/registry.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-030",
-      "paths": [
-        "backend/packages/harness/deerflow/agents/middlewares/input_sanitization_middleware.py",
-        "backend/packages/harness/deerflow/client.py",
-        "backend/packages/harness/deerflow/extensions/gateway.py",
-        "backend/packages/harness/deerflow/skills/frontmatter.py",
-        "backend/packages/harness/deerflow/skills/projection.py",
-        "backend/packages/harness/deerflow/skills/storage/user_scoped_skill_storage.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-031",
-      "paths": [
-        "backend/packages/harness/deerflow/persistence/models/legacy_tables.py",
-        "backend/packages/harness/deerflow/persistence/models/__init__.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-032",
-      "paths": [
-        "backend/packages/harness/deerflow/utils/readability.py"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "historical"
-    },
-    {
-      "id": "PATCH-033",
-      "paths": [
-        "backend/packages/harness/deerflow/CLAUDE.md",
-        "backend/packages/harness/deerflow/agents/CLAUDE.md",
-        "backend/packages/harness/deerflow/agents/memory/CLAUDE.md",
-        "backend/packages/harness/deerflow/agents/middlewares/CLAUDE.md",
-        "backend/packages/harness/deerflow/config/CLAUDE.md",
-        "backend/packages/harness/deerflow/extensions/CLAUDE.md",
-        "backend/packages/harness/deerflow/mcp/CLAUDE.md",
-        "backend/packages/harness/deerflow/models/CLAUDE.md",
-        "backend/packages/harness/deerflow/persistence/migrations/CLAUDE.md",
-        "backend/packages/harness/deerflow/reflection/CLAUDE.md",
-        "backend/packages/harness/deerflow/runtime/CLAUDE.md",
-        "backend/packages/harness/deerflow/sandbox/CLAUDE.md",
-        "backend/packages/harness/deerflow/skills/CLAUDE.md",
-        "backend/packages/harness/deerflow/subagents/CLAUDE.md",
-        "backend/packages/harness/deerflow/tools/CLAUDE.md",
-        "backend/packages/harness/deerflow/tracing/CLAUDE.md",
-        "backend/packages/harness/deerflow/tui/CLAUDE.md"
-      ],
-      "lifecycle_status": "open",
-      "verification_status": "current",
-      "current_verification": {
-        "command": "python scripts/sync_agent_guidance.py --check",
-        "result": "passed; 24 guidance pairs checked, including all 17 DeerFlow harness mirrors"
-      }
-    }
-  ]
-}
-```
-<!-- upstream-registry:end -->

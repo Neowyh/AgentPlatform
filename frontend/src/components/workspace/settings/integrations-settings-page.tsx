@@ -734,7 +734,7 @@ function LarkIntegrationCard() {
               )}
             </div>
             {data.installed && (
-              <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 type-compact">
+              <div className="text-muted-foreground type-compact flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span>
                   {t.settings.integrations.lark.installedVersion(
                     data.manifest_version ?? data.version,
@@ -960,7 +960,7 @@ function LarkIntegrationCard() {
                           : t.settings.integrations.lark
                               .openAuthLinkDescription}
                     </p>
-                    <div className="bg-muted text-foreground rounded-md px-3 py-2 type-compact break-all">
+                    <div className="bg-muted text-foreground type-compact rounded-md px-3 py-2 break-all">
                       {pendingFlow.verification_url}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1051,7 +1051,9 @@ function StatusItem({
           {ok ? t.settings.integrations.ready : t.settings.integrations.pending}
         </Badge>
       </div>
-      <div className="text-muted-foreground type-supporting break-words">{value}</div>
+      <div className="text-muted-foreground type-supporting break-words">
+        {value}
+      </div>
     </div>
   );
 }

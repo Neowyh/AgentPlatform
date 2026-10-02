@@ -542,7 +542,9 @@ export function MemorySettingsPage() {
             {t.common.loading}
           </div>
         ) : error ? (
-          <div>Error: {error.message}</div>
+          <div>
+            {t.common.error} {error.message}
+          </div>
         ) : !memory ? (
           <div className="text-muted-foreground type-body">
             {t.settings.memory.empty}

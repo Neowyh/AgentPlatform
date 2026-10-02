@@ -100,7 +100,7 @@ class TestExecuteCommandWindows:
         sandbox = LocalSandbox("test")
         captured: dict = {}
 
-        def _fake_run_windows(args, timeout, env=None):
+        def _fake_run_windows(args, timeout, env=None, encoding=None):
             captured["args"] = args
             captured["env"] = env
             return ("output", "", 0, False)
@@ -114,14 +114,16 @@ class TestExecuteCommandWindows:
 
         # Upstream runs Windows commands via _run_windows_command (Popen with
         # Windows-only creationflags), so the arg shape is asserted there.
-        assert captured["args"] == [r"C:\pwsh.exe", "-NoProfile", "-Command", "echo hello"]
+        # PowerShell invocations carry the guarded UTF-8 encoding preamble.
+        utf8_preamble = "try{[Console]::InputEncoding=[System.Text.Encoding]::UTF8}catch{};try{[Console]::OutputEncoding=[System.Text.Encoding]::UTF8}catch{};$OutputEncoding=[System.Text.Encoding]::UTF8;"
+        assert captured["args"] == [r"C:\pwsh.exe", "-NoProfile", "-Command", utf8_preamble + "echo hello"]
 
     def test_cmd_shell_args(self):
         """cmd.exe execution args."""
         sandbox = LocalSandbox("test")
         captured: dict = {}
 
-        def _fake_run_windows(args, timeout, env=None):
+        def _fake_run_windows(args, timeout, env=None, encoding=None):
             captured["args"] = args
             captured["env"] = env
             return ("output", "", 0, False)
@@ -143,7 +145,7 @@ class TestExecuteCommandWindows:
         )
         captured: dict = {}
 
-        def _fake_run_windows(args, timeout, env=None):
+        def _fake_run_windows(args, timeout, env=None, encoding=None):
             captured["args"] = args
             captured["env"] = env
             return ("output", "", 0, False)

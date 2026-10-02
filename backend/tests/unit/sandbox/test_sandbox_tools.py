@@ -362,9 +362,19 @@ class TestTruncateReadFileOutput:
     def test_preserves_head(self):
         from deerflow.sandbox.tools import _truncate_read_file_output
 
-        output = "IMPORT_LINE" + "x" * 1000
-        result = _truncate_read_file_output(output, 200)
+        output = "IMPORT_LINE\n" + "x\n" * 500
+        # Head preservation holds whenever the budget can carry content past
+        # the marker reserve; the merged upstream design guarantees the cut
+        # lands on a line boundary with a continue-reading marker.
+        result = _truncate_read_file_output(output, 800)
         assert "IMPORT_LINE" in result
+        assert "truncated" in result
+        # Below the marker reserve the design returns a bare tiny-budget
+        # marker that still tells the model the output was cut and how to
+        # read it in pieces — no fake content, no fake head.
+        tiny = _truncate_read_file_output(output, 200)
+        assert tiny.startswith("... [truncated:")
+        assert "IMPORT_LINE" not in tiny
 
 
 # ---------------------------------------------------------------------------
@@ -1673,11 +1683,17 @@ class TestTruncateReadFileOutputExtra:
     def test_truncated(self):
         from deerflow.sandbox.tools import _truncate_read_file_output
 
-        long = "a" * 5000 + "b" * 5000
-        result = _truncate_read_file_output(long, 200)
-        assert len(result) <= 200
-        assert result.startswith("a")
+        long = "a\n" * 5000 + "b\n" * 5000
+        # Same design split as test_preserves_head: a budget above the marker
+        # reserve keeps the head; a 200-char budget cannot carry content past
+        # the total-aware reserve and returns the bare tiny-budget marker.
+        result = _truncate_read_file_output(long, 3000)
+        assert len(result) <= 3000
+        assert result.startswith("a\n")
         assert "truncated" in result
+        tiny = _truncate_read_file_output(long, 200)
+        assert len(tiny) <= 200
+        assert "truncated" in tiny
 
 
 class TestTruncateLsOutputExtra:

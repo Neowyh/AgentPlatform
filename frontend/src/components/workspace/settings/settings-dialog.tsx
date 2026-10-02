@@ -8,6 +8,7 @@ import {
   PaletteIcon,
   PlugZapIcon,
   SparklesIcon,
+  UsersRoundIcon,
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { ChannelsSettingsPage } from "@/components/workspace/settings/channels-s
 import { IntegrationsSettingsPage } from "@/components/workspace/settings/integrations-settings-page";
 import { MemorySettingsPage } from "@/components/workspace/settings/memory-settings-page";
 import { NotificationSettingsPage } from "@/components/workspace/settings/notification-settings-page";
+import { SubagentSettingsPage } from "@/components/workspace/settings/subagent-settings-page";
 import { useChannelProviders } from "@/core/channels/hooks";
 import { hasUsableChannelProvider } from "@/core/channels/provider-state";
 import { useI18n } from "@/core/i18n/hooks";
@@ -46,9 +48,9 @@ export type SettingsSection =
   | "integrations"
   | "memory"
   | "notification"
-  | "tools"
   | "subagents"
   | "skills"
+  | "tools"
   | "about";
 
 type SettingsDialogProps = Omit<
@@ -66,28 +68,28 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
 
-  // Channels/Integrations are deployment capabilities, not universal
-  // settings: only surface them when the backend reports something actually
-  // usable — a configured, running channel provider, or a Gateway with
-  // lark-cli available. Failed or still-loading probes hide the entries too,
-  // so an unknown capability never renders as an actionable one; visibility
-  // here stays a UI concern and never replaces server-side permission checks.
+  // Channels is a deployment capability, not a universal setting: only
+  // surface it when the backend reports something actually usable — a
+  // configured, running channel provider. Failed or still-loading probes
+  // hide the entry too, so an unknown capability never renders as an
+  // actionable one; visibility here stays a UI concern and never replaces
+  // server-side permission checks.
   const {
     enabled: channelsEnabled,
     providers,
     isLoading: channelsLoading,
     error: channelsError,
   } = useChannelProviders();
-  const {
-    data: larkStatus,
-    isLoading: larkLoading,
-    error: larkError,
-  } = useLarkIntegrationStatus();
   const channelsAvailable =
     !channelsLoading &&
     !channelsError &&
     channelsEnabled &&
     hasUsableChannelProvider(providers);
+  const {
+    data: larkStatus,
+    isLoading: larkLoading,
+    error: larkError,
+  } = useLarkIntegrationStatus();
   const integrationsAvailable =
     !larkLoading && !larkError && isLarkIntegrationUsable(larkStatus);
 
@@ -123,55 +125,57 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }, [defaultSection, dialogProps.open, onOpenChange, router]);
 
   const sections = useMemo(
-    () =>
-      [
-        {
-          id: "account",
-          label: t.settings.sections.account,
-          icon: UserIcon,
-        },
-        {
-          id: "appearance",
-          label: t.settings.sections.appearance,
-          icon: PaletteIcon,
-        },
-        {
-          id: "notification",
-          label: t.settings.sections.notification,
-          icon: BellIcon,
-        },
-        {
-          id: "channels",
-          label: t.settings.sections.channels,
-          icon: CableIcon,
-        },
-        {
-          id: "integrations",
-          label: t.settings.sections.integrations,
-          icon: PlugZapIcon,
-        },
-        {
-          id: "memory",
-          label: t.settings.sections.memory,
-          icon: BrainIcon,
-        },
-        { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
-        { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
-        { id: "about", label: t.settings.sections.about, icon: InfoIcon },
-      ].filter(
-        (section) => sectionAvailability[section.id as SettingsSection] ?? true,
-      ),
+    () => [
+      {
+        id: "account",
+        label: t.settings.sections.account,
+        icon: UserIcon,
+      },
+      {
+        id: "appearance",
+        label: t.settings.sections.appearance,
+        icon: PaletteIcon,
+      },
+      {
+        id: "notification",
+        label: t.settings.sections.notification,
+        icon: BellIcon,
+      },
+      {
+        id: "channels",
+        label: t.settings.sections.channels,
+        icon: CableIcon,
+      },
+      {
+        id: "integrations",
+        label: t.settings.sections.integrations,
+        icon: PlugZapIcon,
+      },
+      {
+        id: "memory",
+        label: t.settings.sections.memory,
+        icon: BrainIcon,
+      },
+      {
+        id: "subagents",
+        label: t.settings.sections.subagents,
+        icon: UsersRoundIcon,
+      },
+      { id: "skills", label: t.settings.sections.skills, icon: SparklesIcon },
+      { id: "tools", label: t.settings.sections.tools, icon: WrenchIcon },
+      { id: "about", label: t.settings.sections.about, icon: InfoIcon },
+    ],
     [
       t.settings.sections.account,
       t.settings.sections.appearance,
       t.settings.sections.channels,
       t.settings.sections.integrations,
       t.settings.sections.memory,
+      t.settings.sections.subagents,
       t.settings.sections.notification,
-      t.settings.sections.tools,
       t.settings.sections.skills,
+      t.settings.sections.tools,
       t.settings.sections.about,
-      sectionAvailability,
     ],
   );
   return (
@@ -194,35 +198,40 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <div className="workbench-settings-layout grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
             <ul className="space-y-1 pr-1">
-              {sections.map(({ id, label, icon: Icon }) => {
-                const active = effectiveSection === id;
-                return (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const destination = legacySettingsDestination(id);
-                        if (destination) {
-                          onOpenChange?.(false);
-                          router.push(destination);
-                        } else {
-                          setActiveSection(id as SettingsSection);
-                        }
-                      }}
-                      data-testid={`settings-tab-${id}`}
-                      className={cn(
-                        "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span>{label}</span>
-                    </button>
-                  </li>
-                );
-              })}
+              {/* 合并回归修复：恢复本地"不可用能力入口不渲染"的门控——
+                  sectionAvailability 同时服务导航列表与深链回退，缺了 filter
+                  会让不可用渠道以可点击入口的形式暴露。 */}
+              {sections
+                .filter(({ id }) => sectionAvailability[id] ?? true)
+                .map(({ id, label, icon: Icon }) => {
+                  const active = effectiveSection === id;
+                  return (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const destination = legacySettingsDestination(id);
+                          if (destination) {
+                            onOpenChange?.(false);
+                            router.push(destination);
+                          } else {
+                            setActiveSection(id as SettingsSection);
+                          }
+                        }}
+                        data-testid={`settings-tab-${id}`}
+                        className={cn(
+                          "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
+                          active
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="size-4" />
+                        <span>{label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
             </ul>
           </nav>
           <ScrollArea className="h-full min-h-0 rounded-lg border">
@@ -230,6 +239,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {effectiveSection === "account" && <AccountSettingsPage />}
               {effectiveSection === "appearance" && <AppearanceSettingsPage />}
               {effectiveSection === "memory" && <MemorySettingsPage />}
+              {effectiveSection === "subagents" && <SubagentSettingsPage />}
               {effectiveSection === "notification" && (
                 <NotificationSettingsPage />
               )}

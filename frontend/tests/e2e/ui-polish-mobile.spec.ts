@@ -23,7 +23,9 @@ test.describe("UI polish mobile regressions", () => {
       await expect(newChatLink).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await expect(
-      page.getByRole("link", { name: "Experts", exact: true }),
+      // The merged sidebar deduplicates the capability entries under one
+      // "Capability Center" link (the pre-merge label was "Experts").
+      page.getByRole("link", { name: "Capability Center", exact: true }),
     ).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))

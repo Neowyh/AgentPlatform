@@ -513,4 +513,200 @@ test.describe("Agent chat", () => {
     await expect(page.getByText("Original agent question")).not.toBeVisible();
     await expect(page.getByText("Hello from iDeer!")).toBeVisible();
   });
+
+  // ── Upstream v2.1.0 display-name cases, rewritten for the merged app ──
+  // The upstream agent settings dialog was removed with the /workspace/agents
+  // gallery; display_name editing lives on the expert edit page and saves go
+  // through the resource draft/publish flow (PUT /api/resources/:id/agent-draft).
+
+  test("display name length counts emoji as code points", async ({ page }) => {
+    mockLangGraphAPI(page, { agents: [MOCK_AGENTS[0]!] });
+    let savedName: string | undefined;
+    await page.route(
+      "**/api/resources/test-agent/agent-draft",
+      async (route) => {
+        if (route.request().method() !== "PUT") return route.fallback();
+        const body = route.request().postDataJSON() as {
+          config?: { display_name?: string | null };
+        };
+        savedName = body.config?.display_name ?? undefined;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ revision: 2 }),
+        });
+      },
+    );
+
+    await page.goto("/workspace/capabilities/experts/test-agent/edit");
+    const input = page.getByLabel("Display name", { exact: true });
+    await input.fill("🦌".repeat(101));
+    await page
+      .getByRole("button", { name: "Save Changes", exact: true })
+      .click();
+    await expect(
+      page.getByText("Display name must be at most 100 Unicode code points."),
+    ).toBeVisible();
+    expect(savedName).toBeUndefined();
+
+    await input.fill("🦌".repeat(100));
+    await expect(input).toHaveValue("🦌".repeat(100));
+    await page
+      .getByRole("button", { name: "Save Changes", exact: true })
+      .click();
+    await expect.poll(() => savedName).toBe("🦌".repeat(100));
+  });
+
+  test("Unicode display names keep the stable agent route and run context", async ({
+    page,
+  }, testInfo) => {
+    let streamBody: Record<string, unknown> | undefined;
+    const agent = { ...MOCK_AGENTS[0]!, display_name: "" };
+    mockLangGraphAPI(page, {
+      agents: [agent],
+      runStreamHandler: async (route) => {
+        streamBody = route.request().postDataJSON() as Record<string, unknown>;
+        await handleRunStream(route);
+      },
+    });
+    await page.route(
+      "**/api/resources/test-agent/agent-draft",
+      async (route) => {
+        if (route.request().method() !== "PUT") return route.fallback();
+        const body = route.request().postDataJSON() as {
+          config?: { display_name?: string | null };
+        };
+        expect(body.config?.display_name).toBe("代码审查助手");
+        agent.display_name = body.config?.display_name ?? "";
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ revision: 2 }),
+        });
+      },
+    );
+
+    await page.goto("/workspace/capabilities/experts/test-agent/edit");
+    await page.getByLabel("Display name", { exact: true }).fill("代码审查助手");
+    await page.screenshot({
+      path: testInfo.outputPath("display-name-settings.png"),
+    });
+    await page
+      .getByRole("button", { name: "Save Changes", exact: true })
+      .click();
+    await expect.poll(() => agent.display_name).toBe("代码审查助手");
+
+    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
+    await expect(
+      page.getByText("代码审查助手", { exact: true }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+    await page.screenshot({
+      path: testInfo.outputPath("display-name-gallery.png"),
+    });
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await textarea.fill("Review this code");
+    await textarea.press("Enter");
+    await expect.poll(() => streamBody).toBeDefined();
+    expect(streamBody).toMatchObject({ context: { agent_name: "test-agent" } });
+  });
+
+  for (const { label, toolGroups } of [
+    { label: "empty", toolGroups: [] },
+    { label: "unrestricted", toolGroups: null },
+  ]) {
+    test(`expert tab shows skill badges with ${label} tool groups`, async ({
+      page,
+    }) => {
+      mockLangGraphAPI(page, {
+        agents: [
+          {
+            ...MOCK_AGENTS[0]!,
+            tool_groups: toolGroups,
+            skills: ["data-analysis"],
+          },
+        ],
+      });
+
+      await page.goto("/workspace/capabilities/experts");
+
+      const card = page.locator('[data-slot="card"]').filter({
+        has: page.getByText("test-agent", { exact: true }),
+      });
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(
+        card.getByText("data-analysis", { exact: true }),
+      ).toBeVisible();
+    });
+  }
+
+  test("expert tab hides the badge block with no tool groups or skills", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page, {
+      agents: [{ ...MOCK_AGENTS[0]!, tool_groups: [], skills: [] }],
+    });
+
+    await page.goto("/workspace/capabilities/experts");
+
+    const card = page.locator('[data-slot="card"]').filter({
+      has: page.getByText("test-agent", { exact: true }),
+    });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('[data-slot="card-content"]')).toHaveCount(0);
+  });
+
+  test("continues an IM-selected thread with the same agent from the sidebar", async ({
+    page,
+  }) => {
+    const threadId = "00000000-0000-0000-0000-000000000168";
+    let streamBody: Record<string, unknown> | undefined;
+    mockLangGraphAPI(page, {
+      agents: [
+        {
+          name: "researcher",
+          description: "Research agent selected from an IM channel",
+        },
+      ],
+      threads: [
+        {
+          thread_id: threadId,
+          title: "IM research conversation",
+          metadata: {
+            channel_source: { type: "im_channel", provider: "telegram" },
+            channel_agent_name: "researcher",
+            agent_name: "researcher",
+          },
+        },
+      ],
+      runStreamHandler: async (route) => {
+        streamBody = route.request().postDataJSON() as Record<string, unknown>;
+        await handleRunStream(route);
+      },
+    });
+
+    await page.goto("/workspace/chats/new");
+    const threadLink = page
+      .locator("[data-sidebar='sidebar']")
+      .locator(
+        `a[href='/workspace/capabilities/experts/researcher/chats/${threadId}']`,
+      );
+    await expect(threadLink).toBeVisible({ timeout: 15_000 });
+    await threadLink.click();
+    await page.waitForURL(
+      `**/workspace/capabilities/experts/researcher/chats/${threadId}`,
+    );
+
+    const textarea = page.getByPlaceholder(/how can i assist you/i);
+    await expect(textarea).toBeVisible({ timeout: 15_000 });
+    await textarea.fill("Continue this research");
+    await textarea.press("Enter");
+
+    await expect.poll(() => streamBody).toBeDefined();
+    expect(streamBody).toMatchObject({
+      context: {
+        agent_name: "researcher",
+        thread_id: threadId,
+      },
+    });
+  });
 });

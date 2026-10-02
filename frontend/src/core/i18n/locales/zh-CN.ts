@@ -5,7 +5,6 @@ export const zhCN: Translations = {
   locale: {
     localName: "中文",
   },
-
   // Common
   common: {
     home: "首页",
@@ -50,6 +49,8 @@ export const zhCN: Translations = {
     showArtifacts: "查看此对话的文件",
     browser: "浏览器",
     showBrowser: "打开 Agent 浏览器面板",
+    showingOf: (loaded, total) => `已显示 ${loaded} / 共 ${total}`,
+    error: "错误：",
     deleteTitle: "删除会话",
     deleteThreadConfirm: (title: string) =>
       `确定要删除「${title}」吗？删除后该会话及全部聊天记录将无法恢复。`,
@@ -57,7 +58,6 @@ export const zhCN: Translations = {
     showAll: "显示全部",
     favoritesOnly: "仅收藏",
   },
-
   runDuration: {
     reasoning: "思考过程",
     working: "执行中…",
@@ -69,13 +69,11 @@ export const zhCN: Translations = {
     seconds: (value) => `${value} 秒`,
     separator: " ",
   },
-
   // Home
   home: {
     docs: "文档",
     blog: "博客",
   },
-
   // Welcome
   welcome: {
     greeting: "iDeer，落地你的idea",
@@ -83,7 +81,6 @@ export const zhCN: Translations = {
     createYourOwnSkillDescription:
       "创建你的 Agent Skill 来释放 iDeer 的潜力。通过自定义技能，iDeer\n可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n网页等作品，几乎可以做任何事情。",
   },
-
   // Clipboard
   clipboard: {
     copyToClipboard: "复制到剪贴板",
@@ -91,7 +88,6 @@ export const zhCN: Translations = {
     failedToCopyToClipboard: "复制到剪贴板失败",
     linkCopied: "链接已复制到剪贴板",
   },
-
   artifactEditing: {
     unsaved: "未保存",
     saving: "正在保存...",
@@ -104,7 +100,6 @@ export const zhCN: Translations = {
     runInProgress: "请等待当前 Agent 运行结束后再保存。",
     saveFailed: "保存文件失败",
   },
-
   artifactPreview: {
     limited: (previewSize, totalSize) =>
       totalSize
@@ -116,17 +111,15 @@ export const zhCN: Translations = {
     viewSource: "查看原始文件",
     missingTarget: "该链接没有指明要展示哪个文件。",
   },
-
   artifactArchive: {
+    currentVersionNotice:
+      "文件列表来自此回复；内容为当前版本，可能已发生变化。",
+    downloadFailed: "文件压缩包下载失败。",
     downloadSelected: (count) => `下载所选文件（${count} 个）`,
     selectFile: (fileName) => `将 ${fileName} 加入压缩包`,
     selectionNotice: "选择要加入压缩包的文件。",
     selectionLimit: (count) => `最多选择 ${count} 个文件。`,
-    currentVersionNotice:
-      "文件列表来自此回复；内容为当前版本，可能已发生变化。",
-    downloadFailed: "文件压缩包下载失败。",
   },
-
   // Citations
   citations: {
     sourcesSummary: (count) => `使用了 ${count} 个来源`,
@@ -134,7 +127,6 @@ export const zhCN: Translations = {
     copyReference: (title) => `复制 ${title} 引用`,
     copiedReference: (title) => `已复制 ${title} 引用`,
   },
-
   // Workspace Changes
   workspaceChanges: {
     title: "工作区变更",
@@ -156,7 +148,6 @@ export const zhCN: Translations = {
     symlinkUnavailable: "符号链接变更，无法展示 diff。",
     truncatedSummary: "部分变更已被截断。",
   },
-
   // Input Box
   inputBox: {
     placeholder: "今天我能为你做些什么？ /调用技能",
@@ -228,12 +219,20 @@ export const zhCN: Translations = {
     compactSkipped: "当前上下文还不需要压缩。",
     compactFailed: "上下文压缩失败。",
     pleaseWaitStreaming: "请等待当前响应完成。",
+    referenceConversations: "引用会话",
+    referenceConversationsSearch: "搜索会话",
+    referenceConversationsEmpty: "没有找到会话",
+    referenceConversationsLimit: (max: number) =>
+      `每条消息最多引用 ${max} 个会话`,
+    referenceConversationsRemove: (title: string) => `移除对「${title}」的引用`,
+    referencedConversations: "引用的会话",
+    removeProjectAttachment: "移除附加文档",
+    stopStreamingUnavailable: "你的角色无权停止正在运行的回合。",
     selectModel: "选择模型",
     invokeSkill: "调用技能",
     skill: "技能",
     skillDialogDescription: "选择技能后，会将 /技能名 插入输入框。",
   },
-
   // Sidebar
   sidebar: {
     newChat: "新对话",
@@ -248,7 +247,6 @@ export const zhCN: Translations = {
     library: "资料库",
     workflows: "工作流",
   },
-
   backgroundTasks: {
     label: "后台任务",
     title: "后台任务",
@@ -287,7 +285,6 @@ export const zhCN: Translations = {
       cancelled: "已取消",
     },
   },
-
   subagentBatches: {
     label: "批处理",
     title: "子智能体批处理",
@@ -318,12 +315,12 @@ export const zhCN: Translations = {
       cancelled: "已取消",
     },
   },
-
   // 定时任务
   scheduledTasks: {
     scheduleType: {
       cron: "重复",
       once: "单次",
+      interval: "间隔",
     },
     preset: {
       label: "重复方式",
@@ -342,6 +339,11 @@ export const zhCN: Translations = {
       cronPlaceholder: "0 9 * * *",
       runAt: "运行时间",
       timezone: "时区",
+      intervalAmount: "每",
+      intervalUnitSeconds: "秒",
+      intervalUnitMinutes: "分钟",
+      intervalUnitHours: "小时",
+      intervalMinHint: "最短 60 秒（默认服务端下限）。",
     },
     weekdays: {
       mon: "周一",
@@ -360,6 +362,8 @@ export const zhCN: Translations = {
       prompt: "提示词",
       submit: "创建",
       fillRequired: "请填写所有必填项",
+      agent: "Agent",
+      leadAgent: "默认 Agent（lead_agent）",
     },
     context: {
       fresh: "新线程",
@@ -378,6 +382,7 @@ export const zhCN: Translations = {
       allTypes: "全部类型",
       cron: "定时",
       once: "单次",
+      interval: "间隔",
     },
     detail: {
       contextMode: "上下文模式",
@@ -394,6 +399,7 @@ export const zhCN: Translations = {
       noSelection: "未选择定时任务",
       filteredByThread: "按线程筛选：{id}",
       loadFailed: "加载定时任务失败",
+      agent: "Agent",
     },
     actions: {
       edit: "编辑",
@@ -427,7 +433,10 @@ export const zhCN: Translations = {
       failed: "已失败",
       cancelled: "已取消",
     },
-    runTrigger: { scheduled: "定时", manual: "手动" },
+    runTrigger: {
+      scheduled: "定时",
+      manual: "手动",
+    },
     runStatus: {
       queued: "排队中",
       launching: "启动中",
@@ -456,8 +465,18 @@ export const zhCN: Translations = {
         desc: "每周一汇总一周工作",
       },
     },
+    history: {
+      navigation: "执行记录分页",
+      newer: "较新记录",
+      older: "更早记录",
+      latest: "最新记录",
+      page: "第 {page} 页",
+      paused: "浏览历史页时暂停自动刷新，返回最新记录可查看当前执行情况。",
+      loading: "正在加载执行记录…",
+      loadFailed: "无法加载执行记录。",
+      retry: "重试加载",
+    },
   },
-
   // Agents
   agents: {
     title: "专家",
@@ -497,10 +516,10 @@ export const zhCN: Translations = {
     agentCreated: "专家已创建！",
     startChatting: "开始对话",
     backToGallery: "返回 Gallery",
-    settings: "模型设置",
-    settingsTitle: "模型设置",
+    settings: "智能体设置",
+    settingsTitle: "智能体设置",
     settingsDescription:
-      "为该智能体选择默认模型和生成参数，修改在下一条消息生效。",
+      "为该智能体设置显示名称和默认模型，模型修改在下一条消息生效。",
     settingsModel: "默认模型",
     settingsModelDefault: "使用全局默认",
     settingsTemperature: "温度",
@@ -512,9 +531,12 @@ export const zhCN: Translations = {
     settingsThinkingOff: "关闭",
     settingsReasoningEffort: "推理强度",
     settingsInherit: "继承",
-    settingsSaved: "模型设置已保存",
+    settingsSaved: "智能体设置已保存",
     settingsInvalidTemperature: "温度必须在 0 到 2 之间",
     settingsInvalidMaxTokens: "最大输出 token 必须为不超过 200,000 的正整数",
+    settingsDisplayName: "显示名称",
+    settingsDisplayNameTooLong: "显示名称不能超过 100 个 Unicode 码点。",
+    settingsDisplayNameHint: "支持中文等 Unicode 字符，留空时使用智能体标识",
     template: "模板",
     detailChat: "对话",
     visibility: "可见性",
@@ -557,7 +579,6 @@ export const zhCN: Translations = {
     notSpecified: "未指定",
     exportFailed: "专家导出失败，请重试。",
   },
-
   // Breadcrumb
   breadcrumb: {
     workspace: "工作区",
@@ -566,7 +587,6 @@ export const zhCN: Translations = {
     edit: "编辑",
     runs: "运行记录",
   },
-
   // Workspace
   workspace: {
     officialWebsite: "访问 iDeer 官方网站",
@@ -591,7 +611,6 @@ export const zhCN: Translations = {
     applicationManagement: "审批管理",
     auditLogManagement: "审计日志",
   },
-
   // Conversation
   conversation: {
     noMessages: "还没有消息",
@@ -602,7 +621,6 @@ export const zhCN: Translations = {
     outlineLabel: "对话章节",
     outlineAttachmentFallback: "图片或文件消息",
   },
-
   // Chats
   chats: {
     searchChats: "搜索对话",
@@ -613,8 +631,26 @@ export const zhCN: Translations = {
     pinChat: "置顶对话",
     unpinChat: "取消置顶",
     pinChatFailed: "更新对话置顶状态失败",
+    deleteChat: "删除对话",
+    deleteConfirm: (title) =>
+      `确定删除“${title}”吗？这将删除对话及其文件，此操作不可撤销。`,
+    deleteFailed: "删除对话失败，请重试。",
+    noActiveChats: "暂无近期会话",
+    activeChats: "近期会话",
+    archivedChats: "已归档",
+    archiveChat: "归档",
+    restoreChat: "恢复",
+    archiveSuccess: "已归档",
+    restoreSuccess: "已恢复",
+    archiveFailed: "更新会话归档状态失败",
+    archiveDescription:
+      "归档会保留消息和文件，不会停止运行中的任务或暂停定时任务。",
+    undoArchive: "撤销",
+    noArchivedChats: "暂无已归档会话",
+    noMatchingChats: "已加载的会话中没有匹配结果",
+    loadChatsFailed: "加载会话失败",
+    retryLoadChats: "重试",
   },
-
   // Sidecar
   sidecar: {
     title: "侧边对话",
@@ -641,7 +677,6 @@ export const zhCN: Translations = {
     selectionCrossesMessages:
       "选区跨越了多条消息，请在同一条回复内选择要引用的文本。",
   },
-
   // Channels
   channels: {
     title: "渠道",
@@ -675,7 +710,6 @@ export const zhCN: Translations = {
     },
     connectedAs: (name: string) => `已连接为 ${name}。`,
   },
-
   // Page titles (document title)
   pages: {
     appName: "iDeer",
@@ -683,7 +717,6 @@ export const zhCN: Translations = {
     newChat: "新对话",
     untitled: "未命名",
   },
-
   // Tool calls
   toolCalls: {
     moreSteps: (count: number) => `查看其他 ${count} 个步骤`,
@@ -713,8 +746,16 @@ export const zhCN: Translations = {
     browserBack: "在浏览器中返回上一页",
     browserScreenshot: "浏览器截图",
     browserClose: "关闭浏览器",
+    details: "工具详情",
+    toolName: "工具名称",
+    callId: "调用 ID",
+    input: "输入",
+    result: "结果",
+    error: "错误",
+    noResult: "尚未收到结果",
+    emptyResult: "空结果",
+    truncated: "预览已截断；复制仅包含当前显示的内容。",
   },
-
   humanInput: {
     answered: "已回答",
     pending: "发送中...",
@@ -728,7 +769,6 @@ export const zhCN: Translations = {
     selectPlaceholder: "请选择...",
     answeredValue: (value: string) => `已回答：${value}`,
   },
-
   uploads: {
     uploading: "上传中...",
     uploadingFiles: "文件上传中，请稍候...",
@@ -741,7 +781,6 @@ export const zhCN: Translations = {
     totalSizeTooLarge: (count: number, maxTotalSize: string) =>
       `有 ${count} 个文件未被添加；附件总大小不能超过 ${maxTotalSize}。`,
   },
-
   subtasks: {
     subtask: "子任务",
     executing: (count: number) =>
@@ -750,7 +789,6 @@ export const zhCN: Translations = {
     completed: "子任务已完成",
     failed: "子任务失败",
   },
-
   // Token Usage
   tokenUsage: {
     title: "Token 用量",
@@ -784,13 +822,11 @@ export const zhCN: Translations = {
     updateTodo: (content: string) => `更新 To-do：${content}`,
     removeTodo: (content: string) => `移除 To-do：${content}`,
   },
-
   contextUsage: {
     label: "上下文",
     title: "上下文窗口",
     badgeAriaLabel: (percentage: string) => `上下文窗口已使用 ${percentage}%`,
   },
-
   // Shortcuts
   shortcuts: {
     searchActions: "搜索操作...",
@@ -801,7 +837,6 @@ export const zhCN: Translations = {
     openCommandPalette: "打开命令面板",
     toggleSidebar: "切换侧边栏",
   },
-
   // Settings
   settings: {
     title: "设置",
@@ -916,13 +951,13 @@ export const zhCN: Translations = {
       addServerDescription:
         "粘贴 MCP 服务器提供的 JSON 定义。直接的服务器映射和带 `mcpServers` 外层的写法都可以。已有名称请通过“编辑”修改。",
       addServerPlaceholder: `{
-  "mcpServers": {
-    "my-server": {
-      "command": "npx",
-      "args": ["-y", "@my-org/my-mcp-server"]
-    }
-  }
-}`,
+        "mcpServers": {
+          "my-server": {
+            "command": "npx",
+            "args": ["-y", "@my-org/my-mcp-server"]
+          }
+        }
+      }`,
       serverDefinitionLabel: "MCP 服务器 JSON 定义",
       definitionEmpty: "请粘贴 MCP 服务器定义。",
       definitionInvalidJson: "请输入有效的 JSON。",
@@ -1218,6 +1253,59 @@ export const zhCN: Translations = {
       invalidArchive: "请选择扩展名为 .skill 的文件。",
       archiveTooLarge: "技能包大小不能超过 100 MiB。",
       installFailed: "安装技能包失败。",
+      exportPrevious: "上 50 项",
+      exportNotices: {
+        skill_export_yaml_alias:
+          "导出暂不支持 YAML 别名，请在 SKILL.md 中改为明确的值。",
+        skill_export_yaml_complexity:
+          "YAML 声明的嵌套层级或结构复杂度超出导出限制。",
+        skill_export_invalid_declaration:
+          "已忽略格式无效的凭据声明，请检查 SKILL.md。",
+        skill_export_link: "外链文件或目录暂不支持导出。",
+        skill_export_unsupported_node:
+          "仅支持普通文件和目录；硬链接和特殊文件无法导出。",
+        skill_export_invalid_path: "此路径不符合跨平台要求，或与其他路径重名。",
+        skill_export_nested_skill: "安装器不接受嵌套的 SKILL.md 文件。",
+        skill_export_executable_binary: "安装器不接受可执行二进制文件。",
+        skill_export_invalid_frontmatter:
+          "SKILL.md 的声明必须有效，且名称须与技能目录一致。",
+        skill_export_sensitive_filename:
+          "此文件名可能对应本地凭据或代码仓库元数据。",
+        skill_export_platform_declarations:
+          "请在目标环境重新配置已声明的工具和凭据。",
+      },
+      exportSkill: "导出",
+      exportTitle: "导出技能",
+      exportDescription: "将当前已保存的技能下载为 .skill 文件。",
+      exportLoading: "正在准备文件清单…",
+      exportFiles: "文件",
+      exportDirectories: "目录",
+      exportSize: "未压缩体积",
+      exportContents: "包内文件",
+      exportMore: "下 50 项",
+      exportRequirements: "已声明的环境要求",
+      exportCompatibility: "运行环境",
+      exportTools: "允许的工具",
+      exportSecrets: "凭据名称",
+      exportOptional: "可选",
+      exportRequired: "必需",
+      exportUndeclared: "未声明",
+      exportScope:
+        "包含此技能目录内的全部文件。账号配置、对话和目录外的历史不会导出；目标环境需重新配置工具与凭据。",
+      exportWarnings: "请检查包内文件",
+      exportWarningDescription:
+        "以下提示来自文件名和声明。写在包内文件中的秘密也会原样导出；此操作不进行安全扫描。",
+      exportBlocked: "此技能包暂时无法导出",
+      exportDownload: "下载 .skill",
+      exportDownloading: "正在准备下载…",
+      exportHandedOff: "文件已交给浏览器下载。",
+      exportChanged: "技能已修改，请刷新文件清单后下载。",
+      exportRefresh: "刷新文件清单",
+      exportFailed: "技能导出失败，请重试。",
+      exportBusy: "当前导出任务已满，请稍后重试。",
+      exportTimeout: "准备技能包超时，请稍后重试。",
+      exportLimit: "技能包超出导出的大小、数量或路径限制。",
+      exportNotFound: "此自定义技能已不存在，请刷新技能列表。",
       applyVisibility: "申请变更可见性",
       applyVisibilityDescription: "提交申请以变更此技能的可见性级别",
       locked: "锁定",
@@ -1267,7 +1355,6 @@ export const zhCN: Translations = {
       readOnly: "只读技能，无法编辑",
       saved: "技能已发布",
       saveFailed: "技能保存失败",
-      exportFailed: "技能导出失败，请重试。",
       category: "类型",
       command: "调用命令",
       usage: "使用方式",
@@ -1352,8 +1439,177 @@ export const zhCN: Translations = {
       sso_not_allowed: "你的账号不允许使用 SSO 登录。请联系管理员。",
     },
   },
-
-  // Scenario cascade bar
+  capabilities: {
+    integrationSkills: "来自插件",
+    sharedSkills: "共享技能",
+    title: "能力中心",
+    description: "为你的工作添加工具与技能。",
+    plugins: "插件",
+    skills: "技能",
+    searchPlugins: "搜索插件名称或用途",
+    searchSkills: "搜索技能名称或用途",
+    allPlugins: "全部插件",
+    installed: "已安装",
+    enabled: "已启用",
+    disabled: "未启用",
+    configure: "配置",
+    details: "查看详情",
+    addPlugin: "添加 MCP 插件",
+    builtin: "官方内置",
+    community: "社区",
+    custom: "我的技能",
+    allSkills: "全部技能",
+    availablePlugins: "可用插件",
+    availableSkills: "可用技能",
+    pluginHint: "连接常用应用，让 Agent 直接访问资料、处理工作。",
+    skillHint: "把常用方法变成技能，在对话中按需使用。",
+    noResults: "没有找到匹配的内容",
+    larkName: "飞书 / Lark",
+    larkDescription: "连接飞书文档、消息、日历与多维表格，在对话中协同办公。",
+    larkTag: "办公协作",
+    connect: "连接",
+    notInstalled: "未安装",
+    mcpDescription: "让 Agent 调用此插件提供的工具。",
+    mcpLabel: "MCP 插件",
+    pluginSettings: "插件配置",
+    communityTitle: "从社区带来新的技能",
+    communityDescription:
+      "导入你找到的 .skill 文件，即可在「我的技能」中管理和使用。",
+    skillEnabled: "启用技能",
+    manage: "管理",
+  },
+  artifactTable: {
+    title: "表格预览",
+    header: "首行作为表头",
+    column: (index) => `列 ${index}`,
+    total: (count) => `共 ${count} 行`,
+    sample: (count) => `预览前 ${count} 行`,
+    range: (start, end, limited) =>
+      `${limited ? "预览 " : ""}${start}–${end} 行`,
+    columnsLimited: "仅展示预览样本的前 50 列。",
+    uneven: "部分行的字段数量不同，缺失字段已标记。",
+    empty: "文件为空。",
+    incomplete: "当前预览范围内没有完整记录，请查看源码或下载文件。",
+    failed: "无法可靠预览此表格，请查看源码或下载文件。",
+    retry: "重新预览",
+    previous: "上一页",
+    next: "下一页",
+    cell: (row, column) => `查看第 ${row} 行、第 ${column} 列`,
+    cellValue: "单元格内容",
+    missing: "缺失",
+    savedVersion: "打开或下载的是已保存文件，当前草稿尚未保存。",
+  },
+  modelPicker: {
+    title: "选择模型",
+    favorites: "收藏",
+    otherModels: "其他模型",
+    noModels: "暂无可用模型",
+    favoriteModel: (displayName, name) => `收藏 ${displayName}（${name}）`,
+    sessionOnly: "收藏仅在本次会话中保留。",
+  },
+  projects: {
+    title: "项目",
+    newProject: "新建项目",
+    namePlaceholder: "项目名称",
+    moveToProject: "移动到项目",
+    moveToProjectHint: "移动对话不会移除其中已有的内容。",
+    removeFromProject: "移出项目",
+    archive: "归档",
+    restore: "恢复",
+    deleteProject: "删除项目",
+    deleteProjectConfirm:
+      "删除项目将解除其对话的关联，对话、历史记录及文件均不会被删除。项目文档将移至回收站，并在保留期内可恢复。",
+    archived: "已归档",
+    empty: "该项目下还没有对话。",
+    newChat: "新建对话",
+    create: "创建",
+    createFailed: "创建项目失败",
+    moveFailed: "移动对话失败",
+    archiveFailed: "归档项目失败",
+    restoreFailed: "恢复项目失败",
+    deleteFailed: "删除项目失败",
+    switchToGrouped: "按项目分组对话",
+    switchToFlat: "显示平铺对话列表",
+    threads: "对话",
+    threadsLoadFailed: "无法加载项目对话",
+    untitled: "未命名",
+    settings: "设置",
+    notFound: "项目不存在或已被删除。",
+    projectUnavailable: "无法关联到该项目，消息未发送。请重试。",
+    documents: "文档",
+    documentsEmptyTitle: "暂无文档",
+    documentsEmptyHint: "上传文件或将对话文件保存到项目，即可建立项目文件架。",
+    instructions: "指令",
+    instructionsPlaceholder: "让 Agent 始终了解该项目的背景、目标与约定…",
+    instructionsByteCount: (used, max) => `${used} / ${max} 字节`,
+    instructionsTooLong: (max) => `指令超过 ${max} 字节上限，请精简后再保存。`,
+    instructionsSaved: "已保存",
+    instructionsSaveFailed: "保存指令失败",
+    documentsShelf: "文件架",
+    documentsShelfHint: "拖放文件到此处即可加入文件架",
+    uploadDocuments: "上传",
+    uploadingDocuments: "正在上传…",
+    uploadDocumentFailed: "上传文档失败",
+    documentFromThread: (threadName, kind) => `来自 ${threadName} · ${kind}`,
+    documentKindUpload: "上传",
+    documentKindOutput: "输出",
+    attachToThread: "附加到对话",
+    attachDialogTitle: "附加到对话",
+    attachDialogHint: "选择一个对话，将该文档附加进去。",
+    attachNoThreads: "没有可用的对话。",
+    attachFailed: "附加文档失败",
+    attachedToThread: (name) => `已附加「${name}」`,
+    moveDocumentToTrash: "移至回收站",
+    moveDocumentToTrashTitle: "移至回收站？",
+    moveDocumentToTrashConfirm: (name, days) =>
+      `「${name}」将移至回收站，并在 ${days} 天的保留期内可恢复。`,
+    deleteDocumentFailed: "移入回收站失败",
+    contentMissing: "内容缺失",
+    previewUnsupported: "无法在浏览器中预览此文件类型，请下载后查看。",
+    archivedDocumentsBanner:
+      "该项目已归档，文档为只读：上传、保存到项目与移至回收站不可用。",
+    conversationFiles: "对话文件",
+    conversationFilesEmpty: "该项目的对话中还没有文件。",
+    threadFilesTruncated: (count) => `仅显示该对话的前 ${count} 个文件。`,
+    threadFilesBrowseInThread: "在对话中浏览全部文件",
+    saveToProject: "保存到项目",
+    saveToProjectFailed: "保存到项目失败",
+    savedToProject: (name) => `已将「${name}」保存到文件架`,
+    shelfNameLabel: "文件架名称",
+    viewTrash: "回收站",
+    documentsLoadFailed: "无法加载项目文档",
+    threadFilesLoadFailed: "无法加载对话文件",
+    interimMemoryNotice:
+      "记忆目前仍为全局：在第三阶段之前，项目中讨论的内容仍可能进入你的全局记忆。",
+  },
+  trash: {
+    title: "回收站",
+    empty: "回收站为空。",
+    loadFailed: "无法加载回收站",
+    retry: "重试",
+    originProject: (projectName) => `来自 ${projectName}`,
+    unknownProject: "未知项目",
+    retentionLeft: (days) =>
+      days <= 0 ? "保留期不足 1 天" : `剩余 ${days} 天`,
+    restore: "恢复",
+    restoreFailed: "恢复文档失败",
+    restoredToast: (name) => `已恢复「${name}」`,
+    restoreMergedToast: (name) => `「${name}」与文件架现有内容相同，已合并。`,
+    restoreConflict: "该文档内容缺失或已损坏，将继续保留在回收站。",
+    restorePickProjectTitle: "选择项目",
+    restorePickProjectHint:
+      "原项目已删除或归档，请选择一个进行中的项目作为恢复目标。",
+    deletePermanently: "永久删除",
+    deletePermanentlyTitle: "永久删除？",
+    deletePermanentlyConfirm: (name) =>
+      `「${name}」将被永久删除，此操作无法撤销。`,
+    purgeFailed: "删除文档失败",
+    emptyTrash: "清空回收站",
+    emptyTrashTitle: "清空回收站？",
+    emptyTrashConfirm: (count) =>
+      `回收站中的 ${count} 个文档将被永久删除，此操作无法撤销。`,
+    emptyTrashFailed: "清空回收站失败",
+  },
   scenarios: {
     daily: "日常办公",
     creative: "创意设计",
@@ -1430,8 +1686,6 @@ export const zhCN: Translations = {
       "abaqus-shared-naming-manifest-builder": "命名契约",
     },
   },
-
-  // Clipboard
   auth: {
     signInTitle: "登录您的账户",
     createAccountTitle: "创建新账户",
@@ -1606,7 +1860,6 @@ export const zhCN: Translations = {
     notificationsUnknownEvent: "新的资源变更通知",
     notificationsLoadFailed: "加载通知失败",
   },
-
   automations: {
     title: "自动化",
     description: "管理你的工作流自动化",
@@ -1614,7 +1867,6 @@ export const zhCN: Translations = {
     templates: "模板",
     myAutomations: "我的自动化",
   },
-
   library: {
     title: "资料库",
     description: "管理你的知识库文档",
@@ -1733,7 +1985,6 @@ export const zhCN: Translations = {
       revisionAria: (slug: string) => `${slug} 已发布版本`,
     },
   },
-
   landing: {
     heroTitlePrefix: "用iDeer完成",
     heroWords: [
@@ -1747,7 +1998,6 @@ export const zhCN: Translations = {
     heroTagline: "iDeer，实现你的idea",
     heroCta: "开始创造",
   },
-
   admin: {
     knowledgeReconciliation: {
       title: "知识对账",

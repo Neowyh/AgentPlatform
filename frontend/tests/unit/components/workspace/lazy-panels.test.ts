@@ -26,22 +26,27 @@ describe("interaction-only bundle boundaries", () => {
     // The dialog module is itself behind the host's dynamic() boundary, so its
     // statically imported pages still load only when the dialog opens; each
     // page must additionally render only for its effective (capability-
-    // resolved) section.
+    // resolved) section. The v2.1.0 merge added channels + subagents pages
+    // to the dialog's section set.
     const sectionsAndPages = [
       ["account", "AccountSettingsPage"],
       ["appearance", "AppearanceSettingsPage"],
+      ["channels", "ChannelsSettingsPage"],
       ["memory", "MemorySettingsPage"],
       ["notification", "NotificationSettingsPage"],
+      ["subagents", "SubagentSettingsPage"],
       ["about", "AboutSettingsPage"],
     ] as const;
     for (const [section, page] of sectionsAndPages) {
       expect(dialog).toContain(`effectiveSection === "${section}"`);
       expect(dialog).toContain(page);
     }
-    // The heavy MCP/skill/subagent management pages moved to their own
-    // workbench surfaces; they must not rejoin the dialog bundle.
+    // The heavy MCP/skill management pages moved to their own workbench
+    // surfaces; they must not rejoin the dialog bundle. Upstream's subagents
+    // page stays a dialog section (asserted above), so only Tool/Skill count
+    // as retired here.
     expect(dialog).not.toMatch(
-      /import \{ (?:Tool|Skill|Subagent)SettingsPage \} from "@\/components\/workspace\/settings\//,
+      /import \{ (?:Tool|Skill)SettingsPage \} from "@\/components\/workspace\/settings\//,
     );
   });
 

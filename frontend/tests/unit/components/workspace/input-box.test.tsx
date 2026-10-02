@@ -39,6 +39,16 @@ const mockSetInput = vi.fn();
 const mockTextInputValue = { current: "" };
 const mockOpenFileDialog = vi.fn();
 
+// 合并后 InputBox 挂载会话引用入口，其能力探测会请求 /api/features；
+// 本测试聚焦 suggestion 拉取与上下文同步，stub 掉能力探测（禁用态，不发请求）。
+vi.mock("@/core/features/hooks", () => ({
+  useConversationReferencesCapability: () => ({
+    enabled: false,
+    maxReferences: 0,
+    isLoading: false,
+  }),
+}));
+
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     locale: "en-US",
@@ -128,6 +138,16 @@ vi.mock("@/core/i18n/hooks", () => ({
         compactSkipped: "The current context does not need compaction yet.",
         compactFailed: "Context compaction failed.",
         pleaseWaitStreaming: "Please wait for the current response to finish.",
+      },
+      // 合并后模型选择收敛进 ModelPickerContent（上游组件），需要 modelPicker 键。
+      modelPicker: {
+        title: "Choose a model",
+        favorites: "Favorites",
+        otherModels: "Other models",
+        noModels: "No models available",
+        favoriteModel: (displayName: string, name: string) =>
+          `Favorite ${displayName} (${name})`,
+        sessionOnly: "Favorites are stored for this session only.",
       },
     },
   }),
@@ -652,11 +672,13 @@ describe("InputBox", () => {
       );
 
       // Should auto-select flash mode for non-thinking model
+      // 合并后自动纠正带上 { automatic: true } 标记（区分用户主动切换）。
       expect(onContextChange).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: "flash",
           model_name: "gpt-4o",
         }),
+        { automatic: true },
       );
     });
 
@@ -683,6 +705,7 @@ describe("InputBox", () => {
           mode: "pro",
           model_name: "claude-sonnet",
         }),
+        { automatic: true },
       );
     });
 
@@ -703,6 +726,7 @@ describe("InputBox", () => {
 
       expect(onContextChange).toHaveBeenCalledWith(
         expect.objectContaining({ mode: "flash" }),
+        { automatic: true },
       );
     });
 
@@ -752,6 +776,7 @@ describe("InputBox", () => {
         expect.objectContaining({
           model_name: "gpt-4o",
         }),
+        { automatic: true },
       );
     });
 
@@ -791,9 +816,14 @@ describe("InputBox", () => {
         />,
       );
 
-      const modelItem = screen.getByTestId("model-item-claude-sonnet");
-      await user.click(modelItem);
+      // 合并后选择器是上游 ModelPickerContent：先开 popover，
+      // 选项按钮以 "DisplayName (name)" 作为 aria-label。
+      await user.click(screen.getByTestId("model-selector-trigger"));
+      await user.click(
+        screen.getByRole("button", { name: "Claude Sonnet (claude-sonnet)" }),
+      );
 
+      // 用户主动选择不带 automatic 标记（仅自动纠正才带）。
       expect(onContextChange).toHaveBeenCalledWith(
         expect.objectContaining({
           model_name: "claude-sonnet",
@@ -2137,6 +2167,7 @@ describe("InputBox", () => {
       await waitFor(() => {
         expect(onContextChange).toHaveBeenCalledWith(
           expect.objectContaining({ model_name: "actual-model" }),
+          { automatic: true },
         );
       });
     });

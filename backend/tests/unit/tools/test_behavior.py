@@ -78,11 +78,22 @@ class TestReadHttpInboundFile:
     async def test_successful_fetch(self):
         from app.channels.manager import _read_http_inbound_file
 
-        mock_client = AsyncMock()
+        # Upstream streaming design: the fetch is a client.stream(...) context
+        # with raw (undecoded) chunk iteration, not a buffered .get().
+        async def _aiter_raw():
+            yield b"file data"
+
         mock_resp = MagicMock()
-        mock_resp.content = b"file data"
+        mock_resp.headers = {}
         mock_resp.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_resp
+        mock_resp.aiter_raw = MagicMock(return_value=_aiter_raw())
+
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=stream_cm)
 
         result = await _read_http_inbound_file({"url": "http://example.com/file"}, mock_client)
         assert result == b"file data"
@@ -126,17 +137,13 @@ class TestReadWechatInboundFile:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_full_url(self):
+    async def test_full_url_without_local_path_returns_none(self):
+        """No re-fetch fallback: a file dict without a staged local path has no
+        legitimate fetch source, so full_url alone yields None."""
         from app.channels.manager import _read_wechat_inbound_file
 
-        mock_client = AsyncMock()
-        mock_resp = MagicMock()
-        mock_resp.content = b"url data"
-        mock_resp.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_resp
-
-        result = await _read_wechat_inbound_file({"full_url": "http://example.com/file"}, mock_client)
-        assert result == b"url data"
+        result = await _read_wechat_inbound_file({"full_url": "http://example.com/file"}, AsyncMock())
+        assert result is None
 
 
 class TestReadWecomInboundFile:
@@ -153,13 +160,24 @@ class TestReadWecomInboundFile:
     async def test_no_aeskey(self):
         from app.channels.manager import _read_wecom_inbound_file
 
-        mock_client = AsyncMock()
-        mock_resp = MagicMock()
-        mock_resp.content = b"raw data"
-        mock_resp.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_resp
+        # The media URL must target an allowed WeCom host, and the fetch rides
+        # the upstream streaming path.
+        async def _aiter_raw():
+            yield b"raw data"
 
-        result = await _read_wecom_inbound_file({"url": "http://example.com/file"}, mock_client)
+        mock_resp = MagicMock()
+        mock_resp.headers = {}
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.aiter_raw = MagicMock(return_value=_aiter_raw())
+
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        stream_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=stream_cm)
+
+        result = await _read_wecom_inbound_file({"url": "http://x.qq.com/file"}, mock_client)
         assert result == b"raw data"
 
     @pytest.mark.asyncio

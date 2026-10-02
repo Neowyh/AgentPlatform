@@ -93,6 +93,7 @@ async def test_update_metadata_record_not_found():
 async def test_create_success():
     """Test create method with various parameter combinations."""
     store = AsyncMock()
+    store.aget = AsyncMock(return_value=None)  # no pre-existing row
 
     mts = MemoryThreadMetaStore(store)
     result = await mts.create(
@@ -119,6 +120,7 @@ async def test_create_success():
 async def test_create_with_defaults():
     """Test create method with minimal parameters (defaults)."""
     store = AsyncMock()
+    store.aget = AsyncMock(return_value=None)  # no pre-existing row
 
     mts = MemoryThreadMetaStore(store)
     result = await mts.create("t-1", user_id="u-1")

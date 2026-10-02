@@ -25,8 +25,10 @@ class TestListDir:
         assert result == []
 
     def test_nonexistent_dir(self, tmp_path):
-        result = list_dir(str(tmp_path / "nonexistent"))
-        assert result == []
+        # Upstream fail-closed evolution: a missing root raises instead of
+        # returning an empty listing.
+        with pytest.raises(FileNotFoundError):
+            list_dir(str(tmp_path / "nonexistent"))
 
     def test_max_depth_1(self, tmp_path):
         (tmp_path / "a.txt").write_text("x")
@@ -106,8 +108,8 @@ class TestListDir:
     def test_not_a_directory(self, tmp_path):
         f = tmp_path / "file.txt"
         f.write_text("x\n")
-        result = list_dir(str(f))
-        assert result == []
+        with pytest.raises(FileNotFoundError):
+            list_dir(str(f))
 
     def test_sorted_output(self, tmp_path):
         (tmp_path / "c.txt").write_text("x")

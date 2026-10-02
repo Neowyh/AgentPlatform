@@ -16,6 +16,15 @@
       },
       "description": "GitHub MCP server for repository operations"
     },
+    "parallel-search": {
+      "enabled": false,
+      "type": "http",
+      "url": "https://search.parallel.ai/mcp",
+      "headers": {
+        "User-Agent": "deer-flow"
+      },
+      "description": "Optional anonymous Parallel Search tools for web search and fetching requested URLs"
+    },
     "postgres": {
       "enabled": false,
       "type": "stdio",

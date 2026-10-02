@@ -177,7 +177,7 @@ class TestStatelessWait:
     @patch("app.gateway.routers.runs.start_run")
     @patch("app.gateway.routers.runs.get_run_manager")
     @patch("app.gateway.deps.get_checkpointer")
-    @patch("app.gateway.routers.runs.serialize_channel_values")
+    @patch("app.gateway.routers.runs.serialize_channel_values_for_api")
     def test_stateless_wait_returns_checkpoint_values(self, mock_serialize, mock_get_cp, mock_get_rm, mock_start_run):
         """Returns serialized channel values when checkpoint is available."""
         record = _make_run_record(status=RunStatus.success)

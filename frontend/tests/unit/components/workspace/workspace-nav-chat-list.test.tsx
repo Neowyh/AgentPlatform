@@ -37,6 +37,9 @@ vi.mock("@/core/i18n/hooks", () => ({
         scheduledTasks: "Scheduled tasks",
         workflows: "Workflows",
       },
+      capabilities: {
+        title: "Capability Center",
+      },
     },
   }),
 }));
@@ -115,11 +118,13 @@ const buttonActiveStates = () =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("keeps the pre-merge order and appends Scheduled tasks last", () => {
+  test("renders the merged five-entry nav with a single capability-center entry", () => {
     render(<WorkspaceNavChatList />);
+    // 能力中心唯一入口（含 experts tab）；上游重复的 capability 入口与本地
+    // "专家 · 技能 · 连接器" 入口按 ADR-0007 方向去重，仅保留能力中心一项。
     expect(renderedLabels()).toEqual([
       "Chats",
-      "Experts · Skills · Connectors",
+      "Capability Center",
       "Workflows",
       "Library",
       "Scheduled tasks",
@@ -132,6 +137,9 @@ describe("WorkspaceNavChatList", () => {
     // sidebar entry alongside the original Experts·Skills·Connectors page.
     expect(screen.queryByText("Agents")).not.toBeInTheDocument();
     expect(screen.queryByText("Experts")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Experts · Skills · Connectors"),
+    ).not.toBeInTheDocument();
   });
 
   test("links each entry to its pre-merge destination and Scheduled tasks to its own page", () => {

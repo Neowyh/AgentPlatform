@@ -8,7 +8,6 @@ is reused so that conversation history is preserved across calls.
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -29,14 +28,10 @@ from app.gateway.deps import (
     get_stream_bridge,
 )
 from app.gateway.pagination import trim_run_message_page
-from app.gateway.routers.thread_runs import RunCreateRequest
-from app.gateway.services import (
-    build_checkpoint_state_accessor,
-    sse_consumer,
-    start_run,
-    wait_for_run_completion,
-)
-from deerflow.runtime import serialize_channel_values
+from app.gateway.run_models import RunCreateRequest
+from app.gateway.services import abuild_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
+from deerflow.runtime import serialize_channel_values_for_api
+from deerflow.utils.thread_id import resolve_thread_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -110,9 +105,7 @@ def _resolve_thread_id(body: RunCreateRequest) -> str:
     """Return the thread_id from the request body, or generate a new one."""
     configurable = (body.config or {}).get("configurable")
     thread_id = configurable.get("thread_id") if isinstance(configurable, Mapping) else None
-    if thread_id:
-        return str(thread_id)
-    return str(uuid.uuid4())
+    return resolve_thread_id(str(thread_id) if thread_id else None)
 
 
 def _has_requested_thread(body: RunCreateRequest) -> bool:
@@ -166,7 +159,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
 
     if completed:
         try:
-            accessor, config = build_checkpoint_state_accessor(
+            accessor, config = await abuild_checkpoint_state_accessor(
                 request,
                 thread_id=thread_id,
                 assistant_id=body.assistant_id,
@@ -174,7 +167,7 @@ async def stateless_wait(body: RunCreateRequest, request: Request) -> dict:
             snapshot = await accessor.aget(config)
             snapshot_config = snapshot.config or {}
             if snapshot_config.get("configurable", {}).get("checkpoint_id"):
-                return serialize_channel_values(snapshot.values)
+                return serialize_channel_values_for_api(snapshot.values)
         except Exception:
             logger.exception("Failed to fetch final state for run %s", record.run_id)
 

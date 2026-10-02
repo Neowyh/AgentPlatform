@@ -55,6 +55,23 @@ describe("pathOfThread", () => {
     );
   });
 
+  test("routes an IM-selected thread to its custom agent from search metadata", () => {
+    expect(
+      pathOfThread({
+        thread_id: "thread-456",
+        // Thread-search results do not include run context. The channel manager
+        // persists both its restart key and the canonical routing key; the
+        // router reads metadata.agent_name (channel_agent_name stays as the
+        // channel-side restart key only).
+        metadata: {
+          channel_source: { type: "im_channel", provider: "telegram" },
+          channel_agent_name: "coder",
+          agent_name: "coder",
+        },
+      }),
+    ).toBe("/workspace/capabilities/experts/coder/chats/thread-456");
+  });
+
   test("object thread with no agent context returns standard chat path", () => {
     expect(pathOfThread({ thread_id: "thread-no-agent" })).toBe(
       "/workspace/chats/thread-no-agent",

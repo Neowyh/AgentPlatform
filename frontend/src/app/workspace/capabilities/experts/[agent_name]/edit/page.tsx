@@ -84,6 +84,10 @@ export default function AgentEditPage() {
     skills: [],
     soul: "",
   });
+  // display_name editing ported from the upstream agent settings dialog
+  // (v2.1.0): free-form input with a 100-Unicode-code-point budget, blank
+  // falls back to the agent identifier.
+  const [displayName, setDisplayName] = useState("");
   // Model-behavior overrides (merged from the DeerFlow expert settings
   // dialog): temperature / max tokens / thinking / reasoning effort /
   // subagent access.
@@ -121,6 +125,7 @@ export default function AgentEditPage() {
         soul: agent.soul ?? "",
         draft_revision: agent.draft_revision,
       });
+      setDisplayName(agent.display_name ?? "");
       setOriginalVisibility(agent.visibility ?? "private");
       setTemperature(
         agent.model_settings?.temperature != null
@@ -226,6 +231,12 @@ export default function AgentEditPage() {
         );
         return;
       }
+      // display_name budget check ported from the upstream agent settings
+      // dialog (v2.1.0): counts Unicode code points, not UTF-16 code units.
+      if ([...displayName.trim()].length > 100) {
+        toast.error(t.agents.settingsDisplayNameTooLong);
+        return;
+      }
       const baseRequest = agent?.resource_id
         ? {
             ...formData,
@@ -236,6 +247,7 @@ export default function AgentEditPage() {
         : formData;
       const request = {
         ...baseRequest,
+        display_name: displayName.trim() || null,
         model_settings: parsedSettings.modelSettings,
         thinking_enabled: supportsThinking
           ? selectionToThinkingEnabled(thinking)
@@ -258,6 +270,7 @@ export default function AgentEditPage() {
   }, [
     agent,
     agent_name,
+    displayName,
     formData,
     knowledgeDependencies,
     knowledgeDependenciesLoaded,
@@ -382,7 +395,7 @@ export default function AgentEditPage() {
       </div>
 
       {/* Form */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-6">
         <div className="mx-auto max-w-2xl space-y-6">
           {/* Name (readonly) */}
           <div className="space-y-2">
@@ -390,6 +403,23 @@ export default function AgentEditPage() {
             <Input value={agent_name} disabled />
             <p className="text-muted-foreground type-body">
               Agent name cannot be changed after creation
+            </p>
+          </div>
+
+          {/* Display name (ported from the upstream agent settings dialog) */}
+          <div className="space-y-2">
+            <Label htmlFor="agent-display-name">
+              {t.agents.settingsDisplayName}
+            </Label>
+            <Input
+              id="agent-display-name"
+              value={displayName}
+              placeholder={agent.name}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+            <p className="text-muted-foreground type-body">
+              {t.agents.settingsDisplayNameHint} ({agent.name}){" · "}
+              {[...displayName.trim()].length}/100
             </p>
           </div>
 

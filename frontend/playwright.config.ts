@@ -42,6 +42,9 @@ export default defineConfig({
   webServer: skipWebServer
     ? undefined
     : {
+        // Local lane gating wins (the TEST_LANE runner flips the dev server
+        // on for mock lanes); the non-dev branch keeps the upstream
+        // build+start command shape.
         command:
           process.env.PLAYWRIGHT_DEV_SERVER === "1"
             ? "./node_modules/.bin/next dev"

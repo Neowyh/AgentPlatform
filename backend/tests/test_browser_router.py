@@ -187,10 +187,25 @@ def test_browser_navigate_redacts_failure_url_from_logs_and_response(caplog):
 
     assert response.status_code == 502
     assert response.json() == {"detail": "Browser navigation failed"}
-    assert "https://example.com/callback" in caplog.text
+    # The router's own sanitizer drops query/fragment before emission; the
+    # logging pipeline's UrlRedactionFilter may additionally collapse the
+    # path (install_url_log_redaction attaches to every root handler,
+    # including caplog's shared per-worker handler), so only the
+    # leak-prevention contract is asserted against the captured text — the
+    # path-preserving shape is pinned directly on redact_browser_url below.
     assert "code=secret" not in caplog.text
     assert "fragment" not in caplog.text
     assert "secret" not in response.text
+
+
+def test_redact_browser_url_keeps_the_path_for_debuggability():
+    from deerflow.community.browser_automation import redact_browser_url
+
+    assert redact_browser_url("https://example.com/callback?code=secret#fragment") == "https://example.com/callback"
+    assert redact_browser_url("https://example.com") == "https://example.com"
+    # urlparse never raises on garbage; the fallback only covers exotic
+    # failures, so just require total absence of the secrets.
+    assert "secret" not in redact_browser_url("not a url?code=secret")
 
 
 def test_browser_stream_seed_applies_to_blank_page():

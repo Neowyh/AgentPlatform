@@ -91,16 +91,25 @@ class TestAioSandboxExtraCoverage:
         assert exc_info.value.errno == errno.EFBIG
 
     def test_list_dir_empty(self, sb):
+        # Upstream fail-closed evolution: empty stdout carries no find-status
+        # marker, so it is an error rather than a silent empty listing.
         sb._client.shell.exec_command.return_value = SimpleNamespace(data=SimpleNamespace(output=""))
-        assert sb.list_dir("/d") == []
+        with pytest.raises(OSError):
+            sb.list_dir("/d")
 
     def test_list_dir_none_data(self, sb):
+        # Upstream fail-closed evolution: an empty/None payload is an error,
+        # not a silent empty listing.
         sb._client.shell.exec_command.return_value = SimpleNamespace(data=None)
-        assert sb.list_dir("/d") == []
+        with pytest.raises(OSError):
+            sb.list_dir("/d")
 
     def test_list_dir_exception(self, sb):
+        # Upstream fail-closed evolution: a shell/command failure raises
+        # OSError instead of silently degrading to an empty listing.
         sb._client.shell.exec_command.side_effect = RuntimeError("fail")
-        assert sb.list_dir("/d") == []
+        with pytest.raises(OSError):
+            sb.list_dir("/d")
 
     def test_write_file_exception(self, sb):
         sb._client.file.write_file.side_effect = OSError("disk")

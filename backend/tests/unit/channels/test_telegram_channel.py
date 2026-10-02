@@ -208,8 +208,9 @@ class TestStart:
         assert ch._application is mock_app
         assert ch._main_loop is not None
         # Verify the current handler set: /start, /bootstrap, /new, /status,
-        # /models, /memory, /goal, /help, command text, plain text, files.
-        assert mock_app.add_handler.call_count == 11
+        # /models, /memory, /agent, /goal, /help, command text, plain text, files.
+        # v2.1.0 registers the /agent command handler alongside the others.
+        assert mock_app.add_handler.call_count == 12
 
 
 # ---------------------------------------------------------------------------
