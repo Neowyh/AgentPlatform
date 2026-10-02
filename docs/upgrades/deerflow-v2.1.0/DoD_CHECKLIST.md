@@ -17,7 +17,8 @@
 - ✅ 合并丢失语义修复后 focused 验证：sse_consumer 订阅循环恢复、`_ensure_thread_metadata` 去重、迁移真实链头探测、agent store 引导缝、MCP 任务快照清理、上传虚拟路径 skip 包络（`1f18d4170..76c049e6b`）。
 - ✅ pr-standard lane **exit 0**（第五轮，候选 `2a7bcd9d4`）：local-runtime 8-11s ✅、backend-standard 1030s ✅（29385 passed / 1 failed→逐根因修复后全绿）、frontend-standard 458s ✅（1281/1282→修复后全绿）、frontend-smoke 63s ✅；`TEST_LANE_DURATION lane=pr-standard seconds=1563 status=0`。
 - ✅ 收敛期暴露并修复的顺序/负载依赖问题（各有单测验证）：logging real-emit urllib3 级别隔离（`5d1aad7d3`）、uvloop 跨线程 spawn 竞态改标准库循环（`6776673a9`）、skill case-probe 收集期竞态（前置提交）、workbuddy smoke 模型选择器 role 与侧栏 thread-list testid（`4a054ef1b`/`30c70ccbf`）、browser 日志 URL 双层脱敏契约分层（前置提交）、staged-chip 生命周期对齐（`2a7bcd9d4`）。
-- ⏳ core-full 交付级 lane 逐子 lane summary + TEST_LANE_DURATION（运行中）。
+- ✅ backend-full 交付级 **exit 0**（1218s；含 serial 阶段 54 passed——serial 迁移链常量修正 `df970cc42` 后首次覆盖，标准阶段全量绿）。
+- ⚠️ frontend-mock-e2e **367/414 passed**（lane exit 1，16.9m）：合并前基线同命令 337/344（7 failed，develop 既有债务）；剩余失败分桶与跟进台账见 `dev-log/2026-10-02-mock-e2e-followup-ledger.md`——本轮已修复其中 settings 分区恢复（`25fe34b82`）、空 MCP 空态、移动端溢出（`445e6ddf1`）并使 settings-management 18/18 过；其余为上游新测试×本地 mock 面适配与共享 server 顺序依赖，登记 develop 跟进，不阻塞合并。
 
 ## AgentPlatform
 
@@ -50,14 +51,14 @@
 
 ## Offline
 
-- ⏳ `scripts/package-intranet-offline.sh` bundle 重建（bundled-skills 白名单）+ 产物 manifest/SHA256SUMS。
-- ⏳ bundle 内 `./check-intranet.sh` 8/8。
-- ⏳ 容器栈冒烟（登录/resources/thread/frontend + 重启持久化）。
+- ✅ bundle 重建：`dist/intranet/ideer-20261002-d4b23e6c4/`（3.9G，SHA256SUMS + manifest，增量自 445e6ddf1 基线、含种子守卫 `d4b23e6c4`）。
+- ✅ bundle 内 `./check-intranet.sh`：Errors 0 / Warnings 0（8 项检查全过；LLM 端点项按设计 SKIPPED——沙箱无 IDEER_LLM_ENDPOINT）。
+- ✅ 容器栈冒烟：`deploy-intranet.sh up` exit 0（超管初始化 + 规范化种子 76 条）；登录 200（login/local 表单流 + CSRF 双提交）、`/api/resources` 200（16 agents）、`POST /api/threads` 200（thread `f5b399c0`）；`restart` 后前端 200、资源与线程持久、会话仍有效。LLM 会话完成段未执行（沙箱无模型密钥，启动日志明示 no models configured）——记 incomplete，不阻塞。
 - ✅ 技能包边界：`test_skills_loader`（SKILL.md 目录=包边界）+ `test_skills_bundled`（frontmatter）在全量通过中覆盖；skill-creator 快速校验器回补（`27e571842`）保证导出回路可用。
 
 ## Merge
 
-- ⏳ GitNexus `detect-changes --scope compare --base-ref product/offline-1.x` 干净（partial/truncated 不算过）。
+- ⏳ GitNexus `detect-changes --scope compare --base-ref product/offline-1.x` 干净（合并后在 develop 重建索引执行；partial/truncated 不算过）。
 - ⏳ `--no-ff` 合入 develop + 合并后 pr-standard 复验。
 - ⏳ integration 分支与 worktree 删除、stash@{0}（取消代理 WIP）确认被取代后删除、`.scratch` 票据全关。
 - ⏳ PR 材料定稿（PR_MATERIALS.md：用户可见变更/验证命令/high-risk lane Real E2E 选择注明）。

@@ -38,10 +38,13 @@
 | focused suites（authz/PAT 222、threads 167、journal 119、subagents 150、bootstrap 34、migrations、skills 607、extension contracts） | ✅ |
 | `check-frontend-entry-parity.sh` 四层 | ✅ PASSED |
 | frontend vitest + `pnpm check` | ✅ 1281/1282（唯一失败 `input-box-project-attachment` 为合并前预存在、bisect 判依赖漂移，登记 develop 跟进）；check exit 0 |
-| `scripts/run-test-lane.sh pr-standard` | ✅ exit 0（local-runtime 11s / backend-standard 1030s / frontend-standard 458s / frontend-smoke 63s；收敛期 6 处顺序依赖问题逐根因修复，见 DoD Tests 节） |
+| `scripts/run-test-lane.sh pr-standard` | ✅ exit 0（local-runtime 11s / backend-standard 1030s / frontend-standard 458s / frontend-smoke 63s） |
+| `scripts/run-test-lane.sh backend-full`（含 serial） | ✅ exit 0（1218s；serial 迁移链常量修正 df970cc42） |
+| `scripts/run-test-lane.sh frontend-core` | ✅ exit 0（578s，coverage + check） |
+| `scripts/run-test-lane.sh frontend-mock-e2e` | ⚠️ 367/414（合并前基线 337/344；分桶台账 `dev-log/2026-10-02-mock-e2e-followup-ledger.md`，跟进项在 develop 处理） |
+| 内网 bundle + `check-intranet.sh` + 容器冒烟 | ✅ ideer-20261002-d4b23e6c4（3.9G）：8 项 0 errors、登录/资源/线程/重启持久化全过（LLM 会话段沙箱无模型密钥，incomplete） |
 | `scripts/run-test-lane.sh core-full` | ⏳ 票 11 |
 | 技能包边界加载 | ✅ 607 测试绿 + bundled-skills.txt 59/59 在 resources/skills + skills-lock 一致 |
-| 内网 bundle 重建 + `check-intranet.sh` + 容器冒烟 | ⏳ 票 11（Docker 29.8.0 可用） |
 
 ## 本轮收敛修复（合并丢失/对齐类，票 11 评审产出）
 
