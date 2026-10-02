@@ -798,8 +798,14 @@ async def bootstrap_schema(engine: AsyncEngine, *, backend: str, postgres_schema
             if _FORWARD_COMPATIBLE_REVISION in database_revisions:
                 async with engine.connect() as conn:
                     await conn.run_sync(_validate_forward_schema)
+            # Compare against the real chain head (the cached ScriptDirectory
+            # walk), not the metadata snapshot: in production they are the
+            # same value, but a simulated rollback binary only replaces the
+            # metadata pair, and a database below the true head must still
+            # attempt its upgrade.
+            real_head = await asyncio.to_thread(_get_head_revision)
             async with engine.connect() as conn:
-                at_head = await conn.run_sync(lambda sync_conn: _database_has_head(sync_conn, head))
+                at_head = await conn.run_sync(lambda sync_conn: _database_has_head(sync_conn, real_head))
             if at_head:
                 # A merge head can legitimately leave more than one ancestor
                 # row in ``alembic_version`` (the unified chain restamps
